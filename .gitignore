@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+
+.DS_Store
+
+docs_md/
+storage/
+chroma/
+
+.deepeval/
+.deepeval_telemetry.txt
+.env

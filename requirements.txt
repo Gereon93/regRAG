@@ -1,0 +1,9 @@
+llama-index
+llama-index-llms-openai-like
+llama-index-embeddings-huggingface
+langgraph
+langchain
+langchain-openai
+deepeval
+chromadb
+pymupdf4llm
