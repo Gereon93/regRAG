@@ -10,10 +10,21 @@ Gebaut, um RAG, LangGraph und LangChain praktisch zu verstehen. Kein Produktions
 |---|---|---|
 | Retrieval | LlamaIndex | PDF → Markdown → Chunks → Embeddings → `retrieve` |
 | Formulierung | LangChain | `ChatOpenAI` gegen LM Studio, PromptTemplate erzwingt Quellenangabe |
-| Orchestrierung | LangGraph | Zustandsgraph: `retrieve` → `answer` \| `abstain` |
+| Orchestrierung | LangGraph | Zustandsgraph: `retrieve` → `answer` |
+| Speicher | ChromaDB | persistenter Vektor-Index, Cosine-Metrik |
 
-Embeddings laufen rein lokal (`BAAI/bge-m3`, multilingual — DORA liegt auf Deutsch vor).
-Die Generierung geht gegen **LM Studio** (`localhost:1234`, OpenAI-kompatibel).
+Warum drei Frameworks und wo LangGraph seinen Platz noch nicht verdient: [ADR 0004](docs/adr/0004-rollenteilung-llamaindex-langchain-langgraph.md).
+
+## Modelle: was läuft wo
+
+| Rolle | Modell | Ort | Kosten |
+|---|---|---|---|
+| Embeddings | `BAAI/bge-m3` | lokal, im Prozess | 0 € |
+| Generierung | `google/gemma-4-12b` | lokal, LM Studio (`localhost:1234`) | 0 € |
+| Generierung (geplant, Issue #3) | frei wählbar | OpenRouter, gehostet | pay-as-you-go |
+
+Embeddings laufen bewusst lokal: multilingual (DORA liegt auf Deutsch vor) und ohne Datenabfluss.
+Die Generierung spricht ein OpenAI-kompatibles Interface — LM Studio und OpenRouter sind darüber austauschbar.
 
 ## Setup
 
@@ -22,34 +33,50 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-DORA-PDF (DE) von EUR-Lex nach `docs/` legen:
-<https://eur-lex.europa.eu/legal-content/DE/TXT/PDF/?uri=CELEX:32022R2554>
+DORA-PDF (DE) liegt unter `docs/`. Quelle: EUR-Lex, CELEX 32022R2554.
 
 LM Studio starten, ein Chat-Modell laden, Modellnamen in `agent.py` (`LOKALES_CHAT_MODELL`) eintragen.
 
 ## Lauf
 
 ```bash
-python convert.py   # PDF → docs_md/dora.md (pymupdf4llm erhält die Artikelstruktur)
-python rag.py       # Step 1: Mini-RAG, Antwort + Quellen-Scores
-python agent.py     # Step 2: LangGraph-Agent mit Abstain-Pfad
+python convert.py   # PDF -> docs_md/dora.md
+python rag.py       # Mini-RAG: Antwort + Quellen-Scores
+python agent.py     # LangGraph-Agent mit Abstain-Pfad
 ```
+
+Der Vektor-Index wird beim ersten Lauf gebaut (~5 min) und danach aus `chroma/` geladen (12 s).
+Neuaufbau erzwingen: `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
 
 ## Stand
 
 - [x] **Step 1** — Mini-RAG über DORA, Antwort mit Belegstellen
-- [x] **Step 2** — LangGraph-Agent, verweigert die Antwort unter `MIN_RETRIEVAL_SCORE`
-- [ ] **Step 3** — DeepEval (Faithfulness), lokaler Judge
-- [ ] **Step 4** — Model-Router: lokal ↔ OpenRouter, nach Kosten/Latenz
+- [x] **Step 2** — LangGraph-Agent, verweigert unter `MIN_RETRIEVAL_SCORE`
+- [x] **Persistenz** — Chroma-Index, Warmstart 12 s statt 5 min ([#1](../../issues/1))
+- [ ] **Step 3** — DeepEval: Faithfulness messen, Schwellwert kalibrieren ([#2](../../issues/2))
+- [ ] **Step 4** — Web-UI + Docker ([#3](../../issues/3)), Dokumenten-Upload ([#4](../../issues/4))
 
-Bekannte Baustelle: Der Index wird bei jedem Lauf neu eingebettet (~6 min). Persistenz via ChromaDB steht aus.
+`deepeval` steht in `requirements.txt`, wird aber noch von keiner Datei importiert. Das ist bekannt und Gegenstand von [#2](../../issues/2).
 
-## Entscheidungen
+## Entscheidungen (ADRs)
 
-**PDF → Markdown statt PDF direkt.** Der Zweispaltensatz von EUR-Lex zerlegt naives PDF-Parsing; `pymupdf4llm` erhält die Artikel- und Absatzstruktur, die für sinnvolle Chunks nötig ist.
+- [0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md) — PDF nach Markdown, statt das PDF direkt zu indexieren
+- [0002](docs/adr/0002-abstain-statt-raten.md) — Verweigern statt raten (Schwellwert **unkalibriert**)
+- [0003](docs/adr/0003-persistenter-chroma-index-mit-cosine.md) — Persistenter Chroma-Index, erzwungen auf Cosine
+- [0004](docs/adr/0004-rollenteilung-llamaindex-langchain-langgraph.md) — Rollenteilung der drei Frameworks
 
-**Abstain statt raten.** Liegt der beste Retrieval-Score unter `MIN_RETRIEVAL_SCORE`, antwortet der Agent „Nicht eindeutig in DORA belegt." In einem regulierten Umfeld ist eine verweigerte Antwort billiger als eine erfundene. Der Schwellwert ist noch nicht empirisch kalibriert.
+## Gemessen
+
+| Größe | Wert |
+|---|---|
+| Kaltstart (Index bauen, 351k Zeichen) | 5:04 min |
+| Warmstart (Index laden) | 12.2 s |
+| Retrieval (`similarity_top_k=3`) | 0.5 s |
+| Score eines guten Treffers (Cosine) | 0.72–0.73 |
+
+Nicht gemessen: Faithfulness, die Qualität gegenüber naivem PDF-Parsing, und ob `MIN_RETRIEVAL_SCORE = 0.4` der richtige Schwellwert ist. Siehe [#2](../../issues/2).
 
 ## Quellen
 
 DORA-Text: EUR-Lex, CELEX 32022R2554. Wiederverwendung gemäß Beschluss 2011/833/EU.
+ISO-Normtexte sind urheberrechtlich geschützt und werden bewusst nicht eingebettet.

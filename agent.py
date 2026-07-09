@@ -7,7 +7,7 @@ from rag import index
 
 LM_STUDIO_BASE_URL = "http://localhost:1234/v1"
 LOKALES_CHAT_MODELL = "google/gemma-4-12b"
-MIN_RETRIEVAL_SCORE = 0.4
+MIN_RETRIEVAL_SCORE = 0.4  # docs/adr/0002
 ABSTAIN_ANTWORT = "Nicht eindeutig in DORA belegt."
 
 retriever = index.as_retriever(similarity_top_k=3)
