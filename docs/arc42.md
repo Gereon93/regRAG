@@ -19,7 +19,7 @@ belastbaren Beleg, verweigert es die Antwort, statt eine zu erfinden.
 | # | Ziel | Warum | Wie geprüft |
 |---|---|---|---|
 | Q1 | **Nachvollziehbarkeit** — jede Antwort nennt ihre Fundstellen | Eine Compliance-Aussage ohne Beleg ist wertlos | Quellen + Scores werden ausgegeben |
-| Q2 | **Keine erfundenen Antworten** — lieber schweigen | Eine falsche Aussage zu DORA ist teurer als keine | ⚠️ **ungeprüft**, siehe Kapitel 11 |
+| Q2 | **Keine erfundenen Antworten** — lieber schweigen | Eine falsche Aussage zu DORA ist teurer als keine | ❌ **gemessen verletzt**: Guard greift nicht, siehe Kapitel 11 |
 | Q3 | **Datenhoheit** — Dokumente verlassen den Rechner nicht | Reguliertes Umfeld; Embeddings laufen lokal | Embeddings im Prozess, LLM auf `localhost` |
 | Q4 | **Nachvollziehbare Kosten und Latenz** | Grundlage für die Wahl lokal vs. gehostet | Kapitel 10, gemessene Werte |
 
@@ -63,8 +63,10 @@ Fachlich: Der Nutzer stellt eine Frage in natürlicher Sprache und erhält entwe
 belegte Antwort oder eine begründete Verweigerung.
 
 Technisch: Das einzige verpflichtende externe System ist ein **OpenAI-kompatibler
-Chat-Endpunkt**. Ob dahinter LM Studio oder OpenRouter steht, ist Konfiguration.
-Das Embedding-Modell läuft **im Prozess**, nicht als Dienst.
+Chat-Endpunkt**. Welcher Anbieter dahintersteht, ist bewusst austauschbar gehalten —
+heute allerdings noch über hartkodierte Werte in `agent.py`, nicht über Konfiguration
+(siehe Kapitel 8 und Schuld 6 in Kapitel 11). Das Embedding-Modell läuft **im Prozess**,
+nicht als Dienst.
 
 ---
 
@@ -139,10 +141,14 @@ sequenceDiagram
 
 ### Anfrage ohne Beleg
 
-Der Pfad endet vor dem LLM. `beleglage_zu_schwach()` liefert `True`, `answer` setzt
-`ABSTAIN_ANTWORT` und kehrt zurück. **Das LLM wird nie aufgerufen** — es kann nicht
-halluzinieren, was es nicht sieht. Genau darin liegt der Wert, und genau dieser Pfad
-ist bislang nie ausgelöst worden.
+So die Absicht: `beleglage_zu_schwach()` liefert `True`, `answer` setzt `ABSTAIN_ANTWORT`,
+das LLM wird nie aufgerufen und kann nicht halluzinieren, was es nicht sieht.
+
+**Gemessen tut der Pfad das heute nicht.** Off-Topic-Fragen ("Wie backe ich einen
+Kuchen?", "Hauptstadt von Australien?") erzielen Retrieval-Scores von **0.48–0.51** und
+liegen damit **über** `MIN_RETRIEVAL_SCORE = 0.4` — der Abstain-Pfad greift nicht, die
+Verweigerung findet nicht statt. Ursache und Konsequenz stehen in Schuld 2 (Kapitel 11).
+Das zentrale Versprechen des Systems ist damit aktuell **nicht eingelöst**.
 
 ### Indexaufbau (einmalig)
 
@@ -173,13 +179,18 @@ graph TD
     API -->|Alternative| OR[OpenRouter]
 ```
 
-**LM Studio ist eine Mac-App und kann nicht in den Container.** Der Container erreicht sie
-nur über `host.docker.internal` — was auf einem Linux-Server oder in der Cloud nicht
-funktioniert.
+**LM Studio als Mac-Desktop-App ist aus dem Container nicht erreichbar.** Der Container
+käme nur über `host.docker.internal` an sie heran — was auf einem Linux-Server oder in
+der Cloud nicht funktioniert.
 
-Damit ist die Dockerisierung der Moment, in dem der gehostete Worker (OpenRouter) vom
-Bonus zur Notwendigkeit wird. Die Backend-URL muss konfigurierbar sein, nicht hartkodiert.
-Zweitens: `bge-m3` wiegt ~2 GB und muss ins Image oder in ein Volume — bewusst zu entscheiden.
+Das erzwingt aber **nicht** zwingend gehostete Inferenz. Der Container braucht lediglich
+*irgendeinen* erreichbaren OpenAI-kompatiblen Endpunkt. Das kann ein headless lokaler
+Server sein (LM Studio im Headless-Betrieb, oder llama.cpp / vLLM / Ollama im Container),
+oder ein gehosteter Worker (OpenRouter). Es ist also eine **Deployment-Entscheidung**
+zwischen Kosten, Datenhoheit und Betriebsaufwand — keine technische Notwendigkeit.
+Was der Umbau in jedem Fall verlangt: Die Backend-URL muss konfigurierbar werden statt
+hartkodiert (Schuld 6). Zweitens wiegt `bge-m3` ~2 GB und muss ins Image oder in ein
+Volume — bewusst zu entscheiden.
 
 ---
 
@@ -195,7 +206,10 @@ gemessen wurde. Nicht Gemessenes wird als „offen" markiert, nicht weggelassen.
 Ein Score ist nur innerhalb seiner Distanzmetrik interpretierbar (ADR 0003).
 
 **Austauschbarkeit über OpenAI-kompatible Schnittstellen.** LM Studio und OpenRouter
-sprechen dasselbe Protokoll; der Wechsel ist Konfiguration, keine Codeänderung.
+sprechen dasselbe Protokoll. Der Wechsel *soll* reine Konfiguration sein — heute ist er
+es noch nicht: Base-URL, Modellname und API-Key stehen in `agent.py` und `rag.py`
+hartkodiert. Bis Issue #3 diese Werte in Umgebungsvariablen zieht, verlangt ein
+Backendwechsel eine Codeänderung. Das Prinzip gilt, die Umsetzung steht aus (Schuld 6).
 
 ---
 
@@ -219,15 +233,21 @@ sprechen dasselbe Protokoll; der Wechsel ist Konfiguration, keine Codeänderung.
 | Kaltstart (Index bauen, 351k Zeichen) | 5:04 min |
 | Warmstart (Index laden) | 12.2 s |
 | Retrieval, `similarity_top_k=3` | 0.5 s |
-| Score eines guten Treffers (Cosine) | 0.72–0.73 |
+| Score eines guten Treffers (On-Topic) | 0.72–0.73 |
+| Score bei Off-Topic-Unsinnsfragen | 0.48–0.51 |
 | Kosten pro Anfrage (lokal) | 0 € |
+
+Der Score von ChromaVectorStore ist `exp(-Distanz)`, **nicht** die rohe Cosine-Similarity
+(LlamaIndex, `chroma/base.py:472`). Ein guter Treffer mit Cosine ≈ 0.68 wird als 0.72
+berichtet, eine Unsinnsfrage mit Cosine ≈ 0.32 noch als 0.50. Scores sind nur innerhalb
+dieser Transformation und gegen den konkreten Store interpretierbar.
 
 ### Szenarien
 
 | Szenario | Erwartung | Status |
 |---|---|---|
 | Frage, die DORA beantwortet | Antwort mit Fundstellen | ✅ beobachtet |
-| Frage außerhalb von DORA | `ABSTAIN_ANTWORT`, kein LLM-Aufruf | ❌ **nie getestet** |
+| Frage außerhalb von DORA | `ABSTAIN_ANTWORT`, kein LLM-Aufruf | ❌ **gemessen fehlgeschlagen** (Unsinn scort 0.48–0.51 > 0.4) |
 | LM Studio nicht erreichbar | Verständliche Fehlermeldung, kein Absturz | ⚠️ `except Exception` fängt alles |
 | Vektor-Store gewechselt | Schwellwert wird neu kalibriert | ✅ als Regel etabliert (ADR 0003) |
 
@@ -243,7 +263,7 @@ richtig liegt. Latenz und Kosten eines gehosteten Backends. Alles Gegenstand von
 | # | Schuld | Wirkung | Wo |
 |---|---|---|---|
 | 1 | **Abstain-Pfad nie ausgelöst** | Das zentrale Qualitätsversprechen (Q2) ist unbewiesen | ADR 0002, Issue #2 |
-| 2 | **`MIN_RETRIEVAL_SCORE = 0.4` ist geraten** | Aus dem Bauplan übernommen, keine Messung. Gute Treffer liegen bei 0.72 — die Schwelle könnte zu tief hängen und Mittelmaß durchlassen | ADR 0002 |
+| 2 | **`MIN_RETRIEVAL_SCORE = 0.4` liegt unter dem Rauschboden** | Gemessen: Off-Topic-Unsinnsfragen erzielen 0.48–0.51, also **über** der Schwelle. Der Score ist `exp(-Distanz)`, nicht rohe Cosine-Similarity — 0.4 entspricht Cosine ≈ 0.08 (praktisch unabhängig). Der Abstain-Guard ist damit **de facto wirkungslos**, nicht bloß unkalibriert | ADR 0002, ADR 0003, Issue #2 |
 | 3 | **LangGraph ist unterfordert** | Der Graph ist eine gerade Linie; die Verzweigung steckt als `if` im `answer`-Knoten. Ein bedingter Kanten-Übergang würde die Verweigerung sichtbar machen | ADR 0004 |
 | 4 | **Keine automatisierten Tests** | Jede Änderung wird von Hand geprüft. `deepeval` steht in `requirements.txt`, wird von keiner Datei importiert | Issue #2 |
 | 5 | **`except Exception` in `answer`** | Verschluckt jeden Fehler, auch Programmierfehler, und meldet dem Nutzer „bitte erneut versuchen" | `agent.py` |
@@ -259,7 +279,7 @@ Schuld 1 bis 3 sind die interessanten. Sie betreffen nicht die Ausführung, sond
 
 | Begriff | Bedeutung |
 |---|---|
-| **DORA** | Digital Operational Resilience Act, Verordnung (EU) 2022/2554. Seit Januar 2025 in Kraft, löst u. a. die BAIT ab |
+| **DORA** | Digital Operational Resilience Act, Verordnung (EU) 2022/2554. **In Kraft getreten** Anfang 2023 (20 Tage nach Veröffentlichung im Amtsblatt vom 27.12.2022), **anwendbar seit 17. Januar 2025** (Art. 64). Löst die BAIT ab; die BAIT gilt in der Übergangszeit fort und wird erst nach dem 31.12.2026 vollständig aufgehoben |
 | **RAG** | Retrieval-Augmented Generation. Erst passende Textstellen suchen, dann das LLM nur auf deren Basis antworten lassen |
 | **Chunk** | Ein Textabschnitt, in den ein Dokument zerlegt wird, um einzeln durchsuchbar zu sein |
 | **Embedding** | Ein Vektor, der die Bedeutung eines Chunks repräsentiert. Ähnliche Bedeutung → nahe Vektoren |

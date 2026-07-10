@@ -36,3 +36,25 @@ beantwortbaren und nachweislich nicht beantwortbaren Fragen.
 
 Bis dahin gilt: Die Zahl 0.4 darf in keiner Bewerbung, keinem README und keinem
 Gespräch als gemessenes Ergebnis auftreten.
+
+## Korrektur (Juli 2026, nach Code-Review)
+
+Die obige Einschätzung "der Abstand zur Schwelle ist groß" war **falsch**. Zwei Gründe,
+beide gemessen:
+
+1. **Der Score ist nicht das, wofür ich ihn hielt.** `ChromaVectorStore` liefert
+   `exp(-Distanz)`, nicht die rohe Cosine-Similarity (`chroma/base.py:472`, siehe
+   [0003](0003-persistenter-chroma-index-mit-cosine.md)). Der Schwellwert 0.4 in diesem
+   Score entspricht einer Cosine-Similarity von nur **≈ 0.08** — praktisch unabhängiger
+   Text passiert die Hürde.
+
+2. **Der Abstain-Pfad wurde erstmals ausgelöst — und griff nicht.** Off-Topic-Fragen
+   ("Wie backe ich einen Kuchen?", "Hauptstadt von Australien?") erzielen Scores von
+   **0.48–0.51**, also über 0.4. Ein guter On-Topic-Treffer liegt bei 0.72. Der Guard
+   trennt beides nicht, weil er unter dem Rauschboden sitzt.
+
+Konsequenz: Der Schutz ist **de facto wirkungslos**, nicht bloß unkalibriert. Ein
+evidenzbasierter Zwischenwert läge oberhalb des Off-Topic-Bodens (0.51) und unterhalb
+des On-Topic-Scores (0.72), etwa bei 0.6 — aber drei Sondierungsfragen sind keine
+Kalibrierung. Issue #2 muss das gegen ein echtes Eval-Set festlegen. Danke an die
+Codex-Review, die auf die `exp(-Distanz)`-Transformation hingewiesen hat.
