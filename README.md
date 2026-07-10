@@ -58,6 +58,10 @@ Neuaufbau erzwingen: `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
 
 `deepeval` steht in `requirements.txt`, wird aber noch von keiner Datei importiert. Das ist bekannt und Gegenstand von [#2](../../issues/2).
 
+## Dokumentation
+
+- [Architekturdokumentation (arc42)](docs/arc42.md) — Kontext, Bausteine, Laufzeit, und die technischen Schulden ungeschönt in Kapitel 11.
+
 ## Entscheidungen (ADRs)
 
 - [0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md) — PDF nach Markdown, statt das PDF direkt zu indexieren
