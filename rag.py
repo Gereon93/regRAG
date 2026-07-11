@@ -1,5 +1,8 @@
+import hashlib
+import json
 import os
 from contextlib import suppress
+from pathlib import Path
 
 import chromadb
 from llama_index.core import (
@@ -8,37 +11,78 @@ from llama_index.core import (
     StorageContext,
     VectorStoreIndex,
 )
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-EMBEDDING_MODELL = "BAAI/bge-m3"
-DOKUMENTE_VERZEICHNIS = "docs_md"
-CHROMA_VERZEICHNIS = "chroma"
-COLLECTION = "dora"
+import config
+
 DISTANZMETRIK_WIE_IN_MEMORY = {"hnsw:space": "cosine"}  # docs/adr/0003
 NEU_BAUEN = os.getenv("REGRAG_INDEX_NEU_BAUEN") == "1"
+FINGERPRINT_DATEI = Path(config.CHROMA_VERZEICHNIS) / "fingerprint.json"
 
-Settings.embed_model = HuggingFaceEmbedding(model_name=EMBEDDING_MODELL)
+
+def _embed_model():
+    from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
+    Settings.embed_model = HuggingFaceEmbedding(model_name=config.EMBEDDING_MODELL)
 
 
-def _collection(client):
-    if NEU_BAUEN:
-        with suppress(Exception):
-            client.delete_collection(COLLECTION)
-    return client.get_or_create_collection(COLLECTION, metadata=DISTANZMETRIK_WIE_IN_MEMORY)
+def _dokumente_verzeichnis():
+    pfad = Path(config.DOKUMENTE_VERZEICHNIS)
+    md_dateien = sorted(pfad.glob("*.md")) if pfad.is_dir() else []
+    if not md_dateien:
+        raise FileNotFoundError(
+            f"Kein Markdown in {pfad}/ gefunden. Erst 'python convert.py' ausführen."
+        )
+    return pfad, md_dateien
+
+
+def _fingerprint(md_dateien):
+    h = hashlib.sha256()
+    for datei in md_dateien:
+        h.update(datei.read_bytes())
+    return {
+        "dokumente": h.hexdigest(),
+        "embedding_modell": config.EMBEDDING_MODELL,
+        "metrik": DISTANZMETRIK_WIE_IN_MEMORY["hnsw:space"],
+    }
+
+
+def _fingerprint_passt(erwartet):
+    if not FINGERPRINT_DATEI.exists():
+        return False
+    return json.loads(FINGERPRINT_DATEI.read_text()) == erwartet
+
+
+def _baue(client, verzeichnis, fingerprint):
+    with suppress(Exception):
+        client.delete_collection(config.COLLECTION)
+    collection = client.get_or_create_collection(
+        config.COLLECTION, metadata=DISTANZMETRIK_WIE_IN_MEMORY
+    )
+    vector_store = ChromaVectorStore(chroma_collection=collection)
+    dokumente = SimpleDirectoryReader(str(verzeichnis)).load_data()
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+    index = VectorStoreIndex.from_documents(dokumente, storage_context=storage_context)
+    FINGERPRINT_DATEI.write_text(json.dumps(fingerprint, indent=2))
+    return index
 
 
 def lade_oder_baue_index():
-    client = chromadb.PersistentClient(path=CHROMA_VERZEICHNIS)
-    collection = _collection(client)
+    _embed_model()
+    verzeichnis, md_dateien = _dokumente_verzeichnis()
+    fingerprint = _fingerprint(md_dateien)
+
+    client = chromadb.PersistentClient(path=config.CHROMA_VERZEICHNIS)
+    collection = client.get_or_create_collection(
+        config.COLLECTION, metadata=DISTANZMETRIK_WIE_IN_MEMORY
+    )
     vector_store = ChromaVectorStore(chroma_collection=collection)
 
-    if collection.count() > 0:
+    aktuell = not NEU_BAUEN and collection.count() > 0 and _fingerprint_passt(fingerprint)
+    if aktuell:
         return VectorStoreIndex.from_vector_store(vector_store)
 
-    dokumente = SimpleDirectoryReader(DOKUMENTE_VERZEICHNIS).load_data()
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
-    return VectorStoreIndex.from_documents(dokumente, storage_context=storage_context)
+    return _baue(client, verzeichnis, fingerprint)
 
 
 index = lade_oder_baue_index()
@@ -46,9 +90,8 @@ index = lade_oder_baue_index()
 if __name__ == "__main__":
     from llama_index.llms.openai_like import OpenAILike
 
-    Settings.llm = OpenAILike(model="google/gemma-4-12b",
-        api_base="http://localhost:1234/v1", api_key="lm-studio",
-        is_chat_model=True, timeout=300)
+    Settings.llm = OpenAILike(model=config.LLM_MODELL, api_base=config.LLM_BASE_URL,
+        api_key=config.LLM_API_KEY, is_chat_model=True, timeout=config.LLM_TIMEOUT)
 
     engine = index.as_query_engine(similarity_top_k=2)
 
