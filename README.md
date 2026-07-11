@@ -4,6 +4,8 @@ Ein Compliance-RAG-Agent über **DORA** (Verordnung (EU) 2022/2554), der Fragen 
 
 Gebaut, um RAG, LangGraph und LangChain praktisch zu verstehen. Kein Produktionssystem.
 
+![RegRAG Web-UI: Antwort mit Artikelbezug und Fundstellen aus der DORA-Verordnung](docs/ui.png)
+
 ## Architektur
 
 | Schicht | Baustein | Aufgabe |
@@ -35,7 +37,7 @@ pip install -r requirements.txt
 
 DORA-PDF (DE) liegt unter `docs/`. Quelle: EUR-Lex, CELEX 32022R2554.
 
-LM Studio starten, ein Chat-Modell laden, Modellnamen in `agent.py` (`LOKALES_CHAT_MODELL`) eintragen.
+LM Studio starten, ein Chat- und optional ein Embedding-Modell laden. Endpoint und Modellname kommen aus Umgebungsvariablen (Defaults in `config.py`, Vorlage in `env.example`).
 
 ## Lauf
 
@@ -48,13 +50,30 @@ python agent.py     # LangGraph-Agent mit Abstain-Pfad
 Der Vektor-Index wird beim ersten Lauf gebaut (~5 min) und danach aus `chroma/` geladen (12 s).
 Neuaufbau erzwingen: `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
 
+## Web-UI
+
+```bash
+uvicorn web.main:app --reload      # http://localhost:8000
+```
+
+Chat-Seite mit token-für-token-Streaming (SSE). Jede Antwort nennt ihre Fundstellen mit Score; bei zu dünner Beleglage erscheint der Abstain-Zustand sichtbar statt einer erfundenen Antwort. `POST /chat` ist auch ohne UI nutzbar.
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht per Default über `host.docker.internal:1234` das LM Studio auf dem Host an — das funktioniert auf **macOS**. Für Linux/Cloud, wo eine Mac-Desktop-App nicht erreichbar ist, zeigt man `REGRAG_LLM_BASE_URL` auf einen gehosteten Worker (OpenRouter) oder einen headless lokalen Server; siehe `env.example` und [arc42 Kap. 7](docs/arc42.md). Der Chroma-Index liegt in einem Volume — erster Start baut ihn (~5 min), danach schnell.
+
 ## Stand
 
 - [x] **Step 1** — Mini-RAG über DORA, Antwort mit Belegstellen
 - [x] **Step 2** — LangGraph-Agent, Abstain als bedingte Kante, Schwellwert kalibriert (14/14) ([#2](../../issues/2))
 - [x] **Persistenz** — Chroma-Index, Warmstart 12 s statt 5 min ([#1](../../issues/1))
 - [x] **Index-Integrität** — Fingerprint-Validierung, Neuaufbau bei geänderter Quelle ([#7](../../issues/7))
-- [ ] **Step 3** — Web-UI + Docker ([#3](../../issues/3)), Dokumenten-Upload ([#4](../../issues/4))
+- [x] **Web-UI + Docker** — FastAPI, SSE-Streaming, Container mit eingebackenem Embedding-Modell ([#3](../../issues/3))
+- [ ] **Dokumenten-Upload** — PDF hochladen, Re-Indexierung im Hintergrund ([#4](../../issues/4))
 
 ## Evaluation
 

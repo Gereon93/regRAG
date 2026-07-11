@@ -1,0 +1,13 @@
+.venv
+chroma
+docs_md
+.git
+.gitignore
+__pycache__
+*.pyc
+.deepeval
+.deepeval_telemetry.txt
+.playwright-mcp
+regrag-ui.png
+.DS_Store
+.env

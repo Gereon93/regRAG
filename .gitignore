@@ -11,3 +11,5 @@ chroma/
 .deepeval/
 .deepeval_telemetry.txt
 .env
+
+.claude/

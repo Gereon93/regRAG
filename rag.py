@@ -36,10 +36,24 @@ def _dokumente_verzeichnis():
     return pfad, md_dateien
 
 
+def _quelle_metadata(pfad):
+    p = Path(pfad)
+    sidecar = p.with_suffix(".source.json")
+    daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
+    return {
+        "file_name": p.name,
+        "quelle": daten.get("titel", p.name),
+        "pdf": daten.get("pdf"),
+    }
+
+
 def _fingerprint(md_dateien):
     h = hashlib.sha256()
     for datei in md_dateien:
         h.update(datei.read_bytes())
+        sidecar = datei.with_suffix(".source.json")
+        if sidecar.exists():
+            h.update(sidecar.read_bytes())
     return {
         "dokumente": h.hexdigest(),
         "embedding_modell": config.EMBEDDING_MODELL,
@@ -62,7 +76,8 @@ def _baue(client, md_dateien, fingerprint):
     )
     vector_store = ChromaVectorStore(chroma_collection=collection)
     dokumente = SimpleDirectoryReader(
-        input_files=[str(p) for p in md_dateien]
+        input_files=[str(p) for p in md_dateien],
+        file_metadata=_quelle_metadata,
     ).load_data()
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     index = VectorStoreIndex.from_documents(dokumente, storage_context=storage_context)

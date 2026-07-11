@@ -165,7 +165,7 @@ Embedding-Modells in den Speicher ist.
 Alles auf einem Rechner: ein Python-Prozess (Embeddings im Prozess, Chroma auf Platte)
 spricht über `localhost:1234` mit LM Studio.
 
-### Geplant (Issue #3) — und die Falle darin
+### Umgesetzt (Issue #3) — und die Falle darin
 
 ```mermaid
 graph TD
