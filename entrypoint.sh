@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-if [ ! -f docs_md/dora.md ]; then
+if ! ls docs_md/*.md >/dev/null 2>&1; then
   python convert.py
 fi
 
