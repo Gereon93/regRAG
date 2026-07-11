@@ -4,6 +4,8 @@ Ein Compliance-RAG-Agent über **DORA** (Verordnung (EU) 2022/2554), der Fragen 
 
 Gebaut, um RAG, LangGraph und LangChain praktisch zu verstehen. Kein Produktionssystem.
 
+![RegRAG Web-UI: Antwort mit Artikelbezug und Fundstellen aus der DORA-Verordnung](docs/ui.png)
+
 ## Architektur
 
 | Schicht | Baustein | Aufgabe |

@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-import openai
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -18,7 +17,10 @@ class Frage(BaseModel):
 
 def _quellen(nodes):
     return [
-        {"datei": n.metadata.get("file_name"), "score": round(n.score, 3)}
+        {
+            "quelle": n.metadata.get("quelle") or n.metadata.get("file_name"),
+            "score": round(n.score, 3),
+        }
         for n in nodes
     ]
 
@@ -44,8 +46,8 @@ async def _antwort_strom(frage):
         ):
             if chunk.content:
                 yield _sse({"type": "token", "text": chunk.content})
-    except (openai.APIConnectionError, openai.APITimeoutError) as e:
-        yield _sse({"type": "error", "text": f"LLM nicht erreichbar ({type(e).__name__})"})
+    except Exception as e:
+        yield _sse({"type": "error", "text": f"LLM-Fehler ({type(e).__name__}) — bitte erneut versuchen."})
 
     yield _sse({"type": "sources", "quellen": quellen})
     yield _sse({"type": "done"})

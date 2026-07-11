@@ -238,7 +238,7 @@ function quellenBlock(quellen) {
   box.appendChild(el('h4', null, 'Fundstellen'));
   for (const q of quellen) {
     const zeile = el('div', 'quelle');
-    zeile.appendChild(el('span', 'datei', q.datei || '—'));
+    zeile.appendChild(el('span', 'datei', q.quelle || '—'));
     const balken = el('span', 'balken');
     const fuellung = el('i');
     fuellung.style.width = Math.round(Math.max(0, Math.min(1, q.score)) * 100) + '%';
