@@ -51,12 +51,19 @@ Neuaufbau erzwingen: `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
 ## Stand
 
 - [x] **Step 1** — Mini-RAG über DORA, Antwort mit Belegstellen
-- [x] **Step 2** — LangGraph-Agent, verweigert unter `MIN_RETRIEVAL_SCORE`
+- [x] **Step 2** — LangGraph-Agent, Abstain als bedingte Kante, Schwellwert kalibriert (14/14) ([#2](../../issues/2))
 - [x] **Persistenz** — Chroma-Index, Warmstart 12 s statt 5 min ([#1](../../issues/1))
-- [ ] **Step 3** — DeepEval: Faithfulness messen, Schwellwert kalibrieren ([#2](../../issues/2))
-- [ ] **Step 4** — Web-UI + Docker ([#3](../../issues/3)), Dokumenten-Upload ([#4](../../issues/4))
+- [x] **Index-Integrität** — Fingerprint-Validierung, Neuaufbau bei geänderter Quelle ([#7](../../issues/7))
+- [ ] **Step 3** — Web-UI + Docker ([#3](../../issues/3)), Dokumenten-Upload ([#4](../../issues/4))
 
-`deepeval` steht in `requirements.txt`, wird aber noch von keiner Datei importiert. Das ist bekannt und Gegenstand von [#2](../../issues/2).
+## Evaluation
+
+```bash
+python -m evaluation.calibrate   # misst Score-Trennung, schlägt Schwellwert vor
+python -m evaluation.run         # Guard-Entscheidungen (14/14) + Faithfulness (lokaler Judge)
+```
+
+Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Die Faithfulness-Harness (`deepeval`, lokaler Judge über `with_structured_output`) ist gebaut und schema-korrekt, aber ein Volllauf ist auf dem M4 nicht praktikabel: schema-gebundene Extraktion über dichte Rechtstexte reißt lokal die Timeouts. Eine belastbare Faithfulness-Zahl braucht einen gehosteten Judge (Issue #3) — Details in [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md).
 
 ## Dokumentation
 
@@ -67,7 +74,8 @@ Neuaufbau erzwingen: `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
 - [0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md) — PDF nach Markdown, statt das PDF direkt zu indexieren
 - [0002](docs/adr/0002-abstain-statt-raten.md) — Verweigern statt raten (Schwellwert **unkalibriert**)
 - [0003](docs/adr/0003-persistenter-chroma-index-mit-cosine.md) — Persistenter Chroma-Index, erzwungen auf Cosine
-- [0004](docs/adr/0004-rollenteilung-llamaindex-langchain-langgraph.md) — Rollenteilung der drei Frameworks
+- [0004](docs/adr/0004-rollenteilung-llamaindex-langchain-langgraph.md) — Rollenteilung der drei Frameworks (LangGraph-Schuld eingelöst)
+- [0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md) — Guard kalibriert, Abstain als bedingte Kante
 
 ## Gemessen
 
@@ -76,9 +84,12 @@ Neuaufbau erzwingen: `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
 | Kaltstart (Index bauen, 351k Zeichen) | 5:04 min |
 | Warmstart (Index laden) | 12.2 s |
 | Retrieval (`similarity_top_k=3`) | 0.5 s |
-| Score eines guten Treffers (Cosine) | 0.72–0.73 |
+| Score beantwortbarer DORA-Fragen | 0.67–0.78 |
+| Score themenfremder Fragen | 0.48–0.57 |
+| `MIN_RETRIEVAL_SCORE` (Lückenmitte) | 0.62 |
+| Guard-Trennung über das Eval-Set | 14/14 |
 
-Nicht gemessen: Faithfulness, die Qualität gegenüber naivem PDF-Parsing, und ob `MIN_RETRIEVAL_SCORE = 0.4` der richtige Schwellwert ist. Siehe [#2](../../issues/2).
+Der Score ist `exp(-Distanz)`, nicht rohe Cosine-Similarity — nur innerhalb dieser Transformation interpretierbar (ADR 0003). Noch offen: Grenzfälle nahe der Schwelle (Finanzregulatorik außerhalb DORA) und die Qualität gegenüber naivem PDF-Parsing.
 
 ## Quellen
 

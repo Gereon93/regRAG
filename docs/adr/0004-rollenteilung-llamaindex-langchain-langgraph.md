@@ -35,3 +35,10 @@ verstecken — und der Graph lässt sich als Bild zeigen, statt als Behauptung.
 
 Solange das nicht so ist, ist "LangGraph im Einsatz" zwar wahr, aber schwach.
 Wer damit ins Fachgespräch geht, sollte diesen Absatz kennen.
+
+## Eingelöst (Juli 2026)
+
+[0005](0005-guard-kalibriert-abstain-als-bedingte-kante.md) hat die Schuld beglichen:
+`abstain` ist ein eigener Knoten, erreicht über `add_conditional_edges`. Der Graph
+verzweigt jetzt sichtbar, und die Verweigerung ist eine Eigenschaft des Graphen statt
+einer versteckten Zeile.
