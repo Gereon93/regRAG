@@ -1,5 +1,6 @@
 from typing import List, TypedDict
 
+import openai
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
@@ -51,7 +52,7 @@ def answer(s):
         s["antwort"] = llm.invoke(
             prompt.format_messages(kontext=kontext, frage=s["frage"])
         ).content
-    except (TimeoutError, ConnectionError) as e:
+    except (openai.APIConnectionError, openai.APITimeoutError) as e:
         s["antwort"] = f"LLM nicht erreichbar ({type(e).__name__}) — bitte erneut versuchen."
     return s
 

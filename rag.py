@@ -53,14 +53,17 @@ def _fingerprint_passt(erwartet):
     return json.loads(FINGERPRINT_DATEI.read_text()) == erwartet
 
 
-def _baue(client, verzeichnis, fingerprint):
+def _baue(client, md_dateien, fingerprint):
+    FINGERPRINT_DATEI.unlink(missing_ok=True)
     with suppress(Exception):
         client.delete_collection(config.COLLECTION)
     collection = client.get_or_create_collection(
         config.COLLECTION, metadata=DISTANZMETRIK_WIE_IN_MEMORY
     )
     vector_store = ChromaVectorStore(chroma_collection=collection)
-    dokumente = SimpleDirectoryReader(str(verzeichnis)).load_data()
+    dokumente = SimpleDirectoryReader(
+        input_files=[str(p) for p in md_dateien]
+    ).load_data()
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     index = VectorStoreIndex.from_documents(dokumente, storage_context=storage_context)
     FINGERPRINT_DATEI.write_text(json.dumps(fingerprint, indent=2))
@@ -69,7 +72,7 @@ def _baue(client, verzeichnis, fingerprint):
 
 def lade_oder_baue_index():
     _embed_model()
-    verzeichnis, md_dateien = _dokumente_verzeichnis()
+    _verzeichnis, md_dateien = _dokumente_verzeichnis()
     fingerprint = _fingerprint(md_dateien)
 
     client = chromadb.PersistentClient(path=config.CHROMA_VERZEICHNIS)
@@ -82,7 +85,7 @@ def lade_oder_baue_index():
     if aktuell:
         return VectorStoreIndex.from_vector_store(vector_store)
 
-    return _baue(client, verzeichnis, fingerprint)
+    return _baue(client, md_dateien, fingerprint)
 
 
 index = lade_oder_baue_index()
