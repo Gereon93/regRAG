@@ -1,0 +1,16 @@
+services:
+  regrag:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      REGRAG_LLM_BASE_URL: ${REGRAG_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+      REGRAG_CHAT_MODELL: ${REGRAG_CHAT_MODELL:-google/gemma-4-12b}
+      REGRAG_API_KEY: ${REGRAG_API_KEY:-lm-studio}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - chroma:/app/chroma
+
+volumes:
+  chroma:

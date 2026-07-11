@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RegRAG — Auskunft mit Quellenbeleg</title>
+<style>
+  :root {
+    --paper: #f4f1ea;
+    --paper-2: #ebe6da;
+    --ink: #1b1a16;
+    --ink-soft: #55514a;
+    --rule: #d6cfbf;
+    --accent: #1d3b8b;
+    --ochre: #9a6a1a;
+    --ochre-bg: #f0e4cb;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #17171a;
+      --paper-2: #202024;
+      --ink: #ece7dc;
+      --ink-soft: #9c968a;
+      --rule: #33333a;
+      --accent: #8fa9f0;
+      --ochre: #d3a24e;
+      --ochre-bg: #2a2418;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.55;
+    display: flex;
+    justify-content: center;
+  }
+  .blatt {
+    width: 100%;
+    max-width: 720px;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 0 24px;
+  }
+  header {
+    padding: 40px 0 20px;
+    border-bottom: 1px solid var(--rule);
+    animation: rise .7s ease both;
+  }
+  .wortmarke {
+    font-family: var(--serif);
+    font-size: 40px;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    margin: 0;
+  }
+  .wortmarke b { color: var(--accent); font-weight: 600; }
+  .unterzeile {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-soft);
+    margin-top: 10px;
+  }
+  .losung {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 15px;
+    color: var(--ink-soft);
+    margin-top: 16px;
+  }
+  main { flex: 1; padding: 8px 0 20px; }
+  .eintrag { animation: rise .5s ease both; margin: 30px 0; }
+  .frage {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    border-left: 2px solid var(--rule);
+    padding-left: 12px;
+    margin-bottom: 16px;
+  }
+  .antwort {
+    font-family: var(--serif);
+    font-size: 18.5px;
+    line-height: 1.62;
+    white-space: pre-wrap;
+  }
+  .antwort .caret {
+    display: inline-block;
+    width: 8px; height: 1.05em;
+    background: var(--accent);
+    vertical-align: -2px;
+    margin-left: 2px;
+    animation: blink 1s steps(2) infinite;
+  }
+  .abstain {
+    border-left: 3px solid var(--ochre);
+    background: var(--ochre-bg);
+    padding: 16px 18px;
+    border-radius: 0 4px 4px 0;
+  }
+  .abstain .marke {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ochre);
+    display: block;
+    margin-bottom: 6px;
+  }
+  .abstain .text { font-family: var(--serif); font-size: 17px; font-style: italic; }
+  .quellen {
+    margin-top: 18px;
+    border-top: 1px dotted var(--rule);
+    padding-top: 12px;
+  }
+  .quellen h4 {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 10px;
+    font-weight: 500;
+  }
+  .quelle {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+    font-size: 14px;
+  }
+  .quelle .datei { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  .quelle .score {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  .quelle .balken {
+    flex: 1;
+    height: 2px;
+    background: var(--rule);
+    position: relative;
+    top: -3px;
+  }
+  .quelle .balken i {
+    position: absolute; left: 0; top: 0; height: 100%;
+    background: var(--accent);
+  }
+  .fehler { color: var(--ochre); font-family: var(--mono); font-size: 13px; }
+  form {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(transparent, var(--paper) 22%);
+    padding: 18px 0 26px;
+    display: flex;
+    gap: 10px;
+    border-top: 1px solid var(--rule);
+  }
+  input[type=text] {
+    flex: 1;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 13px 15px;
+    font-family: var(--serif);
+    font-size: 16px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color .2s;
+  }
+  input[type=text]:focus { border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: var(--paper);
+    border: none;
+    border-radius: 4px;
+    padding: 0 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: opacity .2s;
+  }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .leer {
+    color: var(--ink-soft);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 16px;
+    margin-top: 34px;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="blatt">
+  <header>
+    <h1 class="wortmarke">Reg<b>RAG</b></h1>
+    <div class="unterzeile">Auskunft mit Quellenbeleg · DORA (EU) 2022/2554</div>
+    <div class="losung">Antwortet nur, was im Verordnungstext belegt ist — sonst schweigt es.</div>
+  </header>
+  <main id="log">
+    <div class="leer" id="leer">Stellen Sie eine Frage zu DORA. Die Antwort nennt ihre Fundstellen; fehlt der Beleg, verweigert der Agent ehrlich.</div>
+  </main>
+  <form id="form">
+    <input type="text" id="frage" placeholder="Welche Anforderungen stellt DORA an das IKT-Risikomanagement?" autocomplete="off">
+    <button type="submit" id="senden">Fragen</button>
+  </form>
+</div>
+<script>
+const log = document.getElementById('log');
+const form = document.getElementById('form');
+const feld = document.getElementById('frage');
+const knopf = document.getElementById('senden');
+
+function el(tag, cls, txt) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt != null) e.textContent = txt;
+  return e;
+}
+
+function quellenBlock(quellen) {
+  const box = el('div', 'quellen');
+  box.appendChild(el('h4', null, 'Fundstellen'));
+  for (const q of quellen) {
+    const zeile = el('div', 'quelle');
+    zeile.appendChild(el('span', 'datei', q.datei || '—'));
+    const balken = el('span', 'balken');
+    const fuellung = el('i');
+    fuellung.style.width = Math.round(Math.max(0, Math.min(1, q.score)) * 100) + '%';
+    balken.appendChild(fuellung);
+    zeile.appendChild(balken);
+    zeile.appendChild(el('span', 'score', q.score.toFixed(2)));
+    box.appendChild(zeile);
+  }
+  return box;
+}
+
+async function fragen(text) {
+  document.getElementById('leer')?.remove();
+  const eintrag = el('div', 'eintrag');
+  eintrag.appendChild(el('div', 'frage', text));
+  const antwort = el('div', 'antwort');
+  const caret = el('span', 'caret');
+  antwort.appendChild(caret);
+  eintrag.appendChild(antwort);
+  log.appendChild(eintrag);
+  eintrag.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const res = await fetch('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frage: text }),
+  });
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let puffer = '';
+  let inhalt = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    puffer += dec.decode(value, { stream: true });
+    const teile = puffer.split('\n\n');
+    puffer = teile.pop();
+    for (const stueck of teile) {
+      const zeile = stueck.trim();
+      if (!zeile.startsWith('data:')) continue;
+      const ev = JSON.parse(zeile.slice(5).trim());
+      if (ev.type === 'token') {
+        inhalt += ev.text;
+        antwort.textContent = inhalt;
+        antwort.appendChild(caret);
+      } else if (ev.type === 'abstain') {
+        caret.remove();
+        antwort.remove();
+        const box = el('div', 'abstain');
+        box.appendChild(el('span', 'marke', 'Kein Beleg'));
+        box.appendChild(el('span', 'text', ev.text));
+        eintrag.appendChild(box);
+      } else if (ev.type === 'error') {
+        caret.remove();
+        eintrag.appendChild(el('div', 'fehler', ev.text));
+      } else if (ev.type === 'sources') {
+        eintrag.appendChild(quellenBlock(ev.quellen));
+      } else if (ev.type === 'done') {
+        caret.remove();
+      }
+    }
+  }
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = feld.value.trim();
+  if (!text) return;
+  feld.value = '';
+  knopf.disabled = true;
+  feld.disabled = true;
+  try {
+    await fragen(text);
+  } finally {
+    knopf.disabled = false;
+    feld.disabled = false;
+    feld.focus();
+  }
+});
+</script>
+</body>
+</html>
