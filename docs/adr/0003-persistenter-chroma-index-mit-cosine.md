@@ -45,3 +45,19 @@ In-Memory-Laufs. Gleiche Metrik, gleiche Größenordnung, aber nicht identisch �
 vermutlich approximative HNSW-Suche gegen exakte Brute-Force-Suche, verifiziert
 ist das nicht. Konsequenz: Schwellwerte gelten immer nur für den Store, gegen den
 sie kalibriert wurden.
+
+## Korrektur (Juli 2026, nach Code-Review)
+
+Der Grund für die Differenz ist gefunden und wichtiger als gedacht: `ChromaVectorStore`
+gibt den Node-Score als `similarity_score = math.exp(-distance)` zurück
+(`chroma/base.py:472`), **nicht** als rohe Cosine-Similarity. Der In-Memory-Store dagegen
+liefert die Similarity direkt.
+
+Nachgerechnet: Ein Chroma-Score von 0.72 entspricht Distanz `-ln(0.72) ≈ 0.33`, bei
+Cosine-Space also Cosine-Similarity `1 - 0.33 ≈ 0.68` — exakt der In-Memory-Wert. Die
+Nähe der Zahlen 0.72 und 0.68 ist also kein Zufall und keine bloße Größenordnung, sondern
+die Folge einer nichtlinearen Transformation, die ich hier zunächst übersehen hatte.
+
+Das hat direkte Folgen für den Abstain-Schwellwert und wird dort behandelt
+([0002](0002-abstain-statt-raten.md), Korrektur). Merksatz, jetzt präzise: Ein Score ist
+nur innerhalb seiner Metrik **und ihrer Score-Transformation** interpretierbar.
