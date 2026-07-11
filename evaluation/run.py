@@ -19,8 +19,8 @@ def guard_report():
     return korrekt
 
 
-def faithfulness_report(judge, schwelle=0.7):
-    antwortbar = [f["frage"] for f in FAELLE if f["erwartet"] == "answer"]
+def faithfulness_report(judge, schwelle=0.7, faelle=FAELLE):
+    antwortbar = [f["frage"] for f in faelle if f["erwartet"] == "answer"]
     metric = FaithfulnessMetric(threshold=schwelle, model=judge, async_mode=False)
     scores = []
     for frage in antwortbar:
