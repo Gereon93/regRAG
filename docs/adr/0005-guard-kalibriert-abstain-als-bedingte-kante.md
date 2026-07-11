@@ -52,6 +52,21 @@ LangGraph verdient seinen Platz (Schuld aus 0004 eingelöst).
 - Das Eval-Set ist klein (14 Fälle) und die Off-Topic-Fragen sind bewusst *klar* fremd.
   Grenzfälle — Finanzregulatorik, die *nicht* in DORA steht (MaRisk, EBA-Guidelines) —
   sind noch nicht abgedeckt und könnten näher an der Schwelle liegen.
-- Faithfulness der beantworteten Fälle wird über einen lokalen Judge gemessen
-  (`evaluation/run.py`), ist aber wegen der Inferenzlatenz von `gemma-4-12b` auf dem M4
-  langsam; im Alltag läuft sie über eine Stichprobe, nicht über das ganze Set.
+- Faithfulness ist als Harness gebaut und **schema-korrekt** (`evaluation/run.py`,
+  `judge.py`): DeepEvals Pydantic-Schemas gehen über LangChains
+  `with_structured_output` an den lokalen Judge, was valides JSON erzwingt. Damit ist
+  `deepeval` jetzt tatsächlich benutzt, nicht mehr toter Requirements-Eintrag.
+
+  **Aber: ein vollständiger lokaler Faithfulness-Lauf ist auf dem M4 nicht praktikabel.**
+  Gemessen über fünf Konfigurationen:
+  - `gemma-4-12b` als Judge: Timeout schon bei der Antwortgenerierung (>300 s).
+  - `llama-3.1-8b` / `qwen3.5-9b` **ohne** Schema: schnell, aber ungültiges JSON.
+  - dieselben **mit** Schema: JSON valide, aber der Schema-Zwang (constrained decoding
+    in LM Studio) über die dichten Rechtstext-Chunks bringt einzelne Judge-Aufrufe
+    wieder über 300 s.
+
+  Das ist ein **Kosten/Latenz-Befund**, kein Fehler: Ein lokaler Judge ist gratis, aber
+  für schema-gebundene Extraktion über lange juristische Kontexte auf dieser Hardware zu
+  langsam. Eine belastbare Faithfulness-Zahl braucht einen **gehosteten Judge**
+  (OpenRouter, siehe Issue #3) — das ist genau der Trade-off, den der Model-Router
+  belegen soll. Bis dahin bleibt Faithfulness **nicht gemessen** und wird nicht behauptet.

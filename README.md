@@ -63,7 +63,7 @@ python -m evaluation.calibrate   # misst Score-Trennung, schlägt Schwellwert vo
 python -m evaluation.run         # Guard-Entscheidungen (14/14) + Faithfulness (lokaler Judge)
 ```
 
-Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. `deepeval` misst Faithfulness der Antworten über einen lokalen Judge (LM Studio) — langsam auf dem M4, läuft im Alltag über eine Stichprobe.
+Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Die Faithfulness-Harness (`deepeval`, lokaler Judge über `with_structured_output`) ist gebaut und schema-korrekt, aber ein Volllauf ist auf dem M4 nicht praktikabel: schema-gebundene Extraktion über dichte Rechtstexte reißt lokal die Timeouts. Eine belastbare Faithfulness-Zahl braucht einen gehosteten Judge (Issue #3) — Details in [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md).
 
 ## Dokumentation
 

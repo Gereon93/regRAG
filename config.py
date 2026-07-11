@@ -12,3 +12,6 @@ LLM_TEMPERATURE = float(os.getenv("REGRAG_TEMPERATURE", "0"))
 LLM_TIMEOUT = float(os.getenv("REGRAG_TIMEOUT", "300"))
 
 MIN_RETRIEVAL_SCORE = float(os.getenv("REGRAG_MIN_SCORE", "0.62"))
+
+JUDGE_MODELL = os.getenv("REGRAG_JUDGE_MODELL", "qwen/qwen3.5-9b")
+
