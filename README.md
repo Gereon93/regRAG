@@ -68,6 +68,8 @@ Chat-Seite mit token-für-token-Streaming (SSE). Jede Antwort nennt ihre Fundste
 
 ## Docker
 
+Voraussetzung: das DORA-PDF liegt lokal unter `docs/CELEX_32022R2554_DE_TXT.pdf` (siehe [DORA-Rechtstext beschaffen](#dora-rechtstext-beschaffen)).
+
 ```bash
 docker compose up --build
 ```
