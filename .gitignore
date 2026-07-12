@@ -13,3 +13,8 @@ chroma/
 .env
 
 .claude/
+.opencode/plugins/emdash-notifications.js
+
+# Offizieller DORA-Rechtstext (EUR-Lex). Nicht selbst hosten — siehe README.
+docs/CELEX_32022R2554_DE_TXT.pdf
+

@@ -35,14 +35,22 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-DORA-PDF (DE) liegt unter `docs/`. Quelle: EUR-Lex, CELEX 32022R2554.
-
 LM Studio starten, ein Chat- und optional ein Embedding-Modell laden. Endpoint und Modellname kommen aus Umgebungsvariablen (Defaults in `config.py`, Vorlage in `env.example`).
+
+### DORA-Rechtstext beschaffen
+
+Der DORA-Text wird nicht im Repository mitgeliefert. Er ist auf EUR-Lex frei verfügbar:
+
+1. PDF herunterladen: https://eur-lex.europa.eu/legal-content/DE/TXT/PDF/?uri=CELEX:32022R2554
+2. Nach `docs/CELEX_32022R2554_DE_TXT.pdf` speichern.
+3. `python convert.py` ausführen — das erzeugt `docs_md/CELEX_32022R2554_DE_TXT.md` und die `.source.json`.
+
+Damit ist die Quelle nachvollziehbar reproduzierbar. Wiederverwendung gemäß Beschluss 2011/833/EU.
 
 ## Lauf
 
 ```bash
-python convert.py   # PDF -> docs_md/dora.md
+python convert.py   # PDF -> docs_md/CELEX_32022R2554_DE_TXT.md
 python rag.py       # Mini-RAG: Antwort + Quellen-Scores
 python agent.py     # LangGraph-Agent mit Abstain-Pfad
 ```
