@@ -11,6 +11,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - chroma:/app/chroma
+      - ./docs/CELEX_32022R2554_DE_TXT.pdf:/app/docs/CELEX_32022R2554_DE_TXT.pdf:ro
 
 volumes:
   chroma:

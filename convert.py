@@ -8,6 +8,13 @@ import pymupdf4llm
 PDF = pathlib.Path("docs/CELEX_32022R2554_DE_TXT.pdf")
 AUSGABE = pathlib.Path("docs_md")
 
+if not PDF.exists():
+    raise FileNotFoundError(
+        f"{PDF} nicht gefunden. DORA-PDF von "
+        "https://eur-lex.europa.eu/legal-content/DE/TXT/PDF/?uri=CELEX:32022R2554 "
+        "herunterladen und nach docs/CELEX_32022R2554_DE_TXT.pdf speichern."
+    )
+
 
 def dokument_titel(pdf_pfad, fallback):
     text = pymupdf.open(pdf_pfad)[0].get_text()
