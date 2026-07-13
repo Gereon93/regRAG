@@ -82,18 +82,25 @@ def lade_oder_baue_index():
 
     neu = dokumente.fingerprint(_md_dateien(), config.EMBEDDING_MODELL, METRIK)
     alt = {} if NEU_BAUEN else _fingerprint_lesen()
-    zu_indexieren, zu_loeschen, voll_rebuild = dokumente.diff(alt, neu)
 
     client = chromadb.PersistentClient(path=config.CHROMA_VERZEICHNIS)
+    _collection = client.get_or_create_collection(
+        config.COLLECTION, metadata=DISTANZMETRIK_WIE_IN_MEMORY
+    )
+    if _collection.count() == 0:
+        alt = {}
+
+    zu_indexieren, zu_loeschen, voll_rebuild = dokumente.diff(alt, neu)
+
     if voll_rebuild or NEU_BAUEN:
         FINGERPRINT_DATEI.unlink(missing_ok=True)
         with suppress(Exception):
             client.delete_collection(config.COLLECTION)
+        _collection = client.get_or_create_collection(
+            config.COLLECTION, metadata=DISTANZMETRIK_WIE_IN_MEMORY
+        )
         zu_loeschen = []
 
-    _collection = client.get_or_create_collection(
-        config.COLLECTION, metadata=DISTANZMETRIK_WIE_IN_MEMORY
-    )
     vector_store = ChromaVectorStore(chroma_collection=_collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     index = VectorStoreIndex.from_vector_store(vector_store, storage_context=storage_context)

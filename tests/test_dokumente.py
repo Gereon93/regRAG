@@ -92,3 +92,11 @@ def test_leerer_fingerprint_indexiert_alles():
     neu = {"embedding_modell": "m", "metrik": "cosine", "dokumente": {"a.md": "1"}}
 
     assert dokumente.diff({}, neu) == (["a.md"], [], True)
+
+
+def test_fingerprint_aus_altem_release_erzwingt_voll_rebuild():
+    """Vor #4 war 'dokumente' ein einzelner Hash über den ganzen Korpus, kein Dict."""
+    alt = {"embedding_modell": "m", "metrik": "cosine", "dokumente": "ein-hash-ueber-alles"}
+    neu = {"embedding_modell": "m", "metrik": "cosine", "dokumente": {"a.md": "1"}}
+
+    assert dokumente.diff(alt, neu) == (["a.md"], [], True)

@@ -2,6 +2,7 @@ import json
 import tempfile
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -19,8 +20,10 @@ STATIC = Path(__file__).parent / "static"
 DOKUMENTE = Path(config.DOKUMENTE_VERZEICHNIS)
 
 EMBEDDING_IST_CPU_GEBUNDEN_ALSO_SERIELL = 1
+LESE_STUECK_BYTES = 1024 * 1024
 
 JOBS = {}
+NAMEN_IN_ARBEIT = set()
 POOL = ThreadPoolExecutor(max_workers=EMBEDDING_IST_CPU_GEBUNDEN_ALSO_SERIELL)
 
 
@@ -90,22 +93,38 @@ def _indexiere(job_id, daten, dateiname):
         rag.indexiere(md_pfad)
         job["status"] = "ready"
     except Exception as e:
+        with suppress(Exception):
+            rag.loesche_nodes(f"{Path(dateiname).stem}.md")
         _entferne_fragmente(md_pfad)
         job["status"] = "failed"
         job["fehler"] = f"{type(e).__name__}: {e}"
+    finally:
+        NAMEN_IN_ARBEIT.discard(dateiname)
+
+
+async def _lies_begrenzt(datei):
+    stuecke, gelesen = [], 0
+    while stueck := await datei.read(LESE_STUECK_BYTES):
+        gelesen += len(stueck)
+        dokumente.pruefe_groesse(gelesen)
+        stuecke.append(stueck)
+    return b"".join(stuecke)
 
 
 @app.post("/upload", status_code=202)
 async def upload(datei: UploadFile = File(...)):
     try:
         name = dokumente.saeubere_dateiname(datei.filename or "")
-        inhalt = await datei.read()
+        inhalt = await _lies_begrenzt(datei)
         dokumente.pruefe_pdf(inhalt)
     except dokumente.UploadFehler as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
 
+    if name in NAMEN_IN_ARBEIT:
+        raise HTTPException(status_code=409, detail="Dokument wird bereits indexiert.")
     if (DOKUMENTE / f"{Path(name).stem}.md").exists():
         raise HTTPException(status_code=409, detail="Dokument ist bereits indexiert.")
+    NAMEN_IN_ARBEIT.add(name)
 
     job_id = uuid.uuid4().hex
     JOBS[job_id] = {"status": "pending", "dateiname": name, "fehler": None}

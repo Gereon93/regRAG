@@ -22,14 +22,13 @@ def pdf_nach_markdown(pdf_pfad, ausgabe=AUSGABE):
     ausgabe.mkdir(parents=True, exist_ok=True)
 
     stamm = pdf_pfad.stem
+    titel = dokument_titel(pdf_pfad, stamm)
     md = pymupdf4llm.to_markdown(str(pdf_pfad))
+    quelle = json.dumps({"titel": titel, "pdf": pdf_pfad.name}, ensure_ascii=False, indent=2)
+
     md_pfad = ausgabe / f"{stamm}.md"
     md_pfad.write_text(md, encoding="utf-8")
-    (ausgabe / f"{stamm}.source.json").write_text(
-        json.dumps({"titel": dokument_titel(pdf_pfad, stamm), "pdf": pdf_pfad.name},
-                   ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    (ausgabe / f"{stamm}.source.json").write_text(quelle, encoding="utf-8")
     return md_pfad
 
 

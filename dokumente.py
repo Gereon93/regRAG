@@ -26,9 +26,13 @@ def saeubere_dateiname(name):
     return sauber
 
 
-def pruefe_pdf(daten):
-    if len(daten) > MAX_MB * 1024 * 1024:
+def pruefe_groesse(anzahl_bytes):
+    if anzahl_bytes > MAX_MB * 1024 * 1024:
         raise UploadFehler(f"Datei ist größer als {MAX_MB:g} MB.", 413)
+
+
+def pruefe_pdf(daten):
+    pruefe_groesse(len(daten))
     if not daten.startswith(PDF_MAGIC):
         raise UploadFehler("Datei ist kein PDF.", 400)
 
@@ -57,15 +61,18 @@ def diff(alt, neu):
     """(zu_indexieren, zu_loeschen, voll_rebuild) — eine geänderte Datei zählt in beide Listen."""
     alt = alt or {}
     neue_docs = neu["dokumente"]
+    alte_docs = alt.get("dokumente")
 
+    fingerprint_aus_altem_release = alte_docs is not None and not isinstance(alte_docs, dict)
     voll_rebuild = (
-        alt.get("embedding_modell") != neu["embedding_modell"]
+        fingerprint_aus_altem_release
+        or alt.get("embedding_modell") != neu["embedding_modell"]
         or alt.get("metrik") != neu["metrik"]
     )
     if voll_rebuild:
         return sorted(neue_docs), [], True
 
-    alte_docs = alt.get("dokumente", {})
+    alte_docs = alte_docs or {}
     zu_indexieren = sorted(n for n, h in neue_docs.items() if alte_docs.get(n) != h)
     zu_loeschen = sorted(n for n, h in alte_docs.items() if neue_docs.get(n) != h)
     return zu_indexieren, zu_loeschen, False
