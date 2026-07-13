@@ -23,4 +23,4 @@ jobs:
         run: python -m compileall -q agent.py config.py convert.py rag.py evaluation web
 
       - name: Tests
-        run: pytest -q tests
+        run: python -m pytest -q tests
