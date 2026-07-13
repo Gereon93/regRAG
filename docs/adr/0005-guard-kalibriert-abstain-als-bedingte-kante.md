@@ -44,29 +44,54 @@ LangGraph verdient seinen Platz (Schuld aus 0004 eingelöst).
 - Der Wert 0.62 gilt **nur** für diesen Store, diese Metrik, dieses Embedding-Modell und
   diese Score-Transformation (`exp(-Distanz)`, siehe 0003). Ein Wechsel erfordert
   Neukalibrierung — `evaluation/calibrate.py` ist dafür da.
-- Die LLM-Konfiguration liegt in `config.py` (Umgebungsvariablen), damit der DeepEval-Judge
-  denselben lokalen Endpunkt nutzen kann und Issue #3 das Backend ohne Codeänderung tauscht.
+- Die LLM-Konfiguration liegt in `config.py` (Umgebungsvariablen). Der DeepEval-Judge kann
+  denselben Endpunkt wie das Antwortmodell nutzen oder über `REGRAG_JUDGE_BASE_URL`,
+  `REGRAG_JUDGE_MODELL`, `REGRAG_JUDGE_API_KEY` und `REGRAG_JUDGE_TIMEOUT` getrennt auf
+  einen gehosteten OpenAI-kompatiblen Endpunkt zeigen.
+
+## Faithfulness: lokaler Judge verworfen, gehosteter Judge gemessen
+
+**Ein lokaler Judge ist auf dem M4 nicht praktikabel.** Geprüft über fünf Konfigurationen:
+
+- `gemma-4-12b` als Judge: Timeout schon bei der Antwortgenerierung (>300 s).
+- `llama-3.1-8b` / `qwen3.5-9b` **ohne** Schema: schnell, aber ungültiges JSON.
+- dieselben **mit** Schema: JSON valide, aber der Schema-Zwang (constrained decoding in
+  LM Studio) über die dichten Rechtstext-Chunks bringt einzelne Judge-Aufrufe wieder über
+  300 s.
+
+Das ist ein Kosten/Latenz-Befund, kein Fehler: Ein lokaler Judge ist gratis, aber für
+schema-gebundene Extraktion über lange juristische Kontexte auf dieser Hardware zu langsam.
+Deshalb **trennt `config.py` Judge und Antwortmodell**: Die App generiert weiter lokal, nur
+die Bewertung geht über `REGRAG_JUDGE_BASE_URL`, `REGRAG_JUDGE_MODELL`,
+`REGRAG_JUDGE_API_KEY` und `REGRAG_JUDGE_TIMEOUT` an einen gehosteten OpenAI-kompatiblen
+Endpunkt.
+
+Der Lauf mit `openai/gpt-5.4-mini` über OpenRouter (Generierung lokal auf `gemma-4-12b`,
+Index unverändert) ergibt über die 8 beantwortbaren Fälle:
+
+| Fall | Faithfulness |
+|---|---|
+| IKT-Risikomanagement | 1.00 |
+| Schwerwiegender IKT-Vorfall | 1.00 |
+| IKT-Drittparteienrisiko | 1.00 |
+| Tests der operationalen Resilienz | 0.82 |
+| Rolle des Leitungsorgans | 1.00 |
+| Meldepflichten | 1.00 |
+| Ausstiegsstrategien | 0.92 |
+| Bedrohungsgeleitete Penetrationstests | 0.71 |
+| **Ø** | **0.93** |
+
+Kein Fall wurde fälschlich verweigert; alle 8 liefen durch den `answer`-Pfad. Damit ist das
+Akzeptanzkriterium aus #2 erfüllt: Off-Topic-Fragen verweigern reproduzierbar (14/14), und
+die Treue der beantworteten Fälle ist gemessen statt behauptet.
 
 ## Offen
 
 - Das Eval-Set ist klein (14 Fälle) und die Off-Topic-Fragen sind bewusst *klar* fremd.
   Grenzfälle — Finanzregulatorik, die *nicht* in DORA steht (MaRisk, EBA-Guidelines) —
   sind noch nicht abgedeckt und könnten näher an der Schwelle liegen.
-- Faithfulness ist als Harness gebaut und **schema-korrekt** (`evaluation/run.py`,
-  `judge.py`): DeepEvals Pydantic-Schemas gehen über LangChains
-  `with_structured_output` an den lokalen Judge, was valides JSON erzwingt. Damit ist
-  `deepeval` jetzt tatsächlich benutzt, nicht mehr toter Requirements-Eintrag.
-
-  **Aber: ein vollständiger lokaler Faithfulness-Lauf ist auf dem M4 nicht praktikabel.**
-  Gemessen über fünf Konfigurationen:
-  - `gemma-4-12b` als Judge: Timeout schon bei der Antwortgenerierung (>300 s).
-  - `llama-3.1-8b` / `qwen3.5-9b` **ohne** Schema: schnell, aber ungültiges JSON.
-  - dieselben **mit** Schema: JSON valide, aber der Schema-Zwang (constrained decoding
-    in LM Studio) über die dichten Rechtstext-Chunks bringt einzelne Judge-Aufrufe
-    wieder über 300 s.
-
-  Das ist ein **Kosten/Latenz-Befund**, kein Fehler: Ein lokaler Judge ist gratis, aber
-  für schema-gebundene Extraktion über lange juristische Kontexte auf dieser Hardware zu
-  langsam. Eine belastbare Faithfulness-Zahl braucht einen **gehosteten Judge**
-  (OpenRouter, siehe Issue #3) — das ist genau der Trade-off, den der Model-Router
-  belegen soll. Bis dahin bleibt Faithfulness **nicht gemessen** und wird nicht behauptet.
+- TLPT (0.71) ist der schwächste Fall: Die Antwort trägt Aussagen, die die drei abgerufenen
+  Chunks nicht vollständig decken. Ob das am Retrieval (`similarity_top_k=3` zu eng) oder am
+  Antwortmodell liegt, ist nicht auseinandergehalten.
+- Die Zahl gilt für *diesen* Judge. Ein anderer Judge verschiebt sie; Faithfulness ist eine
+  Judge-relative Größe, kein absoluter Messwert.

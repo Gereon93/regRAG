@@ -79,7 +79,7 @@ Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht pe
 ## Stand
 
 - [x] **Step 1** — Mini-RAG über DORA, Antwort mit Belegstellen
-- [x] **Step 2** — LangGraph-Agent, Abstain als bedingte Kante, Schwellwert kalibriert (14/14) ([#2](../../issues/2))
+- [x] **Step 2** — LangGraph-Agent, Abstain als bedingte Kante, Schwellwert kalibriert (14/14), Faithfulness gemessen (Ø 0.93) ([#2](../../issues/2))
 - [x] **Persistenz** — Chroma-Index, Warmstart 12 s statt 5 min ([#1](../../issues/1))
 - [x] **Index-Integrität** — Fingerprint-Validierung, Neuaufbau bei geänderter Quelle ([#7](../../issues/7))
 - [x] **Web-UI + Docker** — FastAPI, SSE-Streaming, Container mit eingebackenem Embedding-Modell ([#3](../../issues/3))
@@ -89,10 +89,21 @@ Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht pe
 
 ```bash
 python -m evaluation.calibrate   # misst Score-Trennung, schlägt Schwellwert vor
-python -m evaluation.run         # Guard-Entscheidungen (14/14) + Faithfulness (lokaler Judge)
+python -m evaluation.run         # Guard-Entscheidungen (14/14) + Faithfulness
 ```
 
-Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Die Faithfulness-Harness (`deepeval`, lokaler Judge über `with_structured_output`) ist gebaut und schema-korrekt, aber ein Volllauf ist auf dem M4 nicht praktikabel: schema-gebundene Extraktion über dichte Rechtstexte reißt lokal die Timeouts. Eine belastbare Faithfulness-Zahl braucht einen gehosteten Judge (Issue #3) — Details in [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md).
+Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Faithfulness (`deepeval`, Judge über `with_structured_output`) ist über die 8 beantworteten Fälle **gemessen: Ø 0.93** (Spanne 0.71–1.00, fünfmal 1.00). Der schwächste Fall ist TLPT (0.71) — die Antwort trägt dort Aussagen, die die drei abgerufenen Chunks nicht vollständig decken.
+
+Der Judge läuft getrennt vom Antwortmodell: Die App generiert lokal (LM Studio), nur die Bewertung geht an einen gehosteten OpenAI-kompatiblen Endpunkt. Ein lokaler Judge ist auf dem M4 nicht praktikabel — schema-gebundene Extraktion über dichte Rechtstexte reißt die Timeouts ([ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md)).
+
+```bash
+REGRAG_JUDGE_BASE_URL=https://openrouter.ai/api/v1 \
+REGRAG_JUDGE_MODELL=openai/gpt-5.4-mini \
+REGRAG_JUDGE_API_KEY=sk-or-... \
+python -m evaluation.run
+```
+
+Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m evaluation.run`; die vier `REGRAG_JUDGE_*`-Variablen reicht Compose durch.
 
 ## Dokumentation
 
@@ -117,6 +128,8 @@ Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 
 | Score themenfremder Fragen | 0.48–0.57 |
 | `MIN_RETRIEVAL_SCORE` (Lückenmitte) | 0.62 |
 | Guard-Trennung über das Eval-Set | 14/14 |
+| Faithfulness der 8 beantworteten Fälle (Judge: `openai/gpt-5.4-mini`) | Ø 0.93 (0.71–1.00) |
+| Antwortlatenz lokal (gemma-4-12b, ~5k Prompt-Tokens) | 1–3 min |
 
 Der Score ist `exp(-Distanz)`, nicht rohe Cosine-Similarity — nur innerhalb dieser Transformation interpretierbar (ADR 0003). Noch offen: Grenzfälle nahe der Schwelle (Finanzregulatorik außerhalb DORA) und die Qualität gegenüber naivem PDF-Parsing.
 

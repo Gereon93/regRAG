@@ -7,6 +7,10 @@ services:
       REGRAG_LLM_BASE_URL: ${REGRAG_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
       REGRAG_CHAT_MODELL: ${REGRAG_CHAT_MODELL:-google/gemma-4-12b}
       REGRAG_API_KEY: ${REGRAG_API_KEY:-lm-studio}
+      REGRAG_JUDGE_BASE_URL: ${REGRAG_JUDGE_BASE_URL:-}
+      REGRAG_JUDGE_MODELL: ${REGRAG_JUDGE_MODELL:-}
+      REGRAG_JUDGE_API_KEY: ${REGRAG_JUDGE_API_KEY:-}
+      REGRAG_JUDGE_TIMEOUT: ${REGRAG_JUDGE_TIMEOUT:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
