@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 from contextlib import suppress
@@ -14,10 +13,15 @@ from llama_index.core import (
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 import config
+import dokumente
 
 DISTANZMETRIK_WIE_IN_MEMORY = {"hnsw:space": "cosine"}  # docs/adr/0003
+METRIK = DISTANZMETRIK_WIE_IN_MEMORY["hnsw:space"]
 NEU_BAUEN = os.getenv("REGRAG_INDEX_NEU_BAUEN") == "1"
 FINGERPRINT_DATEI = Path(config.CHROMA_VERZEICHNIS) / "fingerprint.json"
+
+index = None
+_collection = None
 
 
 def _embed_model():
@@ -26,14 +30,9 @@ def _embed_model():
     Settings.embed_model = HuggingFaceEmbedding(model_name=config.EMBEDDING_MODELL)
 
 
-def _dokumente_verzeichnis():
+def _md_dateien():
     pfad = Path(config.DOKUMENTE_VERZEICHNIS)
-    md_dateien = sorted(pfad.glob("*.md")) if pfad.is_dir() else []
-    if not md_dateien:
-        raise FileNotFoundError(
-            f"Kein Markdown in {pfad}/ gefunden. Erst 'python convert.py' ausführen."
-        )
-    return pfad, md_dateien
+    return sorted(pfad.glob("*.md")) if pfad.is_dir() else []
 
 
 def _quelle_metadata(pfad):
@@ -47,60 +46,68 @@ def _quelle_metadata(pfad):
     }
 
 
-def _fingerprint(md_dateien):
-    h = hashlib.sha256()
-    for datei in md_dateien:
-        h.update(datei.read_bytes())
-        sidecar = datei.with_suffix(".source.json")
-        if sidecar.exists():
-            h.update(sidecar.read_bytes())
-    return {
-        "dokumente": h.hexdigest(),
-        "embedding_modell": config.EMBEDDING_MODELL,
-        "metrik": DISTANZMETRIK_WIE_IN_MEMORY["hnsw:space"],
-    }
-
-
-def _fingerprint_passt(erwartet):
+def _fingerprint_lesen():
     if not FINGERPRINT_DATEI.exists():
-        return False
-    return json.loads(FINGERPRINT_DATEI.read_text()) == erwartet
+        return {}
+    return json.loads(FINGERPRINT_DATEI.read_text())
 
 
-def _baue(client, md_dateien, fingerprint):
-    FINGERPRINT_DATEI.unlink(missing_ok=True)
-    with suppress(Exception):
-        client.delete_collection(config.COLLECTION)
-    collection = client.get_or_create_collection(
-        config.COLLECTION, metadata=DISTANZMETRIK_WIE_IN_MEMORY
-    )
-    vector_store = ChromaVectorStore(chroma_collection=collection)
-    dokumente = SimpleDirectoryReader(
-        input_files=[str(p) for p in md_dateien],
-        file_metadata=_quelle_metadata,
-    ).load_data()
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
-    index = VectorStoreIndex.from_documents(dokumente, storage_context=storage_context)
-    FINGERPRINT_DATEI.write_text(json.dumps(fingerprint, indent=2))
-    return index
+def _fingerprint_schreiben(fp):
+    FINGERPRINT_DATEI.parent.mkdir(parents=True, exist_ok=True)
+    FINGERPRINT_DATEI.write_text(json.dumps(fp, indent=2, ensure_ascii=False))
+
+
+def loesche_nodes(dateiname):
+    _collection.delete(where={"file_name": dateiname})
+
+
+def indexiere(md_pfad):
+    """Merged ein Dokument in die bestehende Collection und schreibt den Fingerprint fort."""
+    md_pfad = Path(md_pfad)
+    loesche_nodes(md_pfad.name)
+
+    for dok in SimpleDirectoryReader(
+        input_files=[str(md_pfad)], file_metadata=_quelle_metadata
+    ).load_data():
+        index.insert(dok)
+
+    fp = _fingerprint_lesen() or dokumente.leerer_fingerprint(config.EMBEDDING_MODELL, METRIK)
+    fp["dokumente"][md_pfad.name] = dokumente.datei_hash(md_pfad)
+    _fingerprint_schreiben(fp)
 
 
 def lade_oder_baue_index():
+    global index, _collection
     _embed_model()
-    _verzeichnis, md_dateien = _dokumente_verzeichnis()
-    fingerprint = _fingerprint(md_dateien)
+
+    neu = dokumente.fingerprint(_md_dateien(), config.EMBEDDING_MODELL, METRIK)
+    alt = {} if NEU_BAUEN else _fingerprint_lesen()
+    zu_indexieren, zu_loeschen, voll_rebuild = dokumente.diff(alt, neu)
 
     client = chromadb.PersistentClient(path=config.CHROMA_VERZEICHNIS)
-    collection = client.get_or_create_collection(
+    if voll_rebuild or NEU_BAUEN:
+        FINGERPRINT_DATEI.unlink(missing_ok=True)
+        with suppress(Exception):
+            client.delete_collection(config.COLLECTION)
+        zu_loeschen = []
+
+    _collection = client.get_or_create_collection(
         config.COLLECTION, metadata=DISTANZMETRIK_WIE_IN_MEMORY
     )
-    vector_store = ChromaVectorStore(chroma_collection=collection)
+    vector_store = ChromaVectorStore(chroma_collection=_collection)
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+    index = VectorStoreIndex.from_vector_store(vector_store, storage_context=storage_context)
 
-    aktuell = not NEU_BAUEN and collection.count() > 0 and _fingerprint_passt(fingerprint)
-    if aktuell:
-        return VectorStoreIndex.from_vector_store(vector_store)
+    fp = _fingerprint_lesen() or dokumente.leerer_fingerprint(config.EMBEDDING_MODELL, METRIK)
+    for name in zu_loeschen:
+        loesche_nodes(name)
+        fp["dokumente"].pop(name, None)
+    _fingerprint_schreiben(fp)
 
-    return _baue(client, md_dateien, fingerprint)
+    for name in zu_indexieren:
+        indexiere(Path(config.DOKUMENTE_VERZEICHNIS) / name)
+
+    return index
 
 
 index = lade_oder_baue_index()

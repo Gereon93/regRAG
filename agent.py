@@ -8,7 +8,7 @@ from langgraph.graph import END, StateGraph
 import config
 from rag import index
 
-ABSTAIN_ANTWORT = "Nicht eindeutig in DORA belegt."
+ABSTAIN_ANTWORT = "Nicht eindeutig in den indexierten Dokumenten belegt."
 
 retriever = index.as_retriever(similarity_top_k=3)
 
