@@ -3,7 +3,7 @@ from deepeval.test_case import LLMTestCase
 
 from agent import app, beleglage_zu_schwach, retriever, ABSTAIN_ANTWORT
 from evaluation.dataset import FAELLE
-from evaluation.judge import LokalerJudge
+from evaluation.judge import JudgeLLM
 
 
 def guard_report():
@@ -44,5 +44,5 @@ def faithfulness_report(judge, schwelle=0.7, faelle=FAELLE):
 if __name__ == "__main__":
     print("=== Guard-Verhalten ===")
     guard_report()
-    print("\n=== Faithfulness (lokaler Judge) ===")
-    faithfulness_report(LokalerJudge())
+    print("\n=== Faithfulness ===")
+    faithfulness_report(JudgeLLM())

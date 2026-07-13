@@ -89,10 +89,19 @@ Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht pe
 
 ```bash
 python -m evaluation.calibrate   # misst Score-Trennung, schlägt Schwellwert vor
-python -m evaluation.run         # Guard-Entscheidungen (14/14) + Faithfulness (lokaler Judge)
+python -m evaluation.run         # Guard-Entscheidungen (14/14) + Faithfulness
 ```
 
-Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Die Faithfulness-Harness (`deepeval`, lokaler Judge über `with_structured_output`) ist gebaut und schema-korrekt, aber ein Volllauf ist auf dem M4 nicht praktikabel: schema-gebundene Extraktion über dichte Rechtstexte reißt lokal die Timeouts. Eine belastbare Faithfulness-Zahl braucht einen gehosteten Judge (Issue #3) — Details in [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md).
+Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Die Faithfulness-Harness (`deepeval`, Judge über `with_structured_output`) ist gebaut und schema-korrekt. Der Judge kann getrennt vom Antwortmodell konfiguriert werden, damit die App lokal laufen kann und nur die Faithfulness-Bewertung einen gehosteten OpenAI-kompatiblen Endpunkt nutzt:
+
+```bash
+REGRAG_JUDGE_BASE_URL=https://openrouter.ai/api/v1 \
+REGRAG_JUDGE_MODELL=qwen/qwen-2.5-72b-instruct \
+REGRAG_JUDGE_API_KEY=sk-or-... \
+python -m evaluation.run
+```
+
+Ein rein lokaler Volllauf bleibt auf dem M4 nicht praktikabel: schema-gebundene Extraktion über dichte Rechtstexte reißt lokal die Timeouts. Details in [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md).
 
 ## Dokumentation
 

@@ -44,8 +44,10 @@ LangGraph verdient seinen Platz (Schuld aus 0004 eingelöst).
 - Der Wert 0.62 gilt **nur** für diesen Store, diese Metrik, dieses Embedding-Modell und
   diese Score-Transformation (`exp(-Distanz)`, siehe 0003). Ein Wechsel erfordert
   Neukalibrierung — `evaluation/calibrate.py` ist dafür da.
-- Die LLM-Konfiguration liegt in `config.py` (Umgebungsvariablen), damit der DeepEval-Judge
-  denselben lokalen Endpunkt nutzen kann und Issue #3 das Backend ohne Codeänderung tauscht.
+- Die LLM-Konfiguration liegt in `config.py` (Umgebungsvariablen). Der DeepEval-Judge kann
+  denselben Endpunkt wie das Antwortmodell nutzen oder über `REGRAG_JUDGE_BASE_URL`,
+  `REGRAG_JUDGE_MODELL`, `REGRAG_JUDGE_API_KEY` und `REGRAG_JUDGE_TIMEOUT` getrennt auf
+  einen gehosteten OpenAI-kompatiblen Endpunkt zeigen.
 
 ## Offen
 
@@ -68,5 +70,6 @@ LangGraph verdient seinen Platz (Schuld aus 0004 eingelöst).
   Das ist ein **Kosten/Latenz-Befund**, kein Fehler: Ein lokaler Judge ist gratis, aber
   für schema-gebundene Extraktion über lange juristische Kontexte auf dieser Hardware zu
   langsam. Eine belastbare Faithfulness-Zahl braucht einen **gehosteten Judge**
-  (OpenRouter, siehe Issue #3) — das ist genau der Trade-off, den der Model-Router
-  belegen soll. Bis dahin bleibt Faithfulness **nicht gemessen** und wird nicht behauptet.
+  (OpenRouter oder ein anderer OpenAI-kompatibler Endpunkt). Der Harness ist dafür
+  vorbereitet; bis ein solcher Lauf mit Credentials und Dokumentindex ausgeführt wurde,
+  bleibt Faithfulness **nicht gemessen** und wird nicht behauptet.

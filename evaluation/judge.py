@@ -4,12 +4,16 @@ from langchain_openai import ChatOpenAI
 import config
 
 
-class LokalerJudge(DeepEvalBaseLLM):
+class JudgeLLM(DeepEvalBaseLLM):
     def __init__(self, modell=None):
         self._name = modell or config.JUDGE_MODELL
         self._model = ChatOpenAI(
-            model=self._name, base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY,
-            temperature=0, timeout=config.LLM_TIMEOUT,
+            model=self._name,
+            base_url=config.JUDGE_BASE_URL,
+            api_key=config.JUDGE_API_KEY,
+            temperature=0,
+            timeout=config.JUDGE_TIMEOUT,
+            max_retries=1,
         )
 
     def load_model(self):
@@ -26,4 +30,7 @@ class LokalerJudge(DeepEvalBaseLLM):
         return (await self._model.ainvoke(prompt)).content
 
     def get_model_name(self) -> str:
-        return f"lokal:{self._name}"
+        return f"judge:{self._name}"
+
+
+LokalerJudge = JudgeLLM
