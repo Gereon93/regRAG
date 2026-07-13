@@ -201,6 +201,40 @@
     font-size: 16px;
     margin-top: 34px;
   }
+  .korpus {
+    border-top: 1px solid var(--rule);
+    padding: 16px 0;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .korpus h4 {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin: 0 0 10px;
+    font-weight: 500;
+  }
+  .korpus ul { list-style: none; margin: 0 0 12px; padding: 0; }
+  .korpus li { font-family: var(--serif); font-size: 15px; color: var(--ink); padding: 2px 0; }
+  .korpus .zeile { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .korpus .status { font-family: var(--mono); font-size: 12px; }
+  .korpus .status.laeuft, .korpus .status.fertig { color: var(--accent); }
+  .korpus .status.fehler { color: var(--ochre); }
+  .korpus .hinweis { font-family: var(--serif); font-style: italic; margin-top: 10px; }
+  label.knopf {
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 8px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  label.knopf.aus { opacity: 0.45; cursor: default; }
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes blink { 50% { opacity: 0; } }
 </style>
@@ -209,12 +243,25 @@
 <div class="blatt">
   <header>
     <h1 class="wortmarke">Reg<b>RAG</b></h1>
-    <div class="unterzeile">Auskunft mit Quellenbeleg · DORA (EU) 2022/2554</div>
+    <div class="unterzeile">Auskunft mit Quellenbeleg · DORA und eigene Dokumente</div>
     <div class="losung">Antwortet nur, was im Verordnungstext belegt ist — sonst schweigt es.</div>
   </header>
   <main id="log">
     <div class="leer" id="leer">Stellen Sie eine Frage zu DORA. Die Antwort nennt ihre Fundstellen; fehlt der Beleg, verweigert der Agent ehrlich.</div>
   </main>
+  <section class="korpus">
+    <h4>Indexierte Dokumente</h4>
+    <ul id="dokumente"></ul>
+    <div class="zeile">
+      <label class="knopf" id="uploadKnopf" for="pdf">PDF hinzufügen</label>
+      <input type="file" id="pdf" accept="application/pdf" hidden>
+      <span class="status" id="uploadStatus"></span>
+    </div>
+    <div class="hinweis">
+      Nur frei verwendbare Regulatorik hochladen (MaRisk, EBA-Guidelines). Keine urheberrechtlich
+      geschützten Normtexte wie ISO oder DIN.
+    </div>
+  </section>
   <form id="form">
     <input type="text" id="frage" placeholder="Welche Anforderungen stellt DORA an das IKT-Risikomanagement?" autocomplete="off">
     <button type="submit" id="senden">Fragen</button>
@@ -319,6 +366,62 @@ form.addEventListener('submit', async (e) => {
     feld.focus();
   }
 });
+
+const dokumenteListe = document.getElementById('dokumente');
+const pdfFeld = document.getElementById('pdf');
+const uploadKnopf = document.getElementById('uploadKnopf');
+const uploadStatus = document.getElementById('uploadStatus');
+const STATUS_INTERVALL_MS = 2000;
+
+async function ladeDokumente() {
+  const res = await fetch('/documents');
+  const liste = await res.json();
+  dokumenteListe.replaceChildren(...liste.map((d) => el('li', null, d.titel)));
+}
+
+function setzeStatus(text, klasse) {
+  uploadStatus.textContent = text;
+  uploadStatus.className = 'status' + (klasse ? ' ' + klasse : '');
+}
+
+async function verfolge(jobId) {
+  while (true) {
+    await new Promise((r) => setTimeout(r, STATUS_INTERVALL_MS));
+    const res = await fetch('/jobs/' + jobId);
+    if (!res.ok) return setzeStatus('Job unbekannt.', 'fehler');
+    const job = await res.json();
+    if (job.status === 'ready') {
+      setzeStatus(job.dateiname + ' ist durchsuchbar.', 'fertig');
+      await ladeDokumente();
+      return;
+    }
+    if (job.status === 'failed') return setzeStatus('Fehlgeschlagen: ' + job.fehler, 'fehler');
+    setzeStatus('Wird indexiert — das dauert einige Minuten …', 'laeuft');
+  }
+}
+
+pdfFeld.addEventListener('change', async () => {
+  const datei = pdfFeld.files[0];
+  if (!datei) return;
+  const daten = new FormData();
+  daten.append('datei', datei);
+  uploadKnopf.classList.add('aus');
+  pdfFeld.disabled = true;
+  setzeStatus('Wird hochgeladen …', 'laeuft');
+
+  const res = await fetch('/upload', { method: 'POST', body: daten });
+  const antwort = await res.json();
+  pdfFeld.value = '';
+  if (!res.ok) {
+    setzeStatus(antwort.detail || 'Upload fehlgeschlagen.', 'fehler');
+  } else {
+    await verfolge(antwort.job);
+  }
+  uploadKnopf.classList.remove('aus');
+  pdfFeld.disabled = false;
+});
+
+ladeDokumente();
 </script>
 </body>
 </html>

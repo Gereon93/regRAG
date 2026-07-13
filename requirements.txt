@@ -9,4 +9,5 @@ deepeval
 chromadb
 pymupdf4llm
 fastapi
+python-multipart
 uvicorn[standard]
