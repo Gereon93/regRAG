@@ -1,4 +1,5 @@
 import importlib
+import os
 
 import pytest
 
@@ -8,8 +9,9 @@ import config
 @pytest.fixture
 def geladen(monkeypatch):
     def laden(**env):
-        for name in list(env):
-            monkeypatch.delenv(name, raising=False)
+        for name in list(os.environ):
+            if name.startswith("REGRAG_"):
+                monkeypatch.delenv(name, raising=False)
         for name, wert in env.items():
             monkeypatch.setenv(name, wert)
         return importlib.reload(config)
