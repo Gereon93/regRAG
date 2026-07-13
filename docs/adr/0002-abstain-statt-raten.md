@@ -13,7 +13,7 @@ eine falsche Sicherheit.
 
 `agent.py` prüft vor der Generierung den Retrieval-Score des besten Treffers.
 Liegt er unter `MIN_RETRIEVAL_SCORE`, antwortet der Agent mit `ABSTAIN_ANTWORT`
-("Nicht eindeutig in DORA belegt.") und ruft das LLM gar nicht erst auf.
+("Nicht eindeutig in den indexierten Dokumenten belegt.") und ruft das LLM gar nicht erst auf.
 
 ## Konsequenzen
 

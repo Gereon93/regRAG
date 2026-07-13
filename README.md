@@ -1,6 +1,6 @@
 # RegRAG
 
-Ein Compliance-RAG-Agent über **DORA** (Verordnung (EU) 2022/2554), der Fragen nur mit Quellenbeleg beantwortet — und ehrlich abbricht, wenn die Beleglage zu dünn ist, statt zu halluzinieren.
+Ein Compliance-RAG-Agent über **DORA** (Verordnung (EU) 2022/2554) und weitere selbst hochgeladene Regulatorik, der Fragen nur mit Quellenbeleg beantwortet — und ehrlich abbricht, wenn die Beleglage zu dünn ist, statt zu halluzinieren.
 
 Gebaut, um RAG, LangGraph und LangChain praktisch zu verstehen. Kein Produktionssystem.
 
@@ -66,6 +66,20 @@ uvicorn web.main:app --reload      # http://localhost:8000
 
 Chat-Seite mit token-für-token-Streaming (SSE). Jede Antwort nennt ihre Fundstellen mit Score; bei zu dünner Beleglage erscheint der Abstain-Zustand sichtbar statt einer erfundenen Antwort. `POST /chat` ist auch ohne UI nutzbar.
 
+### Eigene Dokumente hochladen
+
+Über die Seite lässt sich eine weitere PDF hinzufügen (z. B. MaRisk, EBA-Guidelines, NIS2). Der Upload nimmt an und gibt eine Job-ID zurück; die Indexierung läuft im Hintergrund, weil Embedding Minuten dauert und den Request nicht blockieren darf. Die Statuszeile meldet, sobald das Dokument durchsuchbar ist — sonst stellt man eine Frage, bekommt Abstain und hält das System für kaputt.
+
+| Endpunkt | Zweck |
+|---|---|
+| `POST /upload` | PDF (validiert: Magic-Bytes, Größenlimit, Dateiname gesäubert) → `202` + Job-ID |
+| `GET /jobs/{id}` | `pending` / `indexing` / `ready` / `failed` |
+| `GET /documents` | Liste der indexierten Dokumente |
+
+Das neue Dokument wird **inkrementell** in den bestehenden Chroma-Index gemerged, kein Voll-Rebuild ([ADR 0006](docs/adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md)). Quellenangaben tragen den Dokumentnamen, sodass bei mehreren Korpora erkennbar bleibt, woher eine Aussage stammt.
+
+Größenlimit: `REGRAG_UPLOAD_MAX_MB` (Default 25). **Keine urheberrechtlich geschützten Normtexte** (ISO, DIN) hochladen — die UI weist darauf hin.
+
 ## Docker
 
 Voraussetzung: das DORA-PDF liegt lokal unter `docs/CELEX_32022R2554_DE_TXT.pdf` (siehe [DORA-Rechtstext beschaffen](#dora-rechtstext-beschaffen)).
@@ -74,7 +88,9 @@ Voraussetzung: das DORA-PDF liegt lokal unter `docs/CELEX_32022R2554_DE_TXT.pdf`
 docker compose up --build
 ```
 
-Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht per Default über `host.docker.internal:1234` das LM Studio auf dem Host an — das funktioniert auf **macOS**. Für Linux/Cloud, wo eine Mac-Desktop-App nicht erreichbar ist, zeigt man `REGRAG_LLM_BASE_URL` auf einen gehosteten Worker (OpenRouter) oder einen headless lokalen Server; siehe `env.example` und [arc42 Kap. 7](docs/arc42.md). Der Chroma-Index liegt in einem Volume — erster Start baut ihn (~5 min), danach schnell.
+Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht per Default über `host.docker.internal:1234` das LM Studio auf dem Host an — das funktioniert auf **macOS**. Für Linux/Cloud, wo eine Mac-Desktop-App nicht erreichbar ist, zeigt man `REGRAG_LLM_BASE_URL` auf einen gehosteten Worker (OpenRouter) oder einen headless lokalen Server; siehe `env.example` und [arc42 Kap. 7](docs/arc42.md).
+
+Zwei Volumes: `chroma` trägt die Vektoren, `docs_md` den Korpus. Beide zusammen lassen hochgeladene Dokumente einen `docker compose restart` überleben — gemessen: Kaltstart 360 s, Neustart 31 s ohne erneutes Embedden.
 
 ## Stand
 
@@ -83,7 +99,7 @@ Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht pe
 - [x] **Persistenz** — Chroma-Index, Warmstart 12 s statt 5 min ([#1](../../issues/1))
 - [x] **Index-Integrität** — Fingerprint-Validierung, Neuaufbau bei geänderter Quelle ([#7](../../issues/7))
 - [x] **Web-UI + Docker** — FastAPI, SSE-Streaming, Container mit eingebackenem Embedding-Modell ([#3](../../issues/3))
-- [ ] **Dokumenten-Upload** — PDF hochladen, Re-Indexierung im Hintergrund ([#4](../../issues/4))
+- [x] **Dokumenten-Upload** — PDF hochladen, inkrementeller Merge im Hintergrund, Job-Status ([#4](../../issues/4))
 
 ## Evaluation
 
@@ -112,17 +128,20 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 ## Entscheidungen (ADRs)
 
 - [0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md) — PDF nach Markdown, statt das PDF direkt zu indexieren
-- [0002](docs/adr/0002-abstain-statt-raten.md) — Verweigern statt raten (Schwellwert **unkalibriert**)
+- [0002](docs/adr/0002-abstain-statt-raten.md) — Verweigern statt raten
 - [0003](docs/adr/0003-persistenter-chroma-index-mit-cosine.md) — Persistenter Chroma-Index, erzwungen auf Cosine
 - [0004](docs/adr/0004-rollenteilung-llamaindex-langchain-langgraph.md) — Rollenteilung der drei Frameworks (LangGraph-Schuld eingelöst)
 - [0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md) — Guard kalibriert, Abstain als bedingte Kante
+- [0006](docs/adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md) — Inkrementeller Index-Merge statt Voll-Rebuild
+- [0007](docs/adr/0007-sprachgrenze-im-code.md) — Sprachgrenze im Code: Domäne deutsch, Technik englisch
 
 ## Gemessen
 
 | Größe | Wert |
 |---|---|
-| Kaltstart (Index bauen, 351k Zeichen) | 5:04 min |
-| Warmstart (Index laden) | 12.2 s |
+| Kaltstart (Index bauen, 351k Zeichen) | 5:04 min lokal, 6:00 min im Container |
+| Warmstart (Index laden) | 12.2 s lokal, 31 s im Container (DORA + NIS2) |
+| Upload eines zweiten Dokuments (NIS2, 1.3 MB) bis `ready` | ~250 s — nur das neue Dokument wird embeddet |
 | Retrieval (`similarity_top_k=3`) | 0.5 s |
 | Score beantwortbarer DORA-Fragen | 0.67–0.78 |
 | Score themenfremder Fragen | 0.48–0.57 |
@@ -136,4 +155,5 @@ Der Score ist `exp(-Distanz)`, nicht rohe Cosine-Similarity — nur innerhalb di
 ## Quellen
 
 DORA-Text: EUR-Lex, CELEX 32022R2554. Wiederverwendung gemäß Beschluss 2011/833/EU.
-ISO-Normtexte sind urheberrechtlich geschützt und werden bewusst nicht eingebettet.
+ISO- und DIN-Normtexte sind urheberrechtlich geschützt und werden bewusst nicht eingebettet — auch nicht über den Upload.
+Hochgeladene Dokumente verlassen den Rechner nicht: das Embedding läuft im Prozess, nur die Frage und die gefundenen Chunks gehen an das Generierungsmodell.
