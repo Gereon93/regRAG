@@ -26,6 +26,16 @@ def saeubere_dateiname(name):
     return sauber
 
 
+def saeubere_md_name(name):
+    roh = Path(str(name).replace("\\", "/")).name
+    sauber = _UNERLAUBT.sub("_", roh).lstrip(".")
+    if not sauber.lower().endswith(".md"):
+        raise UploadFehler("Kein Dokument dieses Namens.", 400)
+    if len(sauber) <= len(".md"):
+        raise UploadFehler("Dateiname fehlt.", 400)
+    return sauber
+
+
 def pruefe_groesse(anzahl_bytes):
     if anzahl_bytes > MAX_MB * 1024 * 1024:
         raise UploadFehler(f"Datei ist größer als {MAX_MB:g} MB.", 413)

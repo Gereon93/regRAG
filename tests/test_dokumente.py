@@ -100,3 +100,24 @@ def test_fingerprint_aus_altem_release_erzwingt_voll_rebuild():
     neu = {"embedding_modell": "m", "metrik": "cosine", "dokumente": {"a.md": "1"}}
 
     assert dokumente.diff(alt, neu) == (["a.md"], [], True)
+
+
+def test_md_name_traversal_wird_auf_basename_reduziert():
+    assert dokumente.saeubere_md_name("../../etc/passwd.md") == "passwd.md"
+    assert dokumente.saeubere_md_name("/abs/pfad/marisk.md") == "marisk.md"
+    assert dokumente.saeubere_md_name("C:\\temp\\eba.md") == "eba.md"
+
+
+def test_md_name_sonderzeichen_werden_ersetzt():
+    assert dokumente.saeubere_md_name("EBA ICT-Guidelines (2019).md") == "EBA_ICT-Guidelines__2019_.md"
+
+
+def test_md_name_ohne_md_endung_wird_abgelehnt():
+    with pytest.raises(dokumente.UploadFehler) as e:
+        dokumente.saeubere_md_name("fingerprint.json")
+    assert e.value.status == 400
+
+
+def test_md_name_ohne_stamm_wird_abgelehnt():
+    with pytest.raises(dokumente.UploadFehler):
+        dokumente.saeubere_md_name(".md")
