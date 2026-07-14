@@ -13,8 +13,9 @@ beliebige Markdown-Dokumente, nicht über einen bestimmten Rechtstext. Das "Reg"
 diese Bindung an die Belege, nicht die Domäne DORA: das System antwortet nur, was in den
 indexierten Dokumenten steht, und verweigert sonst ehrlich statt zu raten.
 
-Mit dem Upload ([#4](../../issues/4)) und jetzt dem Löschen ([#16](../../issues/16)) ist der
-Korpus vollständig austauschbar. Bislang zog `entrypoint.sh` DORA aber bei **jedem** Start neu,
+Mit dem Upload ([#4](https://github.com/Gereon93/regRAG/issues/4)) und jetzt dem Löschen
+([#16](https://github.com/Gereon93/regRAG/issues/16)) ist der Korpus vollständig austauschbar.
+Bislang zog `entrypoint.sh` DORA aber bei **jedem** Start neu,
 sobald `docs_md/` keine `.md`-Datei enthielt — auch dann, wenn jemand DORA gerade bewusst über
 `DELETE /documents/{datei}` entfernt hatte. Ein Löschen war damit nicht dauerhaft: der nächste
 Neustart holte DORA zurück.
@@ -41,3 +42,8 @@ einen Hinweis auf stdout, bricht den Start aber nicht mehr ab.
 - Wer stattdessen das BGB oder MaRisk hochlädt und DORA löscht, bekommt ein gleichwertiges RAG mit
   denselben Belegpflicht- und Abstain-Garantien — RegRAG ist damit korpus-agnostisch, nicht an
   eine Verordnung gebunden.
+- Upgrade-Fall: Ein bestehendes `docs_md`-Volume von vor diesem Branch trägt
+  `CELEX_32022R2554_DE_TXT.md`, aber kein `.bootstrap`. Beim ersten Start nach dem Upgrade läuft
+  `python convert.py` deshalb einmal erneut. Harmlos — gleicher Inhalt, gleicher Hash,
+  `dokumente.diff()` erkennt keine Änderung und reindexiert nicht —, sieht in den Logs aber nach
+  einem Bug aus.

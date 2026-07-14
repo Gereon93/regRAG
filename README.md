@@ -77,6 +77,7 @@ Chat-Seite mit token-für-token-Streaming (SSE). Jede Antwort nennt ihre Fundste
 | `POST /upload` | PDF (validiert: Magic-Bytes, Größenlimit, Dateiname gesäubert) → `202` + Job-ID |
 | `GET /jobs/{id}` | `pending` / `indexing` / `ready` / `failed` |
 | `GET /documents` | Liste der indexierten Dokumente |
+| `DELETE /documents/{datei}` | Dokument entfernen (Fingerprint, Nodes, Dateien) → `204` |
 
 Das neue Dokument wird **inkrementell** in den bestehenden Chroma-Index gemerged, kein Voll-Rebuild ([ADR 0006](docs/adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md)). Quellenangaben tragen den Dokumentnamen, sodass bei mehreren Korpora erkennbar bleibt, woher eine Aussage stammt.
 
@@ -90,7 +91,9 @@ verwirft das Volume und legt den DORA-Grundkorpus neu an.
 
 ## Docker
 
-Voraussetzung: das DORA-PDF liegt lokal unter `docs/CELEX_32022R2554_DE_TXT.pdf` (siehe [DORA-Rechtstext beschaffen](#dora-rechtstext-beschaffen)).
+Empfohlen für den Grundkorpus: das DORA-PDF liegt lokal unter `docs/CELEX_32022R2554_DE_TXT.pdf`
+bereit (siehe [DORA-Rechtstext beschaffen](#dora-rechtstext-beschaffen)). Fehlt es, startet der
+Container trotzdem — mit leerem Korpus und einem Hinweis dazu auf stdout ([ADR 0008](docs/adr/0008-korpus-agnostisch-dora-ist-nur-der-seed.md)).
 
 ```bash
 docker compose up --build
