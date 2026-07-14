@@ -42,8 +42,11 @@ einen Hinweis auf stdout, bricht den Start aber nicht mehr ab.
 - Wer stattdessen das BGB oder MaRisk hochlädt und DORA löscht, bekommt ein gleichwertiges RAG mit
   denselben Belegpflicht- und Abstain-Garantien — RegRAG ist damit korpus-agnostisch, nicht an
   eine Verordnung gebunden.
-- Upgrade-Fall: Ein bestehendes `docs_md`-Volume von vor diesem Branch trägt
-  `CELEX_32022R2554_DE_TXT.md`, aber kein `.bootstrap`. Beim ersten Start nach dem Upgrade läuft
-  `python convert.py` deshalb einmal erneut. Harmlos — gleicher Inhalt, gleicher Hash,
-  `dokumente.diff()` erkennt keine Änderung und reindexiert nicht —, sieht in den Logs aber nach
-  einem Bug aus.
+- Geseedet wird nur in einen leeren Korpus. Der Marker wird beim ersten Start aber in jedem Fall
+  gesetzt — auch wenn nicht geseedet wurde. Sonst gäbe es zwei Löcher: ein bestehendes Volume von
+  vor diesem Branch (hat `CELEX_32022R2554_DE_TXT.md`, aber kein `.bootstrap`) bekäme nie einen
+  Marker und würde DORA nach dem Löschen wiederbringen; und wer ohne gemountetes PDF startet,
+  eigene Dokumente hochlädt und das DORA-PDF später nachreicht, bekäme DORA ungefragt in einen
+  fremden Korpus geschoben.
+- Preis dieser Entscheidung: Wer beim ersten Start das PDF vergisst, holt DORA nicht durch
+  Nachreichen des PDFs zurück, sondern nur über ein frisches Volume (`docker compose down -v`).

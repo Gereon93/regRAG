@@ -1,4 +1,6 @@
 import sys
+import threading
+import time
 import types
 
 import pytest
@@ -115,6 +117,39 @@ def test_traversal_mit_backslashes_wird_von_saeubere_md_name_blockiert(
     assert antwort.json()["detail"] == "Dokument nicht gefunden."
     assert ausserhalb.exists()
     assert AUFRUFE == []
+
+
+def test_upload_startet_keinen_job_waehrend_geloescht_wird(
+    main, client, dokumente_verzeichnis, monkeypatch
+):
+    """Beide Pfade schreiben fingerprint.json — ein Upload darf sich nicht dazwischenschieben."""
+    _lege_dokument_an(dokumente_verzeichnis, "a", "A")
+    ablauf = []
+
+    def langsam_loeschen(md_name):
+        ablauf.append("loeschen-start")
+        time.sleep(0.2)
+        _fake_loesche_dokument(md_name)
+        ablauf.append("loeschen-ende")
+
+    class MitschreibenderPool:
+        def submit(self, *args, **kwargs):
+            ablauf.append("jobstart")
+
+    monkeypatch.setattr(sys.modules["rag"], "loesche_dokument", langsam_loeschen)
+    monkeypatch.setattr(main, "POOL", MitschreibenderPool())
+
+    loescher = threading.Thread(target=lambda: client.delete("/documents/a.md"))
+    loescher.start()
+    time.sleep(0.05)
+
+    antwort = client.post(
+        "/upload", files={"datei": ("neu.pdf", b"%PDF-1.7 inhalt", "application/pdf")}
+    )
+    loescher.join()
+
+    assert antwort.status_code == 202
+    assert ablauf == ["loeschen-start", "loeschen-ende", "jobstart"]
 
 
 def test_nicht_md_name_wird_abgelehnt(client, dokumente_verzeichnis):

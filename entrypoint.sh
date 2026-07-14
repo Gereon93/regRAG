@@ -1,8 +1,10 @@
 #!/bin/sh
 set -e
 
-if [ ! -f docs_md/.bootstrap ] && [ -f "docs/CELEX_32022R2554_DE_TXT.pdf" ]; then
-  python convert.py
+if [ ! -f docs_md/.bootstrap ]; then
+  if [ -f "docs/CELEX_32022R2554_DE_TXT.pdf" ] && ! ls docs_md/*.md >/dev/null 2>&1; then
+    python convert.py
+  fi
   mkdir -p docs_md && touch docs_md/.bootstrap
 fi
 

@@ -1,5 +1,6 @@
 import json
 import tempfile
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
@@ -25,6 +26,7 @@ LESE_STUECK_BYTES = 1024 * 1024
 JOBS = {}
 NAMEN_IN_ARBEIT = set()
 POOL = ThreadPoolExecutor(max_workers=EMBEDDING_IST_CPU_GEBUNDEN_ALSO_SERIELL)
+KEIN_JOBSTART_WAEHREND_GELOESCHT_WIRD = threading.Lock()
 
 
 class Frage(BaseModel):
@@ -120,15 +122,16 @@ async def upload(datei: UploadFile = File(...)):
     except dokumente.UploadFehler as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
 
-    if name in NAMEN_IN_ARBEIT:
-        raise HTTPException(status_code=409, detail="Dokument wird bereits indexiert.")
-    if (DOKUMENTE / f"{Path(name).stem}.md").exists():
-        raise HTTPException(status_code=409, detail="Dokument ist bereits indexiert.")
-    NAMEN_IN_ARBEIT.add(name)
+    with KEIN_JOBSTART_WAEHREND_GELOESCHT_WIRD:
+        if name in NAMEN_IN_ARBEIT:
+            raise HTTPException(status_code=409, detail="Dokument wird bereits indexiert.")
+        if (DOKUMENTE / f"{Path(name).stem}.md").exists():
+            raise HTTPException(status_code=409, detail="Dokument ist bereits indexiert.")
+        NAMEN_IN_ARBEIT.add(name)
 
-    job_id = uuid.uuid4().hex
-    JOBS[job_id] = {"status": "pending", "dateiname": name, "fehler": None}
-    POOL.submit(_indexiere, job_id, inhalt, name)
+        job_id = uuid.uuid4().hex
+        JOBS[job_id] = {"status": "pending", "dateiname": name, "fehler": None}
+        POOL.submit(_indexiere, job_id, inhalt, name)
     return {"job": job_id, **JOBS[job_id]}
 
 
@@ -162,12 +165,13 @@ def dokument_loeschen(datei: str):
     except dokumente.UploadFehler as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
 
-    if _irgendeine_indexierung_laeuft():
-        raise HTTPException(status_code=409, detail="Es läuft gerade eine Indexierung.")
-    if not (DOKUMENTE / name).exists():
-        raise HTTPException(status_code=404, detail="Dokument nicht gefunden.")
+    with KEIN_JOBSTART_WAEHREND_GELOESCHT_WIRD:
+        if _irgendeine_indexierung_laeuft():
+            raise HTTPException(status_code=409, detail="Es läuft gerade eine Indexierung.")
+        if not (DOKUMENTE / name).exists():
+            raise HTTPException(status_code=404, detail="Dokument nicht gefunden.")
 
-    rag.loesche_dokument(name)
+        rag.loesche_dokument(name)
 
 
 @app.get("/")
