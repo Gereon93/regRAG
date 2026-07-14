@@ -26,6 +26,16 @@ def saeubere_dateiname(name):
     return sauber
 
 
+def saeubere_md_name(name):
+    roh = Path(str(name).replace("\\", "/")).name
+    sauber = _UNERLAUBT.sub("_", roh).lstrip(".")
+    if not sauber.lower().endswith(".md"):
+        raise UploadFehler("Kein Dokument dieses Namens.", 400)
+    if len(sauber) <= len(".md"):
+        raise UploadFehler("Dateiname fehlt.", 400)
+    return sauber
+
+
 def pruefe_groesse(anzahl_bytes):
     if anzahl_bytes > MAX_MB * 1024 * 1024:
         raise UploadFehler(f"Datei ist größer als {MAX_MB:g} MB.", 413)
@@ -55,6 +65,13 @@ def fingerprint(md_dateien, embedding_modell, metrik):
     fp = leerer_fingerprint(embedding_modell, metrik)
     fp["dokumente"] = {Path(p).name: datei_hash(p) for p in md_dateien}
     return fp
+
+
+def ohne_dokument(fp, name):
+    """Fingerprint ohne den Eintrag für `name` — der Rest bleibt unangetastet."""
+    neu = dict(fp)
+    neu["dokumente"] = {n: h for n, h in fp["dokumente"].items() if n != name}
+    return neu
 
 
 def diff(alt, neu):

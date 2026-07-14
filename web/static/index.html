@@ -216,7 +216,31 @@
     font-weight: 500;
   }
   .korpus ul { list-style: none; margin: 0 0 12px; padding: 0; }
-  .korpus li { font-family: var(--serif); font-size: 15px; color: var(--ink); padding: 2px 0; }
+  .korpus li {
+    font-family: var(--serif);
+    font-size: 15px;
+    color: var(--ink);
+    padding: 2px 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .korpus .entfernen {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    color: var(--ink-soft);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity .2s, color .2s;
+  }
+  .korpus .entfernen:hover { opacity: 1; color: var(--ochre); }
+  .korpus .entfernen:disabled { opacity: 0.3; cursor: default; }
   .korpus .zeile { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .korpus .status { font-family: var(--mono); font-size: 12px; }
   .korpus .status.laeuft, .korpus .status.fertig { color: var(--accent); }
@@ -259,7 +283,8 @@
     </div>
     <div class="hinweis">
       Nur frei verwendbare Regulatorik hochladen (MaRisk, EBA-Guidelines). Keine urheberrechtlich
-      geschützten Normtexte wie ISO oder DIN.
+      geschützten Normtexte wie ISO oder DIN. Entfernte Dokumente bleiben entfernt — auch DORA;
+      der Grundkorpus wird nur auf einem frischen Volume neu angelegt.
     </div>
   </section>
   <form id="form">
@@ -376,7 +401,28 @@ const STATUS_INTERVALL_MS = 2000;
 async function ladeDokumente() {
   const res = await fetch('/documents');
   const liste = await res.json();
-  dokumenteListe.replaceChildren(...liste.map((d) => el('li', null, d.titel)));
+  dokumenteListe.replaceChildren(...liste.map((d) => {
+    const zeile = el('li');
+    zeile.appendChild(el('span', null, d.titel));
+    const entfernenKnopf = el('button', 'entfernen', 'Entfernen');
+    entfernenKnopf.addEventListener('click', () => entferne(d, entfernenKnopf));
+    zeile.appendChild(entfernenKnopf);
+    return zeile;
+  }));
+}
+
+async function entferne(dokument, entfernenKnopf) {
+  if (!confirm(dokument.titel + ' wirklich aus dem Index entfernen?')) return;
+  entfernenKnopf.disabled = true;
+  setzeStatus('Wird entfernt …', 'laeuft');
+  const res = await fetch('/documents/' + encodeURIComponent(dokument.datei), { method: 'DELETE' });
+  if (!res.ok) {
+    const fehler = await res.json().catch(() => ({}));
+    entfernenKnopf.disabled = false;
+    return setzeStatus(fehler.detail || 'Entfernen fehlgeschlagen.', 'fehler');
+  }
+  setzeStatus(dokument.titel + ' wurde entfernt.', 'fertig');
+  await ladeDokumente();
 }
 
 function setzeStatus(text, klasse) {

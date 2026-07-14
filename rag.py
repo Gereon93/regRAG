@@ -61,6 +61,21 @@ def loesche_nodes(dateiname):
     _collection.delete(where={"file_name": dateiname})
 
 
+def loesche_dokument(md_name):
+    """Fingerprint zuerst, dann Nodes, dann Dateien. Bricht der Prozess nach dem
+    Fingerprint-Write ab, stellt der nächste Start das Dokument vollständig wieder her —
+    die Löschung wird dann rückgängig gemacht, statt verwaiste Nodes ohne Fingerprint-Eintrag
+    zurückzulassen, die als Fundstelle zitiert würden."""
+    fp = _fingerprint_lesen() or dokumente.leerer_fingerprint(config.EMBEDDING_MODELL, METRIK)
+    _fingerprint_schreiben(dokumente.ohne_dokument(fp, md_name))
+
+    loesche_nodes(md_name)
+
+    md_pfad = Path(config.DOKUMENTE_VERZEICHNIS) / md_name
+    md_pfad.unlink(missing_ok=True)
+    md_pfad.with_suffix(".source.json").unlink(missing_ok=True)
+
+
 def indexiere(md_pfad):
     """Merged ein Dokument in die bestehende Collection und schreibt den Fingerprint fort."""
     md_pfad = Path(md_pfad)
