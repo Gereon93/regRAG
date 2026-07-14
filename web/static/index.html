@@ -404,21 +404,21 @@ async function ladeDokumente() {
   dokumenteListe.replaceChildren(...liste.map((d) => {
     const zeile = el('li');
     zeile.appendChild(el('span', null, d.titel));
-    const knopf = el('button', 'entfernen', 'Entfernen');
-    knopf.addEventListener('click', () => entferne(d, knopf));
-    zeile.appendChild(knopf);
+    const entfernenKnopf = el('button', 'entfernen', 'Entfernen');
+    entfernenKnopf.addEventListener('click', () => entferne(d, entfernenKnopf));
+    zeile.appendChild(entfernenKnopf);
     return zeile;
   }));
 }
 
-async function entferne(dokument, knopf) {
+async function entferne(dokument, entfernenKnopf) {
   if (!confirm(dokument.titel + ' wirklich aus dem Index entfernen?')) return;
-  knopf.disabled = true;
+  entfernenKnopf.disabled = true;
   setzeStatus('Wird entfernt …', 'laeuft');
   const res = await fetch('/documents/' + encodeURIComponent(dokument.datei), { method: 'DELETE' });
   if (!res.ok) {
     const fehler = await res.json().catch(() => ({}));
-    knopf.disabled = false;
+    entfernenKnopf.disabled = false;
     return setzeStatus(fehler.detail || 'Entfernen fehlgeschlagen.', 'fehler');
   }
   setzeStatus(dokument.titel + ' wurde entfernt.', 'fertig');
