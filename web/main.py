@@ -150,6 +150,21 @@ def dokument_liste():
     return liste
 
 
+@app.delete("/documents/{datei}", status_code=204)
+def dokument_loeschen(datei: str):
+    try:
+        name = dokumente.saeubere_md_name(datei)
+    except dokumente.UploadFehler as e:
+        raise HTTPException(status_code=e.status, detail=str(e)) from e
+
+    if NAMEN_IN_ARBEIT:
+        raise HTTPException(status_code=409, detail="Es läuft gerade eine Indexierung.")
+    if not (DOKUMENTE / name).exists():
+        raise HTTPException(status_code=404, detail="Dokument nicht gefunden.")
+
+    rag.loesche_dokument(name)
+
+
 @app.get("/")
 def startseite():
     return FileResponse(STATIC / "index.html")
