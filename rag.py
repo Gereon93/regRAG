@@ -62,10 +62,12 @@ def loesche_nodes(dateiname):
 
 
 def loesche_dokument(md_name):
-    """Fingerprint zuerst, dann Nodes, dann Dateien — ein Abbruch führt höchstens zu einmal zu viel indexieren."""
+    """Fingerprint zuerst, dann Nodes, dann Dateien. Bricht der Prozess nach dem
+    Fingerprint-Write ab, stellt der nächste Start das Dokument vollständig wieder her —
+    die Löschung wird dann rückgängig gemacht, statt verwaiste Nodes ohne Fingerprint-Eintrag
+    zurückzulassen, die als Fundstelle zitiert würden."""
     fp = _fingerprint_lesen() or dokumente.leerer_fingerprint(config.EMBEDDING_MODELL, METRIK)
-    fp["dokumente"].pop(md_name, None)
-    _fingerprint_schreiben(fp)
+    _fingerprint_schreiben(dokumente.ohne_dokument(fp, md_name))
 
     loesche_nodes(md_name)
 

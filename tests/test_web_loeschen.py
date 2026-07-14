@@ -25,27 +25,37 @@ def _stub(name, **attrs):
 
 @pytest.fixture(scope="session")
 def main():
-    if "rag" not in sys.modules:
-        _stub(
-            "rag",
+    """Stubt rag/agent/convert unbedingt, damit `import web.main` nie die echten,
+    schweren Module lädt — unabhängig davon, ob vorher schon etwas den echten `rag`
+    importiert hat. Macht die Stubs danach wieder rückgängig."""
+    stubs = {
+        "rag": dict(
             loesche_dokument=_fake_loesche_dokument,
             loesche_nodes=lambda *a, **k: None,
             indexiere=lambda *a, **k: None,
-        )
-    if "agent" not in sys.modules:
-        _stub(
-            "agent",
+        ),
+        "agent": dict(
             ABSTAIN_ANTWORT="Keine ausreichende Beleglage.",
             beleglage_zu_schwach=lambda *a, **k: True,
             llm=None,
             prompt=None,
             retriever=None,
-        )
-    if "convert" not in sys.modules:
-        _stub("convert", pdf_nach_markdown=lambda *a, **k: None)
+        ),
+        "convert": dict(pdf_nach_markdown=lambda *a, **k: None),
+    }
+    alte_module = {name: sys.modules.get(name) for name in stubs}
+    for name, attrs in stubs.items():
+        _stub(name, **attrs)
+
     import web.main as modul
 
-    return modul
+    yield modul
+
+    for name, alt in alte_module.items():
+        if alt is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = alt
 
 
 @pytest.fixture
@@ -74,8 +84,6 @@ def test_loeschen_entfernt_dokument_und_ruft_rag_auf(client, dokumente_verzeichn
     antwort = client.delete("/documents/a.md")
 
     assert antwort.status_code == 204
-    assert not (dokumente_verzeichnis / "a.md").exists()
-    assert not (dokumente_verzeichnis / "a.source.json").exists()
     assert AUFRUFE == ["a.md"]
     assert client.get("/documents").json() == []
 

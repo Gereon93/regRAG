@@ -121,3 +121,21 @@ def test_md_name_ohne_md_endung_wird_abgelehnt():
 def test_md_name_ohne_stamm_wird_abgelehnt():
     with pytest.raises(dokumente.UploadFehler):
         dokumente.saeubere_md_name(".md")
+
+
+def test_ohne_dokument_entfernt_nur_den_gesuchten_eintrag():
+    fp = {"embedding_modell": "m", "metrik": "cosine", "dokumente": {"a.md": "1", "b.md": "2"}}
+
+    ergebnis = dokumente.ohne_dokument(fp, "a.md")
+
+    assert ergebnis["dokumente"] == {"b.md": "2"}
+    assert ergebnis["embedding_modell"] == "m"
+    assert ergebnis["metrik"] == "cosine"
+
+
+def test_ohne_dokument_unbekannter_name_ist_kein_fehler():
+    fp = {"embedding_modell": "m", "metrik": "cosine", "dokumente": {"a.md": "1"}}
+
+    ergebnis = dokumente.ohne_dokument(fp, "unbekannt.md")
+
+    assert ergebnis["dokumente"] == {"a.md": "1"}

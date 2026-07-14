@@ -67,6 +67,13 @@ def fingerprint(md_dateien, embedding_modell, metrik):
     return fp
 
 
+def ohne_dokument(fp, name):
+    """Fingerprint ohne den Eintrag für `name` — der Rest bleibt unangetastet."""
+    neu = dict(fp)
+    neu["dokumente"] = {n: h for n, h in fp["dokumente"].items() if n != name}
+    return neu
+
+
 def diff(alt, neu):
     """(zu_indexieren, zu_loeschen, voll_rebuild) — eine geänderte Datei zählt in beide Listen."""
     alt = alt or {}
