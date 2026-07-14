@@ -150,6 +150,11 @@ def dokument_liste():
     return liste
 
 
+def _irgendeine_indexierung_laeuft():
+    """Egal welches Dokument: _indexiere() und loesche_dokument() schreiben beide fingerprint.json neu."""
+    return bool(NAMEN_IN_ARBEIT)
+
+
 @app.delete("/documents/{datei}", status_code=204)
 def dokument_loeschen(datei: str):
     try:
@@ -157,7 +162,7 @@ def dokument_loeschen(datei: str):
     except dokumente.UploadFehler as e:
         raise HTTPException(status_code=e.status, detail=str(e)) from e
 
-    if NAMEN_IN_ARBEIT:
+    if _irgendeine_indexierung_laeuft():
         raise HTTPException(status_code=409, detail="Es läuft gerade eine Indexierung.")
     if not (DOKUMENTE / name).exists():
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden.")
