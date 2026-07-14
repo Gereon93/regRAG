@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install ruff pytest
+      - run: pip install ruff pytest fastapi httpx python-multipart
 
       - name: Lint
         run: ruff check .

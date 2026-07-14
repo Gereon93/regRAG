@@ -1,0 +1,146 @@
+import sys
+import types
+
+import pytest
+from fastapi.testclient import TestClient
+
+AUFRUFE = []
+
+
+def _fake_loesche_dokument(md_name):
+    AUFRUFE.append(md_name)
+    import web.main as modul
+
+    pfad = modul.DOKUMENTE / md_name
+    pfad.unlink(missing_ok=True)
+    pfad.with_suffix(".source.json").unlink(missing_ok=True)
+
+
+def _stub(name, **attrs):
+    modul = types.ModuleType(name)
+    for schluessel, wert in attrs.items():
+        setattr(modul, schluessel, wert)
+    sys.modules[name] = modul
+
+
+@pytest.fixture(scope="session")
+def main():
+    if "rag" not in sys.modules:
+        _stub(
+            "rag",
+            loesche_dokument=_fake_loesche_dokument,
+            loesche_nodes=lambda *a, **k: None,
+            indexiere=lambda *a, **k: None,
+        )
+    if "agent" not in sys.modules:
+        _stub(
+            "agent",
+            ABSTAIN_ANTWORT="Keine ausreichende Beleglage.",
+            beleglage_zu_schwach=lambda *a, **k: True,
+            llm=None,
+            prompt=None,
+            retriever=None,
+        )
+    if "convert" not in sys.modules:
+        _stub("convert", pdf_nach_markdown=lambda *a, **k: None)
+    import web.main as modul
+
+    return modul
+
+
+@pytest.fixture
+def dokumente_verzeichnis(tmp_path, monkeypatch, main):
+    monkeypatch.setattr(main, "DOKUMENTE", tmp_path)
+    main.NAMEN_IN_ARBEIT.clear()
+    AUFRUFE.clear()
+    return tmp_path
+
+
+@pytest.fixture
+def client(main, dokumente_verzeichnis):
+    return TestClient(main.app)
+
+
+def _lege_dokument_an(verzeichnis, stamm, titel):
+    (verzeichnis / f"{stamm}.md").write_text("Inhalt", encoding="utf-8")
+    (verzeichnis / f"{stamm}.source.json").write_text(
+        f'{{"titel": "{titel}"}}', encoding="utf-8"
+    )
+
+
+def test_loeschen_entfernt_dokument_und_ruft_rag_auf(client, dokumente_verzeichnis):
+    _lege_dokument_an(dokumente_verzeichnis, "a", "A")
+
+    antwort = client.delete("/documents/a.md")
+
+    assert antwort.status_code == 204
+    assert not (dokumente_verzeichnis / "a.md").exists()
+    assert not (dokumente_verzeichnis / "a.source.json").exists()
+    assert AUFRUFE == ["a.md"]
+    assert client.get("/documents").json() == []
+
+
+def test_traversal_landet_nicht_ausserhalb_des_dokumentverzeichnisses(
+    client, dokumente_verzeichnis, tmp_path
+):
+    ausserhalb = tmp_path.parent / "passwd.md"
+    ausserhalb.write_text("geheim", encoding="utf-8")
+
+    antwort = client.delete("/documents/..%2F..%2Fetc%2Fpasswd.md")
+
+    assert antwort.status_code == 404
+    assert ausserhalb.exists()
+    assert AUFRUFE == []
+
+
+def test_nicht_md_name_wird_abgelehnt(client, dokumente_verzeichnis):
+    (dokumente_verzeichnis / "fingerprint.json").write_text("{}", encoding="utf-8")
+
+    antwort = client.delete("/documents/fingerprint.json")
+
+    assert antwort.status_code == 400
+    assert (dokumente_verzeichnis / "fingerprint.json").exists()
+    assert AUFRUFE == []
+
+
+def test_bootstrap_marker_ist_nicht_loeschbar(client, dokumente_verzeichnis):
+    (dokumente_verzeichnis / ".bootstrap").write_text("", encoding="utf-8")
+
+    antwort = client.delete("/documents/.bootstrap")
+
+    assert antwort.status_code == 400
+    assert (dokumente_verzeichnis / ".bootstrap").exists()
+    assert AUFRUFE == []
+
+
+def test_unbekanntes_dokument_wird_mit_404_abgelehnt(client, dokumente_verzeichnis):
+    antwort = client.delete("/documents/unbekannt.md")
+
+    assert antwort.status_code == 404
+    assert AUFRUFE == []
+
+
+def test_loeschen_waehrend_laufender_indexierung_wird_abgelehnt(
+    client, dokumente_verzeichnis, main
+):
+    _lege_dokument_an(dokumente_verzeichnis, "a", "A")
+    main.NAMEN_IN_ARBEIT.add("anderes.pdf")
+
+    antwort = client.delete("/documents/a.md")
+
+    assert antwort.status_code == 409
+    assert (dokumente_verzeichnis / "a.md").exists()
+    assert AUFRUFE == []
+
+
+def test_dokument_liste_liefert_datei_und_titel(client, dokumente_verzeichnis):
+    _lege_dokument_an(dokumente_verzeichnis, "a", "A-Titel")
+    _lege_dokument_an(dokumente_verzeichnis, "b", "B-Titel")
+
+    antwort = client.get("/documents")
+
+    assert antwort.status_code == 200
+    assert antwort.json() == [
+        {"datei": "a.md", "titel": "A-Titel"},
+        {"datei": "b.md", "titel": "B-Titel"},
+    ]
