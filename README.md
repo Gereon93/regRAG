@@ -1,6 +1,8 @@
 # RegRAG
 
-Ein Compliance-RAG-Agent über **DORA** (Verordnung (EU) 2022/2554) und weitere selbst hochgeladene Regulatorik, der Fragen nur mit Quellenbeleg beantwortet — und ehrlich abbricht, wenn die Beleglage zu dünn ist, statt zu halluzinieren.
+Ein RAG-Agent, der beliebige PDFs (Verordnungen, Guidelines, Gesetzestexte, aber auch Lernmaterial oder Skripte) nach Markdown konvertiert und daraus einen belegpflichtigen Korpus macht: Fragen werden nur mit Quellenbeleg beantwortet — und der Agent bricht ehrlich ab, wenn die Beleglage zu dünn ist, statt zu halluzinieren. Das "Reg" im Namen meint diese Bindung an die Belege, nicht eine feste Domäne.
+
+Gestartet ist RegRAG als Compliance-RAG über **DORA** (Verordnung (EU) 2022/2554). DORA bleibt der mitgelieferte Grundkorpus, aber über Upload und Löschen ist das System längst allgemein: DORA lässt sich entfernen, andere Dokumente treten an seine Stelle, mit denselben Garantien ([ADR 0008](docs/adr/0008-korpus-agnostisch-dora-ist-nur-der-seed.md)).
 
 Gebaut, um RAG, LangGraph und LangChain praktisch zu verstehen. Kein Produktionssystem.
 
@@ -80,6 +82,12 @@ Das neue Dokument wird **inkrementell** in den bestehenden Chroma-Index gemerged
 
 Größenlimit: `REGRAG_UPLOAD_MAX_MB` (Default 25). **Keine urheberrechtlich geschützten Normtexte** (ISO, DIN) hochladen — die UI weist darauf hin.
 
+Dokumente lassen sich über die Liste unter dem Chat auch wieder entfernen — inklusive DORA.
+Der Korpus ist austauschbar; DORA ist nur der Seed, der beim ersten Start eines frischen
+`docs_md`-Volumes angelegt wird (siehe [ADR 0008](docs/adr/0008-korpus-agnostisch-dora-ist-nur-der-seed.md)).
+Entfernte Dokumente bleiben entfernt, auch über `docker compose restart`. `docker compose down -v`
+verwirft das Volume und legt den DORA-Grundkorpus neu an.
+
 ## Docker
 
 Voraussetzung: das DORA-PDF liegt lokal unter `docs/CELEX_32022R2554_DE_TXT.pdf` (siehe [DORA-Rechtstext beschaffen](#dora-rechtstext-beschaffen)).
@@ -134,6 +142,7 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 - [0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md) — Guard kalibriert, Abstain als bedingte Kante
 - [0006](docs/adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md) — Inkrementeller Index-Merge statt Voll-Rebuild
 - [0007](docs/adr/0007-sprachgrenze-im-code.md) — Sprachgrenze im Code: Domäne deutsch, Technik englisch
+- [0008](docs/adr/0008-korpus-agnostisch-dora-ist-nur-der-seed.md) — Korpus-agnostisch: DORA ist nur der Seed
 
 ## Gemessen
 
