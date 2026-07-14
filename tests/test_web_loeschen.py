@@ -80,15 +80,31 @@ def test_loeschen_entfernt_dokument_und_ruft_rag_auf(client, dokumente_verzeichn
     assert client.get("/documents").json() == []
 
 
-def test_traversal_landet_nicht_ausserhalb_des_dokumentverzeichnisses(
+def test_traversal_mit_slashes_wird_von_routing_abgewiesen(
     client, dokumente_verzeichnis, tmp_path
 ):
+    """URL-codierte Slashes (%2F) werden vom Routing abgewiesen, bevor die App-Logik lädt."""
     ausserhalb = tmp_path.parent / "passwd.md"
     ausserhalb.write_text("geheim", encoding="utf-8")
 
     antwort = client.delete("/documents/..%2F..%2Fetc%2Fpasswd.md")
 
     assert antwort.status_code == 404
+    assert ausserhalb.exists()
+    assert AUFRUFE == []
+
+
+def test_traversal_mit_backslashes_wird_von_saeubere_md_name_blockiert(
+    client, dokumente_verzeichnis, tmp_path
+):
+    """URL-codierte Backslashes (%5C) passieren das Routing und treffen saeubere_md_name."""
+    ausserhalb = tmp_path.parent / "passwd.md"
+    ausserhalb.write_text("geheim", encoding="utf-8")
+
+    antwort = client.delete("/documents/..%5C..%5Cetc%5Cpasswd.md")
+
+    assert antwort.status_code == 404
+    assert antwort.json()["detail"] == "Dokument nicht gefunden."
     assert ausserhalb.exists()
     assert AUFRUFE == []
 
