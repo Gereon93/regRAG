@@ -6,14 +6,30 @@ on:
 jobs:
   opencode-review:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: write
+    env:
+      REVIEW_ENABLED: ${{ secrets.OPENCODE_API_KEY != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Review (alibaba open-code-review gegen opencode Zen)
+        if: env.REVIEW_ENABLED == 'true'
+        uses: alibaba/open-code-review@v1.7.10
         with:
-          fetch-depth: 0
-      - uses: Gereon93/opencode-review-action@main
-        with:
-          opencode-api-key: ${{ secrets.OPENCODE_API_KEY }}
+          llm_url: https://opencode.ai/zen/go/v1/chat/completions
+          llm_auth_token: ${{ secrets.OPENCODE_API_KEY }}
+          llm_model: qwen3.7-plus
+          llm_use_anthropic: 'false'
+          background: ${{ github.event.pull_request.title }}
+      - name: Severity-Gate — failt ab high
+        if: env.REVIEW_ENABLED == 'true'
+        shell: bash
+        run: |
+          test -f /tmp/ocr-result.json || { echo "kein Result-JSON — Gate uebersprungen"; exit 0; }
+          BLOCKING=$(jq '[.comments[] | select(.severity == "critical" or .severity == "high")] | length' /tmp/ocr-result.json)
+          echo "Blockierende Findings (critical/high): $BLOCKING"
+          test "$BLOCKING" -eq 0
+      - name: Reviewer deaktiviert (kein OPENCODE_API_KEY)
+        if: env.REVIEW_ENABLED != 'true'
+        run: echo "OPENCODE_API_KEY nicht gesetzt — Review uebersprungen."
