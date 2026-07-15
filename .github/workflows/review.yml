@@ -3,6 +3,10 @@ name: review
 on:
   pull_request:
 
+concurrency:
+  group: review-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   opencode-review:
     runs-on: ubuntu-latest
@@ -15,7 +19,7 @@ jobs:
     steps:
       - name: Review (alibaba open-code-review gegen opencode Zen)
         if: env.REVIEW_ENABLED == 'true'
-        uses: alibaba/open-code-review@v1.7.10
+        uses: alibaba/open-code-review@9a83097ed97f5ab75bdfea514488e1c133177b20 # v1.7.10
         with:
           llm_url: https://opencode.ai/zen/go/v1/chat/completions
           llm_auth_token: ${{ secrets.OPENCODE_API_KEY }}
