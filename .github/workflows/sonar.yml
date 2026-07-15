@@ -1,0 +1,23 @@
+name: sonar
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  sonar-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: SonarQube-Analyse (No-Op ohne SONAR_HOST_URL)
+        if: env.SONAR_HOST_URL != ''
+        uses: SonarSource/sonarqube-scan-action@v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

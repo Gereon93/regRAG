@@ -1,0 +1,19 @@
+name: review
+
+on:
+  pull_request:
+
+jobs:
+  opencode-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Gereon93/opencode-review-action@main
+        with:
+          opencode-api-key: ${{ secrets.OPENCODE_API_KEY }}
