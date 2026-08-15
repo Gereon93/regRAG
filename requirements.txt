@@ -8,6 +8,7 @@ langchain-openai
 deepeval
 chromadb
 pymupdf4llm
+pypdf
 fastapi
 python-multipart
 uvicorn[standard]

@@ -5,8 +5,11 @@ __pycache__/
 .DS_Store
 
 docs_md/
+docs_md_pypdf/
 storage/
 chroma/
+chroma_pypdf/
+.pypdf_lib/
 
 .deepeval/
 .deepeval_telemetry.txt
