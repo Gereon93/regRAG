@@ -131,7 +131,7 @@ python -m evaluation.run             # Guard-Entscheidungen (14/14) + Faithfulne
 python -m evaluation.baseline_pypdf  # zweiter Korpus: naive pypdf-Extraktion zum Vergleich
 ```
 
-Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Faithfulness (`deepeval`, Judge über `with_structured_output`) ist über die 8 beantworteten Fälle **gemessen: Ø 0.93** (Spanne 0.71–1.00, fünfmal 1.00). Der schwächste Fall ist TLPT (0.71) — die Antwort trägt dort Aussagen, die die drei abgerufenen Chunks nicht vollständig decken.
+Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Faithfulness (`deepeval`, Judge über `with_structured_output`) ist über die 8 beantworteten Fälle **gemessen: Ø 0.93** (Spanne 0.71–1.00, fünfmal 1.00). Die Einzelwerte je Fall, das verwendete Prüfmodell und die Herkunft des Laufs stehen in [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md#faithfulness-lokaler-judge-verworfen-gehosteter-judge-gemessen). Der schwächste Fall ist TLPT (0.71) — die Antwort trägt dort Aussagen, die die drei abgerufenen Chunks nicht vollständig decken.
 
 Der Judge läuft getrennt vom Antwortmodell: Die App generiert lokal (LM Studio), nur die Bewertung geht an einen gehosteten OpenAI-kompatiblen Endpunkt. Ein lokaler Judge ist auf dem M4 nicht praktikabel — schema-gebundene Extraktion über dichte Rechtstexte reißt die Timeouts ([ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md)).
 
@@ -174,6 +174,21 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 | Trennlücke Markdown vs. naive pypdf-Extraktion (min. beantwortbar − max. themenfremd) | 0.085 vs. 0.053 (1.6×, beide 14/14) |
 | Faithfulness der 8 beantworteten Fälle (Judge: `openai/gpt-5.4-mini`) | Ø 0.93 (0.71–1.00) |
 | Antwortlatenz lokal (gemma-4-12b, ~5k Prompt-Tokens) | 1–3 min |
+
+### Wo diese Zahlen herkommen
+
+Jede Zahl oben ist mit einem Kommando reproduzierbar; die Rohwerte liegen im jeweiligen ADR.
+
+| Zahl | erzeugt durch | Einzelwerte / Messaufbau in |
+|---|---|---|
+| Scores, Trennlücke, Schwellwert, 14/14 | `python -m evaluation.calibrate` | [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md) |
+| Faithfulness Ø 0.93 | `python -m evaluation.run` (gehosteter Judge) | [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md#faithfulness-lokaler-judge-verworfen-gehosteter-judge-gemessen) — alle 8 Fälle einzeln, Judge `openai/gpt-5.4-mini`, Lauf aus [#13](../../pull/13) |
+| Markdown vs. pypdf | `python -m evaluation.baseline_pypdf` + zwei `calibrate`-Läufe | [ADR 0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md#gemessen) |
+| Warum `exp(-Distanz)` und nicht Cosine | — | [ADR 0003](docs/adr/0003-persistenter-chroma-index-mit-cosine.md) |
+| Kalt-/Warmstart, Upload-Dauer | Laufzeitmessung lokal und im Container | README (diese Tabelle) |
+
+Faithfulness ist eine **judge-relative** Größe: ein anderes Prüfmodell verschiebt die Zahl. Deshalb
+nennt ADR 0005 das Modell mit, statt nur den Mittelwert zu behaupten.
 
 Der Score ist `exp(-Distanz)`, nicht rohe Cosine-Similarity — nur innerhalb dieser Transformation interpretierbar (ADR 0003). Der Vergleich gegen naives PDF-Parsing ist inzwischen gemessen, nicht mehr nur plausibel: die Markdown-Konvertierung hebt die beantwortbaren Fragen um Ø 0.046 und verbreitert die Trennlücke von 0.053 auf 0.085. Der Befund ist ehrlicher als erhofft — die pypdf-Variante trennt das Eval-Set **ebenfalls 14/14**; gewonnen wird Sicherheitsabstand, kein Funktionieren-statt-Scheitern ([ADR 0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md)). Noch offen: Grenzfälle nahe der Schwelle (Finanzregulatorik außerhalb DORA) und ob die zerrissenen pypdf-Chunks die Faithfulness senken.
 
