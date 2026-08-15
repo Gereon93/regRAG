@@ -81,6 +81,12 @@ Index unverändert) ergibt über die 8 beantwortbaren Fälle:
 | Bedrohungsgeleitete Penetrationstests | 0.71 |
 | **Ø** | **0.93** |
 
+Herkunft des Laufs: `python -m evaluation.run` gegen den bestehenden Chroma-Index, Exit 0,
+dokumentiert in [#13](../../../../pull/13) (2026-07-13). Nachrechenbar: Summe 7.45 über 8 Fälle,
+Ø 0.9313, gerundet 0.93. Wer die Zahl neu erheben will, braucht denselben Aufbau — lokale
+Generierung, gehosteter Judge über die vier `REGRAG_JUDGE_*`-Variablen; ein anderer Judge
+liefert eine andere Zahl (siehe "Offen").
+
 Kein Fall wurde fälschlich verweigert; alle 8 liefen durch den `answer`-Pfad. Damit ist das
 Akzeptanzkriterium aus #2 erfüllt: Off-Topic-Fragen verweigern reproduzierbar (14/14), und
 die Treue der beantworteten Fälle ist gemessen statt behauptet.
