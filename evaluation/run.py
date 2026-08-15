@@ -1,7 +1,7 @@
 from deepeval.metrics import FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
 
-from agent import app, beleglage_zu_schwach, retriever, ABSTAIN_ANTWORT
+from agent import ABSTAIN_ANTWORT, app, beleglage_zu_schwach, retriever
 from evaluation.dataset import FAELLE
 from evaluation.judge import JudgeLLM
 

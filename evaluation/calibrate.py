@@ -1,5 +1,7 @@
-from rag import index
+from itertools import pairwise
+
 from evaluation.dataset import FAELLE
+from rag import index
 
 retriever = index.as_retriever(similarity_top_k=3)
 
@@ -15,7 +17,7 @@ def top_scores():
 
 def bester_schwellwert(zeilen):
     werte = sorted({z["top"] for z in zeilen})
-    kandidaten = [(a + b) / 2 for a, b in zip(werte, werte[1:])]
+    kandidaten = [(a + b) / 2 for a, b in pairwise(werte)]
     bestes = (0.0, -1)
     for schwelle in kandidaten:
         korrekt = sum(

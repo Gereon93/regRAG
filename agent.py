@@ -1,4 +1,4 @@
-from typing import List, TypedDict
+from typing import TypedDict
 
 import openai
 from langchain_core.prompts import ChatPromptTemplate
@@ -24,7 +24,7 @@ prompt = ChatPromptTemplate.from_messages([
 
 class S(TypedDict):
     frage: str
-    nodes: List
+    nodes: list
     antwort: str
 
 
