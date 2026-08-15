@@ -35,9 +35,10 @@ def pdf_nach_markdown(pdf_pfad, ausgabe=AUSGABE):
 if __name__ == "__main__":
     if not PDF.exists():
         raise FileNotFoundError(
-            f"{PDF} nicht gefunden. DORA-PDF von "
-            "https://eur-lex.europa.eu/legal-content/DE/TXT/PDF/?uri=CELEX:32022R2554 "
-            "herunterladen und nach docs/CELEX_32022R2554_DE_TXT.pdf speichern."
+            f"{PDF} nicht gefunden. DORA-PDF (CELEX 32022R2554, deutsche Fassung) holen: "
+            "curl -L -H 'Accept: application/pdf' -H 'Accept-Language: deu' "
+            "-o docs/CELEX_32022R2554_DE_TXT.pdf "
+            "http://publications.europa.eu/resource/celex/32022R2554 -- siehe README."
         )
     pfad = pdf_nach_markdown(PDF)
     print("Titel:", dokument_titel(PDF, PDF.stem))
