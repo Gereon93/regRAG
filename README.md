@@ -41,11 +41,22 @@ LM Studio starten, ein Chat- und optional ein Embedding-Modell laden. Endpoint u
 
 ### DORA-Rechtstext beschaffen
 
-Der DORA-Text wird nicht im Repository mitgeliefert. Er ist auf EUR-Lex frei verfügbar:
+Der DORA-Text wird nicht im Repository mitgeliefert; er ist beim EU-Amt für Veröffentlichungen frei verfügbar.
 
-1. PDF herunterladen: https://eur-lex.europa.eu/legal-content/DE/TXT/PDF/?uri=CELEX:32022R2554
-2. Nach `docs/CELEX_32022R2554_DE_TXT.pdf` speichern.
-3. `python convert.py` ausführen — das erzeugt `docs_md/CELEX_32022R2554_DE_TXT.md` und die `.source.json`.
+Maßgeblich ist die Dokument-ID, nicht die URL: **CELEX 32022R2554**, deutsche Sprachfassung,
+79 Seiten. Über die CELLAR-Schnittstelle des Amts für Veröffentlichungen ist genau dieses
+Dokument skriptbar abrufbar — die EUR-Lex-Weboberfläche antwortet auf `curl` mit einem
+Bot-Schutz (HTTP 202, leerer Body) und eignet sich nur für den Download per Browser.
+
+```bash
+curl -L -H "Accept: application/pdf" -H "Accept-Language: deu" \
+  -o docs/CELEX_32022R2554_DE_TXT.pdf \
+  http://publications.europa.eu/resource/celex/32022R2554
+python convert.py   # erzeugt docs_md/CELEX_32022R2554_DE_TXT.md und die .source.json
+```
+
+Im Browser geht auch [EUR-Lex direkt](https://eur-lex.europa.eu/legal-content/DE/TXT/PDF/?uri=CELEX:32022R2554);
+die Datei muss dann nach `docs/CELEX_32022R2554_DE_TXT.pdf` gelegt werden.
 
 Damit ist die Quelle nachvollziehbar reproduzierbar. Wiederverwendung gemäß Beschluss 2011/833/EU.
 
@@ -115,8 +126,9 @@ Zwei Volumes: `chroma` trägt die Vektoren, `docs_md` den Korpus. Beide zusammen
 ## Evaluation
 
 ```bash
-python -m evaluation.calibrate   # misst Score-Trennung, schlägt Schwellwert vor
-python -m evaluation.run         # Guard-Entscheidungen (14/14) + Faithfulness
+python -m evaluation.calibrate       # misst Score-Trennung, schlägt Schwellwert vor
+python -m evaluation.run             # Guard-Entscheidungen (14/14) + Faithfulness
+python -m evaluation.baseline_pypdf  # zweiter Korpus: naive pypdf-Extraktion zum Vergleich
 ```
 
 Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Faithfulness (`deepeval`, Judge über `with_structured_output`) ist über die 8 beantworteten Fälle **gemessen: Ø 0.93** (Spanne 0.71–1.00, fünfmal 1.00). Der schwächste Fall ist TLPT (0.71) — die Antwort trägt dort Aussagen, die die drei abgerufenen Chunks nicht vollständig decken.
@@ -138,7 +150,7 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 
 ## Entscheidungen (ADRs)
 
-- [0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md) — PDF nach Markdown, statt das PDF direkt zu indexieren
+- [0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md) — PDF nach Markdown, statt das PDF direkt zu indexieren (Vergleichslauf gemessen)
 - [0002](docs/adr/0002-abstain-statt-raten.md) — Verweigern statt raten
 - [0003](docs/adr/0003-persistenter-chroma-index-mit-cosine.md) — Persistenter Chroma-Index, erzwungen auf Cosine
 - [0004](docs/adr/0004-rollenteilung-llamaindex-langchain-langgraph.md) — Rollenteilung der drei Frameworks (LangGraph-Schuld eingelöst)
@@ -159,13 +171,20 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 | Score themenfremder Fragen | 0.48–0.57 |
 | `MIN_RETRIEVAL_SCORE` (Lückenmitte) | 0.62 |
 | Guard-Trennung über das Eval-Set | 14/14 |
+| Trennlücke Markdown vs. naive pypdf-Extraktion (min. beantwortbar − max. themenfremd) | 0.085 vs. 0.053 (1.6×, beide 14/14) |
 | Faithfulness der 8 beantworteten Fälle (Judge: `openai/gpt-5.4-mini`) | Ø 0.93 (0.71–1.00) |
 | Antwortlatenz lokal (gemma-4-12b, ~5k Prompt-Tokens) | 1–3 min |
 
-Der Score ist `exp(-Distanz)`, nicht rohe Cosine-Similarity — nur innerhalb dieser Transformation interpretierbar (ADR 0003). Noch offen: Grenzfälle nahe der Schwelle (Finanzregulatorik außerhalb DORA) und die Qualität gegenüber naivem PDF-Parsing.
+Der Score ist `exp(-Distanz)`, nicht rohe Cosine-Similarity — nur innerhalb dieser Transformation interpretierbar (ADR 0003). Der Vergleich gegen naives PDF-Parsing ist inzwischen gemessen, nicht mehr nur plausibel: die Markdown-Konvertierung hebt die beantwortbaren Fragen um Ø 0.046 und verbreitert die Trennlücke von 0.053 auf 0.085. Der Befund ist ehrlicher als erhofft — die pypdf-Variante trennt das Eval-Set **ebenfalls 14/14**; gewonnen wird Sicherheitsabstand, kein Funktionieren-statt-Scheitern ([ADR 0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md)). Noch offen: Grenzfälle nahe der Schwelle (Finanzregulatorik außerhalb DORA) und ob die zerrissenen pypdf-Chunks die Faithfulness senken.
 
 ## Quellen
 
 DORA-Text: EUR-Lex, CELEX 32022R2554. Wiederverwendung gemäß Beschluss 2011/833/EU.
 ISO- und DIN-Normtexte sind urheberrechtlich geschützt und werden bewusst nicht eingebettet — auch nicht über den Upload.
 Hochgeladene Dokumente verlassen den Rechner nicht: das Embedding läuft im Prozess, nur die Frage und die gefundenen Chunks gehen an das Generierungsmodell.
+
+## Lizenz
+
+Code: MIT ([LICENSE](LICENSE)).
+Der DORA-Text liegt nicht im Repo; seine Wiederverwendung richtet sich nach
+Beschluss 2011/833/EU, nicht nach MIT.
