@@ -5,6 +5,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -64,7 +65,7 @@ async def _antwort_strom(frage):
         ):
             if chunk.content:
                 yield _sse({"type": "token", "text": chunk.content})
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - jeder LLM-Fehler wird als SSE-Event gemeldet, der Stream bricht nie hart ab
         yield _sse({"type": "error", "text": f"LLM-Fehler ({type(e).__name__}) — bitte erneut versuchen."})
 
     yield _sse({"type": "sources", "quellen": quellen})
@@ -94,7 +95,7 @@ def _indexiere(job_id, daten, dateiname):
             md_pfad = pdf_nach_markdown(pdf, DOKUMENTE)
         rag.indexiere(md_pfad)
         job["status"] = "ready"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Hintergrund-Job: jeder Fehler landet im Job-Status statt im Nichts
         with suppress(Exception):
             rag.loesche_nodes(f"{Path(dateiname).stem}.md")
         _entferne_fragmente(md_pfad)
@@ -114,7 +115,7 @@ async def _lies_begrenzt(datei):
 
 
 @app.post("/upload", status_code=202)
-async def upload(datei: UploadFile = File(...)):
+async def upload(datei: Annotated[UploadFile, File()]):
     try:
         name = dokumente.saeubere_dateiname(datei.filename or "")
         inhalt = await _lies_begrenzt(datei)

@@ -31,19 +31,19 @@ def main():
     schweren Module lädt — unabhängig davon, ob vorher schon etwas den echten `rag`
     importiert hat. Macht die Stubs danach wieder rückgängig."""
     stubs = {
-        "rag": dict(
-            loesche_dokument=_fake_loesche_dokument,
-            loesche_nodes=lambda *a, **k: None,
-            indexiere=lambda *a, **k: None,
-        ),
-        "agent": dict(
-            ABSTAIN_ANTWORT="Keine ausreichende Beleglage.",
-            beleglage_zu_schwach=lambda *a, **k: True,
-            llm=None,
-            prompt=None,
-            retriever=None,
-        ),
-        "convert": dict(pdf_nach_markdown=lambda *a, **k: None),
+        "rag": {
+            "loesche_dokument": _fake_loesche_dokument,
+            "loesche_nodes": lambda *a, **k: None,
+            "indexiere": lambda *a, **k: None,
+        },
+        "agent": {
+            "ABSTAIN_ANTWORT": "Keine ausreichende Beleglage.",
+            "beleglage_zu_schwach": lambda *a, **k: True,
+            "llm": None,
+            "prompt": None,
+            "retriever": None,
+        },
+        "convert": {"pdf_nach_markdown": lambda *a, **k: None},
     }
     alte_module = {name: sys.modules.get(name) for name in stubs}
     for name, attrs in stubs.items():
