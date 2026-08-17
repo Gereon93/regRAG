@@ -32,4 +32,8 @@ jobs:
       # sehen, dann scharf schalten. Faellt weg, sobald die Baseline steht.
       - name: Qodana Scan
         uses: JetBrains/qodana-action@v2026.1
+        with:
+          # Ohne Cloud-Token ist das der einzige Weg an die Fundstellen:
+          # SARIF und HTML-Report landen als Artefakt am Workflow-Lauf.
+          upload-result: true
         continue-on-error: true
