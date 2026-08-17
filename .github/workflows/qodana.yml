@@ -2,8 +2,13 @@ name: Qodana
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # Kein Lauf auf jeden main-Push: das waere ein zweiter Scan je PR ohne Abnehmer.
+  # Ohne Qodana-Cloud-Anbindung gibt es kein Dashboard, das den Vollscan empfaengt,
+  # und main deckt ohnehin SonarQube ab. Der woechentliche Lauf liefert trotzdem
+  # eine Gesamtsicht, falls sie gebraucht wird.
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
 
 concurrency:
   group: qodana-${{ github.ref }}
