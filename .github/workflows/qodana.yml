@@ -1,0 +1,35 @@
+name: Qodana
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: qodana-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qodana:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Den echten PR-Commit pruefen, nicht den Merge-Commit; volle Historie,
+          # weil Qodana den Diff gegen den Zielbranch braucht.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      # Kein QODANA_TOKEN: das laedt nur nach Qodana Cloud hoch und ist optional.
+      # Ein ungueltiges Token laesst den Scan hart fehlschlagen -- genau das ist in
+      # alpha-60 und erebor passiert. Funde kommen als PR-Annotation und Artefakt.
+      #
+      # continue-on-error ist Absicht fuer den ersten Rollout: erst Fundzahlen
+      # sehen, dann scharf schalten. Faellt weg, sobald die Baseline steht.
+      - name: Qodana Scan
+        uses: JetBrains/qodana-action@v2026.1
+        continue-on-error: true
