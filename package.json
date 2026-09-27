@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "engines": {
+    "node": "^22.22.0 || >=24.8.0"
+  },
+  "scripts": {
+    "check:a11y": "html-validate web/static/index.html"
+  },
+  "devDependencies": {
+    "html-validate": "11.16.1"
+  }
+}

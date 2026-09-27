@@ -79,6 +79,22 @@ uvicorn web.main:app --reload      # http://localhost:8000
 
 Chat-Seite mit token-für-token-Streaming (SSE). Jede Antwort nennt ihre Fundstellen mit Score; bei zu dünner Beleglage erscheint der Abstain-Zustand sichtbar statt einer erfundenen Antwort. `POST /chat` ist auch ohne UI nutzbar.
 
+### Lokaler Accessibility-Pre-Commit-Check
+
+Der Pre-Commit-Hook prüft die echte `web/static/index.html` mit dem offline laufenden
+`html-validate`-HTML- und WCAG-Regelwerk (u. a. Bild-Alt-Texte und Formularlabels).
+Das ist eine statische Prüfung, kein axe-core-/Browserlauf. Benötigt Node.js 22.22.x
+oder 24.8+ sowie npm; es lädt keine Embedding- oder LLM-Modelle.
+
+```bash
+npm ci
+python -m pip install pre-commit
+pre-commit install
+```
+
+Für einen manuellen Lauf: `npm run check:a11y`.
+
+
 ### Eigene Dokumente hochladen
 
 Über die Seite lässt sich eine weitere PDF hinzufügen (z. B. MaRisk, EBA-Guidelines, NIS2). Der Upload nimmt an und gibt eine Job-ID zurück; die Indexierung läuft im Hintergrund, weil Embedding Minuten dauert und den Request nicht blockieren darf. Die Statuszeile meldet, sobald das Dokument durchsuchbar ist — sonst stellt man eine Frage, bekommt Abstain und hält das System für kaputt.
