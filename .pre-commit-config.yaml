@@ -3,6 +3,7 @@ repos:
     hooks:
       - id: web-accessibility
         name: Check web UI accessibility
-        entry: npm run check:a11y --
+        entry: npm run check:a11y
         language: system
+        pass_filenames: false
         files: ^web/static/.*\.html$

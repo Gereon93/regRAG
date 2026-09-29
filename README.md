@@ -92,7 +92,8 @@ python -m pip install pre-commit
 pre-commit install
 ```
 
-Für einen manuellen Lauf: `npm run check:a11y`.
+Für einen manuellen Lauf: `npm run check:a11y`. Dabei werden auch positive und negative
+Validator-Fixtures für Formularlabels und Bild-Alt-Texte ausgeführt.
 
 
 ### Eigene Dokumente hochladen
