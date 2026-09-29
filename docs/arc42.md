@@ -255,10 +255,13 @@ Aussage, kein Zufall — [ADR 0007](adr/0007-sprachgrenze-im-code.md).
 gemessen wurde. Nicht Gemessenes wird als „offen" markiert, nicht weggelassen. Ein Score ist nur
 innerhalb seiner Distanzmetrik interpretierbar (ADR 0003).
 
-**Testbarkeit als Schnittkriterium.** Die CI installiert nur `ruff` und `pytest` — keine
-Modellgewichte, kein Torch. Also liegt die prüfbare Logik in `dokumente.py`, das nichts
+**Testbarkeit als Schnittkriterium.** Die Python-CI prüft mit `ruff` und `pytest` — ohne
+Modellgewichte und Torch. Also liegt die prüfbare Logik in `dokumente.py`, das nichts
 Schweres importiert. Was Embeddings oder LLM braucht, wird gegen den Container geprüft, nicht
-in der CI simuliert.
+in der CI simuliert. Ergänzend prüft der lokale Pre-Commit-Hook mit dem gepinnten
+Node-Werkzeug `html-validate` die echte `web/static/index.html` auf HTML-Struktur,
+Bild-Alt-Texte und Formularlabels. Dieser Stufe-1-Check läuft nicht in der CI und ersetzt
+keinen Browserlauf für Kontraste, Fokusführung oder responsive Layouts.
 
 **Ein Indexierungspfad.** Start und Upload rufen dieselbe Funktion (`rag.indexiere`). Zwei
 Pfade würden garantiert auseinanderlaufen — einer davon still.

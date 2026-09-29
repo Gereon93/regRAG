@@ -167,8 +167,11 @@
     gap: 10px;
     border-top: 1px solid var(--rule);
   }
+  .frage-label { align-self: center; font-family: var(--mono); font-size: 12px; }
+
   input[type=text] {
     flex: 1;
+    min-width: 0;
     background: var(--paper-2);
     border: 1px solid var(--rule);
     border-radius: 4px;
@@ -288,6 +291,7 @@
     </div>
   </section>
   <form id="form">
+    <label class="frage-label" for="frage">Frage</label>
     <input type="text" id="frage" placeholder="Welche Anforderungen stellt DORA an das IKT-Risikomanagement?" autocomplete="off">
     <button type="submit" id="senden">Fragen</button>
   </form>

@@ -1,0 +1,7 @@
+{
+  "extends": ["html-validate:standard"],
+  "rules": {
+    "wcag/h37": "error",
+    "input-missing-label": "error"
+  }
+}
