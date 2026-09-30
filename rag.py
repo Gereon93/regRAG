@@ -14,6 +14,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 
 import config
 import dokumente
+import embedding
 
 DISTANZMETRIK_WIE_IN_MEMORY = {"hnsw:space": "cosine"}  # docs/adr/0003
 METRIK = DISTANZMETRIK_WIE_IN_MEMORY["hnsw:space"]
@@ -25,9 +26,7 @@ _collection = None
 
 
 def _embed_model():
-    from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-
-    Settings.embed_model = HuggingFaceEmbedding(model_name=config.EMBEDDING_MODELL)
+    Settings.embed_model = embedding.create_embed_model()
 
 
 def _md_dateien():
