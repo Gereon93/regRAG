@@ -10,6 +10,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('BAAI/bge-m3')"
+ENV LLAMA_INDEX_CACHE_DIR=/opt/hf/hub \
+    HF_HUB_OFFLINE=1
 
 COPY . .
 RUN chmod +x entrypoint.sh

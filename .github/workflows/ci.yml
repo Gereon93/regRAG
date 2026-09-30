@@ -20,7 +20,7 @@ jobs:
         run: ruff check .
 
       - name: Syntax
-        run: python -m compileall -q agent.py config.py convert.py rag.py evaluation web
+        run: python -m compileall -q agent.py config.py convert.py embedding.py rag.py evaluation web
 
       - name: Tests
         run: python -m pytest -q tests

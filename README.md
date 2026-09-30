@@ -127,7 +127,7 @@ Container trotzdem — mit leerem Korpus und einem Hinweis dazu auf stdout ([ADR
 docker compose up --build
 ```
 
-Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht per Default über `host.docker.internal:1234` das LM Studio auf dem Host an — das funktioniert auf **macOS**. Für Linux/Cloud, wo eine Mac-Desktop-App nicht erreichbar ist, zeigt man `REGRAG_LLM_BASE_URL` auf einen gehosteten Worker (OpenRouter) oder einen headless lokalen Server; siehe `env.example` und [arc42 Kap. 7](docs/arc42.md).
+Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht per Default über `host.docker.internal:1234` das LM Studio auf dem Host an — das funktioniert auf **macOS**. Für Linux/Cloud, wo eine Mac-Desktop-App nicht erreichbar ist, zeigt man `REGRAG_LLM_BASE_URL` auf einen gehosteten Worker (OpenRouter) oder einen headless lokalen Server; siehe `env.example` und [arc42 Kap. 7](docs/arc42.md). Für CPU-Embeddings setzt Compose `OMP_NUM_THREADS=8` als Default; Messung und Override sind in [ADR 0009](docs/adr/0009-query-embedding-cpu-mps.md) dokumentiert.
 
 Zwei Volumes: `chroma` trägt die Vektoren, `docs_md` den Korpus. Beide zusammen lassen hochgeladene Dokumente einen `docker compose restart` überleben — gemessen: Kaltstart 360 s, Neustart 31 s ohne erneutes Embedden.
 
@@ -175,6 +175,7 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 - [0006](docs/adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md) — Inkrementeller Index-Merge statt Voll-Rebuild
 - [0007](docs/adr/0007-sprachgrenze-im-code.md) — Sprachgrenze im Code: Domäne deutsch, Technik englisch
 - [0008](docs/adr/0008-korpus-agnostisch-dora-ist-nur-der-seed.md) — Korpus-agnostisch: DORA ist nur der Seed
+- [0009](docs/adr/0009-query-embedding-cpu-mps.md) — Query-Embedding im CPU-Container: Latenz und Threadzahl gemessen
 
 ## Gemessen
 
@@ -184,6 +185,9 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 | Warmstart (Index laden) | 12.2 s lokal, 31 s im Container (DORA + NIS2) |
 | Upload eines zweiten Dokuments (NIS2, 1.3 MB) bis `ready` | ~250 s — nur das neue Dokument wird embeddet |
 | Retrieval (`similarity_top_k=3`) | 0.5 s |
+| Query-Embedding (CPU, 10 Threads, Median/p95; zwei Läufe) | 226–241 ms / 581–670 ms |
+| Query-Embedding (CPU, `OMP_NUM_THREADS=8`, Median/p95; zwei Läufe) | 179–180 ms / 507–535 ms |
+| Query-Embedding (lokal auf M4, MPS, Median/p95) | 28 ms / 53 ms |
 | Score beantwortbarer DORA-Fragen | 0.67–0.78 |
 | Score themenfremder Fragen | 0.48–0.57 |
 | `MIN_RETRIEVAL_SCORE` (Lückenmitte) | 0.62 |
@@ -203,6 +207,7 @@ Jede Zahl oben ist mit einem Kommando reproduzierbar; die Rohwerte liegen im jew
 | Markdown vs. pypdf | `python -m evaluation.baseline_pypdf` + zwei `calibrate`-Läufe | [ADR 0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md#gemessen) |
 | Warum `exp(-Distanz)` und nicht Cosine | — | [ADR 0003](docs/adr/0003-persistenter-chroma-index-mit-cosine.md) |
 | Kalt-/Warmstart, Upload-Dauer | Laufzeitmessung lokal und im Container | README (diese Tabelle) |
+| Query-Embedding CPU/MPS | `python -m evaluation.embedding_latency` | [ADR 0009](docs/adr/0009-query-embedding-cpu-mps.md) — Rohwerte und Messaufbau |
 
 Faithfulness ist eine **judge-relative** Größe: ein anderes Prüfmodell verschiebt die Zahl. Deshalb
 nennt ADR 0005 das Modell mit, statt nur den Mittelwert zu behaupten.
