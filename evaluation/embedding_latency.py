@@ -7,13 +7,16 @@ import statistics
 import time
 from pathlib import Path
 
-import torch
-
 from embedding import create_embed_model
 from evaluation.dataset import ANTWORTBAR
 
 
+def nearest_rank_p95(sorted_values):
+    return sorted_values[math.ceil(len(sorted_values) * 0.95) - 1]
+
+
 def messen(device, threads, warmup, repetitions):
+    import torch
     if threads is not None:
         torch.set_num_threads(threads)
     load_start = time.perf_counter()
@@ -66,7 +69,7 @@ def messen(device, threads, warmup, repetitions):
         "samples": samples,
         "summary_seconds": {
             "median": statistics.median(values),
-            "p95": values[min(len(values) - 1, int(len(values) * 0.95))],
+            "p95": nearest_rank_p95(values),
             "min": values[0],
             "max": values[-1],
         },

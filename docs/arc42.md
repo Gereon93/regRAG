@@ -231,6 +231,9 @@ den Korpus. Ohne `docs_md` überlebt ein hochgeladenes Dokument den Neustart nic
 hätte Nodes, deren Quelltext fehlt, und der Fingerprint-Diff würde sie beim nächsten Start
 wieder löschen.
 
+CPU-Query-Embeddings nutzen standardmäßig `OMP_NUM_THREADS=8` (über Compose überschreibbar);
+Messung siehe [ADR 0009](adr/0009-query-embedding-cpu-mps.md).
+
 **LM Studio als Mac-Desktop-App ist aus dem Container nur über `host.docker.internal`
 erreichbar** — das funktioniert auf macOS, nicht auf einem Linux-Server. Der Container braucht
 lediglich *irgendeinen* erreichbaren OpenAI-kompatiblen Endpunkt: headless lokaler Server

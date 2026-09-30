@@ -4,15 +4,15 @@ Status: akzeptiert (2026-09-30)
 
 ## Kontext und Messung
 
-Jede Anfrage embeddet ihre Frage mit `BAAI/bge-m3` (1024 Dimensionen). Gemessen wurden dieselben acht DORA-Fragen aus `evaluation.dataset.ANTWORTBAR` plus eine synthetische, achtfach längere Frage; je Frage fünf Warm-ups und 20 Zeitmessungen. Die Tabelle fasst 180 Query-Aufrufe pro Lauf zusammen; Modellladen ist separat erfasst und nicht in der Query-Latenz enthalten. Das lokale M4-System hat 10 CPU-Kerne und 32 GB RAM. Docker Desktop meldete Linux/aarch64, 10 CPUs und 8,3 GB RAM; MPS und CUDA waren im Container nicht verfügbar.
+Jede Anfrage embeddet ihre Frage mit `BAAI/bge-m3` (1024 Dimensionen). Gemessen wurden dieselben acht DORA-Fragen aus `evaluation.dataset.ANTWORTBAR` plus eine synthetische, achtfach längere Frage; je Frage fünf Warm-ups und 20 Zeitmessungen. Die Tabelle fasst 180 Query-Aufrufe pro Lauf zusammen; p95 ist nach Nearest-Rank (`ceil(0.95 * N)`) berechnet. Modellladen ist separat erfasst und nicht in der Query-Latenz enthalten. Das lokale M4-System hat 10 CPU-Kerne und 32 GB RAM. Docker Desktop meldete Linux/aarch64, 10 CPUs und 8,3 GB RAM; MPS und CUDA waren im Container nicht verfügbar.
 
 | Umgebung | Threads | Median | p95 | Läufe |
 |---|---:|---:|---:|---|
-| macOS 27, M4 MPS, Python 3.14.7, Torch 2.13.0 | 4 | 28 ms | 53 ms | 1 |
-| Docker CPU, Python 3.12.14, Torch 2.14.0+cu130 | 10 (Default) | 226–241 ms | 581–670 ms | 2 |
-| Docker CPU, Python 3.12.14, Torch 2.14.0+cu130 | 8 (`OMP_NUM_THREADS=8`) | 179–180 ms | 507–535 ms | 2 |
+| macOS 27, M4 MPS, Python 3.14.7, Torch 2.13.0 | 4 | 28 ms | 52 ms | 1 |
+| Docker CPU, Python 3.12.14, Torch 2.14.0+cu130 | 10 (Default) | 226–241 ms | 581–669 ms | 2 |
+| Docker CPU, Python 3.12.14, Torch 2.14.0+cu130 | 8 (`OMP_NUM_THREADS=8`) | 179–180 ms | 502–526 ms | 2 |
 
-In beiden Vergleichsläufen waren Median und p95 mit acht Threads niedriger: der Median um 20–26 %, p95 um 13–20 %. Rohmessungen: [MPS](0009-query-embedding-mps.json), [CPU Default 1](0009-query-embedding-cpu-default.json), [CPU Default 2](0009-query-embedding-cpu-default-repeat.json), [CPU OMP 8 1](0009-query-embedding-cpu-omp-8.json) und [CPU OMP 8 2](0009-query-embedding-cpu-omp-8-repeat.json). Benchmark: `python -m evaluation.embedding_latency --device {cpu,mps}`; CPU-Container mit `OMP_NUM_THREADS=8` starten.
+In beiden Vergleichsläufen waren Median und p95 mit acht Threads niedriger: der Median um 20–26 %, p95 um 14–21 %. Rohmessungen: [MPS](0009-query-embedding-mps.json), [CPU Default 1](0009-query-embedding-cpu-default.json), [CPU Default 2](0009-query-embedding-cpu-default-repeat.json), [CPU OMP 8 1](0009-query-embedding-cpu-omp-8.json) und [CPU OMP 8 2](0009-query-embedding-cpu-omp-8-repeat.json). Benchmark: `python -m evaluation.embedding_latency --device cpu` (Container), `--device mps` (lokal); CPU mit `OMP_NUM_THREADS=8` starten.
 
 Die MPS-Messung bleibt deutlich schneller; sie belegt aber keinen Vorteil eines anderen Modells oder einer separaten Laufzeit.
 
