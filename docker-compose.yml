@@ -11,6 +11,7 @@ services:
       REGRAG_JUDGE_MODELL: ${REGRAG_JUDGE_MODELL:-}
       REGRAG_JUDGE_API_KEY: ${REGRAG_JUDGE_API_KEY:-}
       REGRAG_JUDGE_TIMEOUT: ${REGRAG_JUDGE_TIMEOUT:-}
+      REGRAG_EMBEDDING_MODELL: ${REGRAG_EMBEDDING_MODELL:-BAAI/bge-m3}
       OMP_NUM_THREADS: ${OMP_NUM_THREADS:-8}
     extra_hosts:
       - "host.docker.internal:host-gateway"

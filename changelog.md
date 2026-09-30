@@ -5,6 +5,7 @@
 - **Query-Embedding messen:** Reproduzierbarer CPU-/MPS-Benchmark mit Rohmessungen dokumentiert (#10).
 ### Geändert
 - **CPU-Threads im Container:** `OMP_NUM_THREADS` ist standardmäßig 8 und über die Umgebung überschreibbar (#10).
+- **Alternative Embedding-Modelle:** Compose reicht `REGRAG_EMBEDDING_MODELL` durch; andere Modelle werden bei verfügbarer Netzverbindung geladen (#10).
 ### Behoben
 - **Offline-Modellcache:** Der Container nutzt beim Start den bereits eingebetteten Hugging-Face-Cache (#10).
 ### Technik

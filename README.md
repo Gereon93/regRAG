@@ -127,7 +127,7 @@ Container trotzdem — mit leerem Korpus und einem Hinweis dazu auf stdout ([ADR
 docker compose up --build
 ```
 
-Das Image backt `BAAI/bge-m3` ein (offline lauffähig). Der Container spricht per Default über `host.docker.internal:1234` das LM Studio auf dem Host an — das funktioniert auf **macOS**. Für Linux/Cloud, wo eine Mac-Desktop-App nicht erreichbar ist, zeigt man `REGRAG_LLM_BASE_URL` auf einen gehosteten Worker (OpenRouter) oder einen headless lokalen Server; siehe `env.example` und [arc42 Kap. 7](docs/arc42.md). Für CPU-Embeddings setzt Compose `OMP_NUM_THREADS=8` als Default; Messung und Override sind in [ADR 0009](docs/adr/0009-query-embedding-cpu-mps.md) dokumentiert.
+Das Image backt `BAAI/bge-m3` ein; das Standardmodell läuft offline. Per `REGRAG_EMBEDDING_MODELL` kann Compose ein anderes Hugging-Face-Modell wählen, das der Container bei verfügbarer Netzverbindung lädt. Der Container spricht per Default über `host.docker.internal:1234` das LM Studio auf dem Host an — das funktioniert auf **macOS**. Für Linux/Cloud, wo eine Mac-Desktop-App nicht erreichbar ist, zeigt man `REGRAG_LLM_BASE_URL` auf einen gehosteten Worker (OpenRouter) oder einen headless lokalen Server; siehe `env.example` und [arc42 Kap. 7](docs/arc42.md). Für CPU-Embeddings setzt Compose `OMP_NUM_THREADS=8` als Default; Messung und Override sind in [ADR 0009](docs/adr/0009-query-embedding-cpu-mps.md) dokumentiert.
 
 Zwei Volumes: `chroma` trägt die Vektoren, `docs_md` den Korpus. Beide zusammen lassen hochgeladene Dokumente einen `docker compose restart` überleben — gemessen: Kaltstart 360 s, Neustart 31 s ohne erneutes Embedden.
 

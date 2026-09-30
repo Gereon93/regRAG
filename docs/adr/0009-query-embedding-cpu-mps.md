@@ -18,7 +18,7 @@ Die MPS-Messung bleibt deutlich schneller; sie belegt aber keinen Vorteil eines 
 
 ## Entscheidung
 
-`BAAI/bge-m3` und die In-Process-Torch-Inferenz bleiben bestehen; Docker setzt `OMP_NUM_THREADS` standardmäßig auf 8, per Compose-Umgebungsvariable überschreibbar. Modell, Gewichte und Dimension bleiben gleich; ein identischer CPU-Fragetext lieferte bei 10 und 8 Threads denselben FP32-Vektor (maximale absolute Differenz 0), daher ist kein Index-Neuaufbau erforderlich. Der Container verwendet denselben Hugging-Face-Cache wie der Build und lädt das Modell im Betrieb strikt offline.
+`BAAI/bge-m3` und die In-Process-Torch-Inferenz bleiben bestehen; Docker setzt `OMP_NUM_THREADS` standardmäßig auf 8, per Compose-Umgebungsvariable überschreibbar. Modell, Gewichte und Dimension bleiben gleich; ein identischer CPU-Fragetext lieferte bei 10 und 8 Threads denselben FP32-Vektor (maximale absolute Differenz 0), daher ist kein Index-Neuaufbau erforderlich. `LLAMA_INDEX_CACHE_DIR=/opt/hf/hub` richtet den SentenceTransformers-Cache auf den eingebetteten Modellcache aus. Beim Standardmodell erzwingt der Entrypoint Offline-Modus; ein anderes `REGRAG_EMBEDDING_MODELL` bleibt bei verfügbarer Netzverbindung nachladbar. Ein explizit gesetztes `HF_HUB_OFFLINE` bleibt erhalten.
 
 ## Bewertete Alternativen und Folgen
 
