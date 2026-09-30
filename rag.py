@@ -13,9 +13,8 @@ from llama_index.core import (
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 import config
-import embedding
 import dokumente
-
+import embedding
 
 DISTANZMETRIK_WIE_IN_MEMORY = {"hnsw:space": "cosine"}  # docs/adr/0003
 METRIK = DISTANZMETRIK_WIE_IN_MEMORY["hnsw:space"]
