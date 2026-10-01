@@ -1,0 +1,20 @@
+# Workstation & tooling configs
+.mcp.json
+.repowise/
+.vscode/
+.specify/
+.claude/
+.env*
+.DS_Store
+
+# graphify output (self-reference)
+graphify-out/
+
+# Python virtual environment and caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.deepeval/
+chroma/
+docs_md/
