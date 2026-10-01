@@ -3,7 +3,7 @@
 ## Stack & Conventions
 - Stack: Python + FastAPI + ChromaDB + DeepEval
 - Tests: `pytest`
-- Lint: `flake8` or `ruff`
+- Lint: `ruff check .` (ruff==0.16.3, as in CI)
 
 # graphify
 - **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`

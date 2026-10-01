@@ -6,6 +6,10 @@
 .claude/
 .env*
 .DS_Store
+package.json
+package-lock.json
+.htmlvalidate.json
+.pre-commit-config.yaml
 
 # graphify output (self-reference)
 graphify-out/
