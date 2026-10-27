@@ -30,6 +30,18 @@ Warum drei Frameworks und wo LangGraph seinen Platz noch nicht verdient: [ADR 00
 Embeddings laufen bewusst lokal: multilingual (DORA liegt auf Deutsch vor) und ohne Datenabfluss.
 Die Generierung spricht ein OpenAI-kompatibles Interface — LM Studio und OpenRouter sind darüber austauschbar.
 
+## Optional: Laya als Answerability-Judge
+
+Zusätzlich zum Score-Guard kann ein lokaler Judge prüfen, ob die Evidenz die Frage beantwortet
+([ADR 0011](docs/adr/0011-laya-als-lokaler-answerability-judge.md)). Aus, solange `REGRAG_LAYA_URL`
+leer ist. Gestartet wird `laya-serve` (`pip install "laya[serve]"`), das Jev-Protokoll
+`/v1/systemone` spricht; Variablen siehe `env.example`.
+
+**Der Nutzen ist nicht belegt.** Zero-shot liegt laut Model Card nahe am Zufall, und
+`REGRAG_LAYA_MIN_ANSWERABLE = 0.5` ist ein ungemessener Startwert. Bis das gelabelte Eval-Set und
+die Kalibrierung vorliegen (#31, #32), ist das Einschalten ein Experiment. Fällt der Judge aus,
+verweigert das Gate (`JUDGE_UNAVAILABLE`). Frage und Evidenz gehen an die konfigurierte URL.
+
 ## Setup
 
 ```bash

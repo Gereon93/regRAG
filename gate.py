@@ -33,6 +33,7 @@ class AbstainReason(Enum):
     OUTDATED_SOURCE = "OUTDATED_SOURCE"
     CONFLICTING_PROVISIONS = "CONFLICTING_PROVISIONS"
     UNGROUNDED_CLAIM = "UNGROUNDED_CLAIM"
+    JUDGE_UNAVAILABLE = "JUDGE_UNAVAILABLE"
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,31 @@ class RetrievalScoreGate:
         if bester is None or bester < self.min_score:
             return GateDecision(Outcome.ABSTAIN, (AbstainReason.LOW_RELEVANCE,), scores)
         return GateDecision(Outcome.ANSWER, (), scores)
+
+
+class Kaskade:
+    """Führt Gates der Reihe nach aus; das erste ABSTAIN gewinnt, bei gleichem Score-Feld der frühere Gate."""
+
+    def __init__(self, gates):
+        if not gates:
+            raise ValueError("Eine Kaskade braucht mindestens einen Gate.")
+        self.gates = tuple(gates)
+
+    def entscheide(self, frage, nodes):
+        scores = GateScores()
+        for gate in self.gates:
+            entscheidung = gate.entscheide(frage, nodes)
+            scores = _fuehre_zusammen(scores, entscheidung.scores)
+            if entscheidung.verweigert:
+                return GateDecision(entscheidung.outcome, entscheidung.reasons, scores)
+        return GateDecision(Outcome.ANSWER, (), scores)
+
+
+def _fuehre_zusammen(frueher, spaeter):
+    return GateScores(
+        relevance=frueher.relevance if frueher.relevance is not None else spaeter.relevance,
+        answerable=frueher.answerable if frueher.answerable is not None else spaeter.answerable,
+    )
 
 
 def abstain_antwort(vorgemerkt):
@@ -134,5 +160,12 @@ class Pruefung:
 
 def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes):
     entscheidung = gate.entscheide(frage, nodes)
+    log.info(
+        "Gate: %s reasons=%s relevance=%s answerable=%s",
+        entscheidung.outcome.value,
+        [r.value for r in entscheidung.reasons],
+        entscheidung.scores.relevance,
+        entscheidung.scores.answerable,
+    )
     vorgemerkt = entscheidung.verweigert and schreibe_eskalation(eskalations_datei, frage, nodes, entscheidung)
     return Pruefung(entscheidung, vorgemerkt)

@@ -1,4 +1,5 @@
 import json
+import logging
 import stat
 import threading
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ from gate import (
     AbstainReason,
     GateDecision,
     GateScores,
+    Kaskade,
     Outcome,
     RetrievalScoreGate,
     abstain_antwort,
@@ -44,6 +46,7 @@ def test_reasons_decken_alle_fachlichen_gruende_ab():
         "OUTDATED_SOURCE",
         "CONFLICTING_PROVISIONS",
         "UNGROUNDED_CLAIM",
+        "JUDGE_UNAVAILABLE",
     }
 
 
@@ -228,3 +231,76 @@ def test_abstain_antwort_verspricht_vormerkung_nur_wenn_sie_stattfand():
     assert abstain_antwort(True) == ABSTAIN_ANTWORT_VORGEMERKT
     assert abstain_antwort(False) == ABSTAIN_ANTWORT_NICHT_VORGEMERKT
     assert "vorgemerkt" not in ABSTAIN_ANTWORT_NICHT_VORGEMERKT
+
+
+def test_judge_unavailable_ist_ein_eigener_grund():
+    assert AbstainReason.JUDGE_UNAVAILABLE.value == "JUDGE_UNAVAILABLE"
+
+
+class FesterGate:
+    def __init__(self, entscheidung):
+        self.entscheidung = entscheidung
+        self.aufrufe = 0
+
+    def entscheide(self, frage, nodes):
+        self.aufrufe += 1
+        return self.entscheidung
+
+
+def antwort_entscheidung(**scores):
+    return GateDecision(Outcome.ANSWER, (), GateScores(**scores))
+
+
+def abstain_entscheidung(reason, **scores):
+    return GateDecision(Outcome.ABSTAIN, (reason,), GateScores(**scores))
+
+
+def test_kaskade_ohne_gates_ist_unzulaessig():
+    with pytest.raises(ValueError):
+        Kaskade([])
+
+
+def test_kaskade_fuehrt_scores_zusammen_wenn_alle_zustimmen():
+    kaskade = Kaskade([FesterGate(antwort_entscheidung(relevance=0.8)), FesterGate(antwort_entscheidung(answerable=0.7))])
+
+    d = kaskade.entscheide("f", [])
+
+    assert d.outcome is Outcome.ANSWER
+    assert d.scores == GateScores(relevance=0.8, answerable=0.7)
+
+
+def test_kaskade_bricht_beim_ersten_abstain_ab_und_ruft_spaetere_gates_nicht():
+    spaeter = FesterGate(antwort_entscheidung(answerable=0.9))
+    kaskade = Kaskade([FesterGate(abstain_entscheidung(AbstainReason.LOW_RELEVANCE, relevance=0.3)), spaeter])
+
+    d = kaskade.entscheide("f", [])
+
+    assert d.reasons == (AbstainReason.LOW_RELEVANCE,)
+    assert d.scores == GateScores(relevance=0.3, answerable=None)
+    assert spaeter.aufrufe == 0
+
+
+def test_kaskade_zweiter_gate_verweigert_mit_scores_beider():
+    kaskade = Kaskade(
+        [FesterGate(antwort_entscheidung(relevance=0.8)), FesterGate(abstain_entscheidung(AbstainReason.NOT_ANSWERABLE, answerable=0.2))]
+    )
+
+    d = kaskade.entscheide("f", [])
+
+    assert d.reasons == (AbstainReason.NOT_ANSWERABLE,)
+    assert d.scores == GateScores(relevance=0.8, answerable=0.2)
+
+
+def test_kaskade_frueherer_gate_gewinnt_bei_gleichem_score_feld():
+    kaskade = Kaskade([FesterGate(antwort_entscheidung(relevance=0.8)), FesterGate(antwort_entscheidung(relevance=0.1))])
+
+    assert kaskade.entscheide("f", []).scores.relevance == 0.8
+
+
+def test_scores_werden_pro_entscheidung_geloggt_auch_bei_answer(tmp_path, caplog):
+    caplog.set_level(logging.INFO, logger="gate")
+
+    entscheide_und_eskaliere(RetrievalScoreGate(0.62), tmp_path / "e.jsonl", "f", [node(0.7)])
+
+    assert "ANSWER" in caplog.text
+    assert "relevance=0.7" in caplog.text

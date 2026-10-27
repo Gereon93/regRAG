@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlsplit
 
 EMBEDDING_MODELL = os.getenv("REGRAG_EMBEDDING_MODELL", "BAAI/bge-m3")
 DOKUMENTE_VERZEICHNIS = os.getenv("REGRAG_DOCS_DIR", "docs_md")
@@ -13,6 +14,18 @@ LLM_TIMEOUT = float(os.getenv("REGRAG_TIMEOUT", "300"))
 
 MIN_RETRIEVAL_SCORE = float(os.getenv("REGRAG_MIN_SCORE", "0.62"))
 ESKALATION_DATEI = os.getenv("REGRAG_ESKALATION_DATEI") or os.path.join(CHROMA_VERZEICHNIS, "eskalationen.jsonl")
+
+LAYA_URL = os.getenv("REGRAG_LAYA_URL", "").strip()
+LAYA_API_KEY = os.getenv("REGRAG_LAYA_API_KEY", "")
+LAYA_TIMEOUT = float(os.getenv("REGRAG_LAYA_TIMEOUT", "30"))
+LAYA_MAX_LEN = int(os.getenv("REGRAG_LAYA_MAX_LEN", "4096"))
+LAYA_LANG = os.getenv("REGRAG_LAYA_LANG", "de")
+LAYA_MIN_ANSWERABLE = float(os.getenv("REGRAG_LAYA_MIN_ANSWERABLE", "0.5"))
+
+if not 0 <= LAYA_MIN_ANSWERABLE <= 1:
+    raise ValueError("REGRAG_LAYA_MIN_ANSWERABLE muss zwischen 0 und 1 liegen.")
+if urlsplit(LAYA_URL).username or urlsplit(LAYA_URL).password:
+    raise ValueError("REGRAG_LAYA_URL darf keine Zugangsdaten enthalten; der Key gehört in REGRAG_LAYA_API_KEY.")
 
 JUDGE_MODELL = os.getenv("REGRAG_JUDGE_MODELL") or "qwen/qwen3.5-9b"
 JUDGE_BASE_URL = os.getenv("REGRAG_JUDGE_BASE_URL") or LLM_BASE_URL

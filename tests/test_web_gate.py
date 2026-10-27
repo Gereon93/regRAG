@@ -3,8 +3,10 @@ import importlib
 import json
 import sys
 import types
+from contextlib import contextmanager
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from gate import (
@@ -13,6 +15,7 @@ from gate import (
     RetrievalScoreGate,
     entscheide_und_eskaliere,
 )
+from laya import baue_gate
 
 MIN_SCORE = 0.62
 
@@ -30,10 +33,8 @@ class FakeLLM:
         yield SimpleNamespace(content="Antwort")
 
 
-@pytest.fixture
-def strom(tmp_path, request):
-    eskalationen = tmp_path / getattr(request, "param", "eskalationen.jsonl")
-    gate = RetrievalScoreGate(MIN_SCORE)
+@contextmanager
+def _strom(gate, eskalationen):
     llm = FakeLLM()
     treffer = []
 
@@ -87,6 +88,33 @@ def strom(tmp_path, request):
             web_paket.main = altes_attribut
 
 
+@pytest.fixture
+def strom(tmp_path, request):
+    eskalationen = tmp_path / getattr(request, "param", "eskalationen.jsonl")
+    with _strom(RetrievalScoreGate(MIN_SCORE), eskalationen) as s:
+        yield s
+
+
+@pytest.fixture
+def laya_strom(tmp_path):
+    @contextmanager
+    def bauen(handler):
+        einstellungen = SimpleNamespace(
+            MIN_RETRIEVAL_SCORE=MIN_SCORE,
+            LAYA_URL="http://localhost:8000",
+            LAYA_API_KEY="",
+            LAYA_TIMEOUT=5.0,
+            LAYA_MAX_LEN=4096,
+            LAYA_LANG="de",
+            LAYA_MIN_ANSWERABLE=0.5,
+        )
+        gate = baue_gate(einstellungen, transport=httpx.MockTransport(handler))
+        with _strom(gate, tmp_path / "eskalationen.jsonl") as s:
+            yield s
+
+    return bauen
+
+
 def test_schwache_evidenz_verweigert_ohne_llm_und_schreibt_eskalation(strom):
     events = strom.lauf("Wie backe ich Kuchen?", [node(0.5)])
 
@@ -116,3 +144,35 @@ def test_abstain_ohne_schreibbaren_datensatz_verspricht_keine_vormerkung(strom, 
     assert events[0]["type"] == "abstain"
     assert events[0]["text"] == ABSTAIN_ANTWORT_NICHT_VORGEMERKT
     assert strom.llm.aufrufe == 0
+
+
+def test_laya_nicht_beantwortbar_verweigert_mit_answerable_im_datensatz(laya_strom):
+    def nicht_beantwortbar(request):
+        return httpx.Response(200, json={"answers": {"answerable": {"noul": 0.2}}})
+
+    with laya_strom(nicht_beantwortbar) as strom:
+        events = strom.lauf("Was regelt DORA zur Ausnahme?", [node(0.8)])
+
+        assert [e["type"] for e in events] == ["abstain", "sources", "done"]
+        assert strom.llm.aufrufe == 0
+        satz = json.loads(strom.eskalationen.read_text(encoding="utf-8"))
+        assert satz["reasons"] == ["NOT_ANSWERABLE"]
+        assert satz["scores"] == {"relevance": 0.8, "answerable": 0.2}
+
+
+def test_laya_ausfall_verweigert_mit_judge_unavailable(laya_strom):
+    with laya_strom(lambda r: httpx.Response(503)) as strom:
+        events = strom.lauf("Was regelt DORA?", [node(0.8)])
+
+        assert events[0]["type"] == "abstain"
+        assert strom.llm.aufrufe == 0
+        satz = json.loads(strom.eskalationen.read_text(encoding="utf-8"))
+        assert satz["reasons"] == ["JUDGE_UNAVAILABLE"]
+
+
+def test_laya_bejaht_antwortet_normal(laya_strom):
+    with laya_strom(lambda r: httpx.Response(200, json={"answers": {"answerable": {"noul": 0.9}}})) as strom:
+        events = strom.lauf("Was regelt DORA?", [node(0.8)])
+
+        assert [e["type"] for e in events] == ["token", "sources", "done"]
+        assert not strom.eskalationen.exists()
