@@ -1,7 +1,7 @@
 from deepeval.metrics import FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
 
-from agent import ABSTAIN_ANTWORT, app, beleglage_zu_schwach, retriever
+from agent import ABSTAIN_ANTWORT, app, gate, retriever
 from evaluation.dataset import FAELLE
 from evaluation.judge import JudgeLLM
 
@@ -10,7 +10,7 @@ def guard_report():
     korrekt = 0
     for fall in FAELLE:
         nodes = retriever.retrieve(fall["frage"])
-        entschieden = "abstain" if beleglage_zu_schwach(nodes) else "answer"
+        entschieden = "abstain" if gate.entscheide(fall["frage"], nodes).verweigert else "answer"
         ok = entschieden == fall["erwartet"]
         korrekt += ok
         marker = "ok " if ok else "!! "

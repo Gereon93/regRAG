@@ -6,11 +6,16 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 import config
+from gate import GateDecision, RetrievalScoreGate, entscheide_und_eskaliere
 from rag import index
 
-ABSTAIN_ANTWORT = "Nicht eindeutig in den indexierten Dokumenten belegt."
+ABSTAIN_ANTWORT = (
+    "Keine belastbare Grundlage in den indexierten Dokumenten. "
+    "Die Anfrage wurde zur Prüfung durch einen Menschen vorgemerkt."
+)
 
 retriever = index.as_retriever(similarity_top_k=3)
+gate = RetrievalScoreGate(config.MIN_RETRIEVAL_SCORE)
 
 llm = ChatOpenAI(model=config.LLM_MODELL, base_url=config.LLM_BASE_URL,
                  api_key=config.LLM_API_KEY, temperature=config.LLM_TEMPERATURE,
@@ -25,20 +30,22 @@ prompt = ChatPromptTemplate.from_messages([
 class S(TypedDict):
     frage: str
     nodes: list
+    entscheidung: GateDecision
     antwort: str
+
+
+def pruefe(frage, nodes):
+    return entscheide_und_eskaliere(gate, config.ESKALATION_DATEI, frage, nodes)
 
 
 def retrieve(s):
     s["nodes"] = retriever.retrieve(s["frage"])
+    s["entscheidung"] = pruefe(s["frage"], s["nodes"])
     return s
 
 
-def beleglage_zu_schwach(nodes):
-    return not nodes or nodes[0].score < config.MIN_RETRIEVAL_SCORE  # docs/adr/0002
-
-
 def naechster_schritt(s):
-    return "abstain" if beleglage_zu_schwach(s["nodes"]) else "answer"
+    return "abstain" if s["entscheidung"].verweigert else "answer"
 
 
 def abstain(s):

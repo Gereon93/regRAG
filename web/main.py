@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import config
 import dokumente
 import rag
-from agent import ABSTAIN_ANTWORT, beleglage_zu_schwach, llm, prompt, retriever
+from agent import ABSTAIN_ANTWORT, llm, prompt, pruefe, retriever
 from convert import pdf_nach_markdown
 
 app = FastAPI(title="RegRAG")
@@ -52,7 +52,7 @@ async def _antwort_strom(frage):
     nodes = retriever.retrieve(frage)
     quellen = _quellen(nodes)
 
-    if beleglage_zu_schwach(nodes):
+    if pruefe(frage, nodes).verweigert:
         yield _sse({"type": "abstain", "text": ABSTAIN_ANTWORT})
         yield _sse({"type": "sources", "quellen": quellen})
         yield _sse({"type": "done"})
