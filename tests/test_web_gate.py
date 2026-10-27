@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import json
 import sys
 import types
@@ -55,7 +56,7 @@ def strom(tmp_path):
         vars(modul).update(attrs)
         sys.modules[name] = modul
 
-    import web.main as main
+    main = importlib.import_module("web.main")
 
     def lauf(frage, nodes):
         treffer[:] = nodes

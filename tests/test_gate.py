@@ -94,7 +94,7 @@ def test_eskalationsdatensatz_verweigert_naive_zeit():
     d = GateDecision(Outcome.ABSTAIN, (AbstainReason.LOW_RELEVANCE,), GateScores())
 
     with pytest.raises(ValueError):
-        eskalationsdatensatz("f", [], d, jetzt=datetime(2026, 10, 27, 12, 0))
+        eskalationsdatensatz("f", [], d, jetzt=datetime.fromisoformat("2026-10-27T12:00:00"))
 
 
 def test_eskalationsdatensatz_nur_bei_abstain():
