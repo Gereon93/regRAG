@@ -33,9 +33,10 @@
 ## 4. Randfälle
 - **Keine Treffer:** ABSTAIN, `relevance=None`.
 - **Reihenfolge der Treffer:** zählt der maximale Score, nicht `nodes[0]` (Chroma liefert sortiert, das Gate verlässt sich nicht darauf).
-- **Schreibfehler beim Eskalationsdatensatz (Platte/Rechte):** darf die Antwort nicht kippen; Fehler wird geloggt, die Verweigerung wird trotzdem ausgeliefert.
+- **Schreibfehler beim Eskalationsdatensatz (Platte/Rechte/nicht serialisierbar):** darf die Antwort nicht kippen; Fehler wird geloggt, die Verweigerung wird ausgeliefert, die Antwort verspricht dann aber keine Vormerkung.
 - **Schreibpfad fehlt:** Verzeichnis wird angelegt.
-- **Nebenläufigkeit:** ein `write` einer ganzen Zeile im Append-Modus; kein Locking nötig (Einzelprozess, Zeilen < PIPE_BUF-Größenordnung nicht garantiert, deshalb ein Schreibaufruf pro Zeile).
+- **Nebenläufigkeit:** `web/main.py` ruft das Gate per `asyncio.to_thread` auf, es schreiben also mehrere Threads (und evtl. Prozesse). Die Zeile geht in einem `os.write` auf einen `O_APPEND`-Descriptor; getestet mit 8 Threads.
+- **Wachstum:** Frage und Evidenz sind im Datensatz begrenzt (2000 Zeichen); Rotation und Aufbewahrung sind Folge-Issue #34.
 - **Datenschutz:** Fragen und Evidenz liegen im Klartext in einer lokalen Datei, die per `.gitignore` ausgeschlossen ist.
 - **Naive Zeit:** wird abgelehnt.
 

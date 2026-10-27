@@ -7,10 +7,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from gate import RetrievalScoreGate, entscheide_und_eskaliere
+from gate import (
+    ABSTAIN_ANTWORT_NICHT_VORGEMERKT,
+    ABSTAIN_ANTWORT_VORGEMERKT,
+    RetrievalScoreGate,
+    entscheide_und_eskaliere,
+)
 
 MIN_SCORE = 0.62
-ABSTAIN_TEXT = "Keine belastbare Grundlage."
 
 
 def node(score):
@@ -27,8 +31,8 @@ class FakeLLM:
 
 
 @pytest.fixture
-def strom(tmp_path):
-    eskalationen = tmp_path / "eskalationen.jsonl"
+def strom(tmp_path, request):
+    eskalationen = tmp_path / getattr(request, "param", "eskalationen.jsonl")
     gate = RetrievalScoreGate(MIN_SCORE)
     llm = FakeLLM()
     treffer = []
@@ -42,7 +46,6 @@ def strom(tmp_path):
         "rag": {},
         "convert": {"pdf_nach_markdown": lambda *a, **k: None},
         "agent": {
-            "ABSTAIN_ANTWORT": ABSTAIN_TEXT,
             "llm": llm,
             "prompt": prompt,
             "pruefe": pruefe,
@@ -50,6 +53,8 @@ def strom(tmp_path):
         },
     }
     alt = {name: sys.modules.get(name) for name in [*stubs, "web.main"]}
+    web_paket = sys.modules.get("web")
+    altes_attribut = getattr(web_paket, "main", None) if web_paket else None
     sys.modules.pop("web.main", None)
     for name, attrs in stubs.items():
         modul = types.ModuleType(name)
@@ -74,13 +79,19 @@ def strom(tmp_path):
             sys.modules.pop(name, None)
         else:
             sys.modules[name] = vorher
+    web_paket = sys.modules.get("web")
+    if web_paket is not None:
+        if altes_attribut is None:
+            vars(web_paket).pop("main", None)
+        else:
+            web_paket.main = altes_attribut
 
 
 def test_schwache_evidenz_verweigert_ohne_llm_und_schreibt_eskalation(strom):
     events = strom.lauf("Wie backe ich Kuchen?", [node(0.5)])
 
     assert [e["type"] for e in events] == ["abstain", "sources", "done"]
-    assert events[0]["text"] == ABSTAIN_TEXT
+    assert events[0]["text"] == ABSTAIN_ANTWORT_VORGEMERKT
     assert strom.llm.aufrufe == 0
     satz = json.loads(strom.eskalationen.read_text(encoding="utf-8"))
     assert satz["frage"] == "Wie backe ich Kuchen?"
@@ -94,3 +105,14 @@ def test_starke_evidenz_antwortet_und_schreibt_keine_eskalation(strom):
     assert [e["type"] for e in events] == ["token", "sources", "done"]
     assert strom.llm.aufrufe == 1
     assert not strom.eskalationen.exists()
+
+
+@pytest.mark.parametrize("strom", ["datei/eskalationen.jsonl"], indirect=True)
+def test_abstain_ohne_schreibbaren_datensatz_verspricht_keine_vormerkung(strom, tmp_path):
+    (tmp_path / "datei").write_text("x")
+
+    events = strom.lauf("Wie backe ich Kuchen?", [node(0.5)])
+
+    assert events[0]["type"] == "abstain"
+    assert events[0]["text"] == ABSTAIN_ANTWORT_NICHT_VORGEMERKT
+    assert strom.llm.aufrufe == 0

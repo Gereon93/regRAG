@@ -19,13 +19,21 @@ eine Verweigerung hinterließ weder Begründung noch Spur.
   Maximum statt `nodes[0]`.
 - Jede Verweigerung hängt einen JSONL-Datensatz an `REGRAG_ESKALATION_DATEI` (Default:
   `chroma/eskalationen.jsonl`, im Volume): Frage, Top-k-Evidenz, Scores, Reasons, UTC-Zeitstempel.
-  Schreibfehler werden geloggt und kippen die Verweigerung nicht.
-- Die Nutzerantwort nennt "keine belastbare Grundlage" und den Hinweis auf menschliche Prüfung.
+  Frage und jeder Evidenztext sind auf 2000 Zeichen begrenzt. Die Zeile wird in einem einzigen
+  `os.write` auf einen `O_APPEND`-Descriptor geschrieben (Modus `0600`), damit parallele Schreiber
+  (Threadpool, mehrere Prozesse) keine Zeilen verschachteln.
+- Schreibfehler (`OSError`, `TypeError`, `ValueError`) werden geloggt und kippen die Verweigerung
+  nicht. `schreibe_eskalation` meldet, ob es gelang; nur dann verspricht die Antwort die Vormerkung
+  zur menschlichen Prüfung, sonst lautet sie nur "keine belastbare Grundlage".
 
 ## Konsequenzen
 
 - Weitere Judges (#28 Laya, #29 Grounding, #30 Gültigkeit) werden Adapter, die Gate-Logik bleibt.
-- Der Datensatz enthält Fragen und Textauszüge im Klartext; die Datei liegt lokal und ist nicht im Repo.
+- Der Datensatz enthält Fragen und Textauszüge im Klartext; die Datei liegt lokal, ist nicht im Repo
+  und nur für den Besitzer lesbar. Rotation, Aufbewahrungsfrist und Rate-Limit fehlen noch
+  (Issue #34); bis dahin wächst die Datei mit jeder Verweigerung.
+- Evaluationsläufe (`evaluation/run.py`) verwerfen Eskalationsdatensätze (`os.devnull`), damit sie
+  die echte Datei nicht füllen.
 - Wohin eskaliert wird (Queue, Fachexperte) ist offen; bis dahin ist die Datei nur Export.
 - Noch nicht umgesetzt: Nur `LOW_RELEVANCE` wird erzeugt, die übrigen Reasons sind Platzhalter
   für die Folge-Issues.

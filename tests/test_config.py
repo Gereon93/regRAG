@@ -58,3 +58,15 @@ def test_gesetzte_judge_variablen_gewinnen(geladen):
     assert c.JUDGE_API_KEY == "sk-or-test"
     assert c.JUDGE_MODELL == "openai/gpt-5.4-mini"
     assert c.JUDGE_TIMEOUT == 120.0
+
+
+def test_eskalationsdatei_liegt_standardmaessig_im_chroma_verzeichnis(geladen):
+    c = geladen(REGRAG_CHROMA_DIR="/daten/chroma")
+
+    assert c.ESKALATION_DATEI == "/daten/chroma/eskalationen.jsonl"
+
+
+def test_eskalationsdatei_ist_per_env_ueberschreibbar(geladen):
+    c = geladen(REGRAG_ESKALATION_DATEI="/tmp/e.jsonl")
+
+    assert c.ESKALATION_DATEI == "/tmp/e.jsonl"

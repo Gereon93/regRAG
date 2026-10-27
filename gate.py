@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -9,6 +10,16 @@ from pathlib import Path
 from typing import Protocol
 
 log = logging.getLogger(__name__)
+
+MAX_FRAGE_ZEICHEN = 2000
+MAX_EVIDENZ_ZEICHEN = 2000
+ESKALATIONS_DATEI_RECHTE = 0o600
+
+ABSTAIN_ANTWORT_VORGEMERKT = (
+    "Keine belastbare Grundlage in den indexierten Dokumenten. "
+    "Die Anfrage wurde zur Prüfung durch einen Menschen vorgemerkt."
+)
+ABSTAIN_ANTWORT_NICHT_VORGEMERKT = "Keine belastbare Grundlage in den indexierten Dokumenten."
 
 
 class Outcome(Enum):
@@ -65,6 +76,10 @@ class RetrievalScoreGate:
         return GateDecision(Outcome.ANSWER, (), scores)
 
 
+def abstain_antwort(vorgemerkt):
+    return ABSTAIN_ANTWORT_VORGEMERKT if vorgemerkt else ABSTAIN_ANTWORT_NICHT_VORGEMERKT
+
+
 def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None):
     if not entscheidung.verweigert:
         raise ValueError("Eskalationsdatensatz gibt es nur bei ABSTAIN.")
@@ -73,12 +88,12 @@ def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None):
         raise ValueError("Zeitstempel muss tz-aware UTC sein.")
     return {
         "zeitpunkt": jetzt.isoformat(),
-        "frage": frage,
+        "frage": frage[:MAX_FRAGE_ZEICHEN],
         "evidenz": [
             {
                 "quelle": n.metadata.get("quelle") or n.metadata.get("file_name"),
                 "score": n.score,
-                "text": n.text,
+                "text": n.text[:MAX_EVIDENZ_ZEICHEN],
             }
             for n in nodes
         ],
@@ -91,19 +106,33 @@ def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None):
 
 
 def schreibe_eskalation(ziel, frage, nodes, entscheidung):
-    """Hängt den Datensatz als JSONL-Zeile an. Ein Schreibfehler darf die Verweigerung nicht kippen."""
+    """Hängt den Datensatz als JSONL-Zeile an und meldet, ob das gelang. Ein Fehler kippt die Verweigerung nicht."""
     try:
         zeile = json.dumps(eskalationsdatensatz(frage, nodes, entscheidung), ensure_ascii=False) + "\n"
         ziel = Path(ziel)
         ziel.parent.mkdir(parents=True, exist_ok=True)
-        with ziel.open("a", encoding="utf-8") as f:
-            f.write(zeile)
-    except OSError:
+        fd = os.open(ziel, os.O_WRONLY | os.O_APPEND | os.O_CREAT, ESKALATIONS_DATEI_RECHTE)
+        try:
+            os.write(fd, zeile.encode("utf-8"))
+        finally:
+            os.close(fd)
+    except (OSError, TypeError, ValueError):
         log.exception("Eskalationsdatensatz konnte nicht nach %s geschrieben werden", ziel)
+        return False
+    return True
+
+
+@dataclass(frozen=True)
+class Pruefung:
+    entscheidung: GateDecision
+    vorgemerkt: bool
+
+    @property
+    def verweigert(self):
+        return self.entscheidung.verweigert
 
 
 def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes):
     entscheidung = gate.entscheide(frage, nodes)
-    if entscheidung.verweigert:
-        schreibe_eskalation(eskalations_datei, frage, nodes, entscheidung)
-    return entscheidung
+    vorgemerkt = entscheidung.verweigert and schreibe_eskalation(eskalations_datei, frage, nodes, entscheidung)
+    return Pruefung(entscheidung, vorgemerkt)
