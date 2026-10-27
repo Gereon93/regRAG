@@ -12,6 +12,7 @@ LLM_TEMPERATURE = float(os.getenv("REGRAG_TEMPERATURE", "0"))
 LLM_TIMEOUT = float(os.getenv("REGRAG_TIMEOUT", "300"))
 
 MIN_RETRIEVAL_SCORE = float(os.getenv("REGRAG_MIN_SCORE", "0.62"))
+ESKALATION_DATEI = os.getenv("REGRAG_ESKALATION_DATEI") or os.path.join(CHROMA_VERZEICHNIS, "eskalationen.jsonl")
 
 JUDGE_MODELL = os.getenv("REGRAG_JUDGE_MODELL") or "qwen/qwen3.5-9b"
 JUDGE_BASE_URL = os.getenv("REGRAG_JUDGE_BASE_URL") or LLM_BASE_URL

@@ -37,8 +37,7 @@ def main():
             "indexiere": lambda *a, **k: None,
         },
         "agent": {
-            "ABSTAIN_ANTWORT": "Keine ausreichende Beleglage.",
-            "beleglage_zu_schwach": lambda *a, **k: True,
+            "pruefe": lambda *a, **k: types.SimpleNamespace(verweigert=True, vorgemerkt=True),
             "llm": None,
             "prompt": None,
             "retriever": None,

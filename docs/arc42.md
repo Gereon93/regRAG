@@ -126,7 +126,8 @@ liegt dort die Logik, die Tests brauchen.
 | `retrieve` (Knoten) | Die drei ähnlichsten Chunks holen |
 | `answer` (Knoten) | Formulieren — sieht den Kontext nur, wenn der Guard ihn durchlässt |
 | `abstain` (Knoten) | `ABSTAIN_ANTWORT` setzen, ohne das LLM zu berühren |
-| `beleglage_zu_schwach()` | Der Schwellwert-Test, siehe ADR 0002 und 0005 |
+| `gate.RetrievalScoreGate` | Der Schwellwert-Test hinter dem Gate-Port, siehe ADR 0002, 0005 und 0010 |
+| `pruefe()` | Entscheidet per Gate und schreibt bei ABSTAIN den Eskalationsdatensatz (JSONL) |
 | `naechster_schritt()` | Die bedingte Kante: `answer` oder `abstain` |
 
 ### Ebene 2 — `rag.py`
@@ -157,7 +158,7 @@ sequenceDiagram
     R->>D: Ähnlichkeitssuche (Cosine, top_k=3)
     D-->>R: 3 Chunks + Scores
     R-->>G: nodes
-    G->>G: beleglage_zu_schwach(nodes)? → nein
+    G->>G: pruefe(frage, nodes) → ANSWER
     G->>L: Prompt mit Kontext
     L-->>G: Antwort mit Quellenangabe
     G-->>N: Antwort (SSE-Tokens) + Fundstellen
@@ -165,7 +166,7 @@ sequenceDiagram
 
 ### Anfrage ohne Beleg
 
-`beleglage_zu_schwach()` liefert `True`, die bedingte Kante führt nach `abstain`, das LLM wird
+`pruefe()` liefert ABSTAIN mit Reason, ein Eskalationsdatensatz wird geschrieben, die bedingte Kante führt nach `abstain`, das LLM wird
 nie aufgerufen und kann nicht halluzinieren, was es nicht sieht.
 
 **Das ist gemessen, nicht behauptet:** Über 14 Fälle (8 beantwortbare DORA-Fragen, 6 themenfremde)
@@ -246,7 +247,7 @@ nötige Konfigurierbarkeit ist seit Issue #3 vorhanden (`REGRAG_LLM_BASE_URL`).
 ## 8. Querschnittliche Konzepte
 
 **Entscheidungen gehören in ADRs, nicht in Kommentare.** Der Code trägt sprechende Namen
-(`beleglage_zu_schwach`, `MIN_RETRIEVAL_SCORE`, `ABSTAIN_ANTWORT`) und verweist per
+(`RetrievalScoreGate`, `MIN_RETRIEVAL_SCORE`, `ABSTAIN_ANTWORT`) und verweist per
 `# docs/adr/0003` auf die Begründung. Erklärende Kommentare sind projektweit unerwünscht:
 Was der Code tut, sagt der Code; warum, sagt die ADR.
 

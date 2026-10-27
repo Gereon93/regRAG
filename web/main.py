@@ -1,3 +1,4 @@
+import asyncio
 import json
 import tempfile
 import threading
@@ -14,8 +15,9 @@ from pydantic import BaseModel
 import config
 import dokumente
 import rag
-from agent import ABSTAIN_ANTWORT, beleglage_zu_schwach, llm, prompt, retriever
+from agent import llm, prompt, pruefe, retriever
 from convert import pdf_nach_markdown
+from gate import abstain_antwort
 
 app = FastAPI(title="RegRAG")
 STATIC = Path(__file__).parent / "static"
@@ -52,8 +54,9 @@ async def _antwort_strom(frage):
     nodes = retriever.retrieve(frage)
     quellen = _quellen(nodes)
 
-    if beleglage_zu_schwach(nodes):
-        yield _sse({"type": "abstain", "text": ABSTAIN_ANTWORT})
+    pruefung = await asyncio.to_thread(pruefe, frage, nodes)
+    if pruefung.verweigert:
+        yield _sse({"type": "abstain", "text": abstain_antwort(pruefung.vorgemerkt)})
         yield _sse({"type": "sources", "quellen": quellen})
         yield _sse({"type": "done"})
         return
