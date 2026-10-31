@@ -1,7 +1,14 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 
+from evaluation.eval_report import (
+    einseitige_segmente,
+    erzeuge_bericht,
+    hole_zeilen,
+    schreibe,
+)
 from evaluation.evalset import (
     STANDARD_FAELLE,
     Kosten,
@@ -27,14 +34,14 @@ def fall(id, erwartet="answer", segment="verordnung", gruppe=None, kategorie="be
     }
 
 
-def schreibe(tmp_path, faelle):
+def schreibe_set(tmp_path, faelle):
     pfad = tmp_path / "set.jsonl"
     pfad.write_text("".join(json.dumps(f) + "\n" for f in faelle), encoding="utf-8")
     return pfad
 
 
 def test_lade_faelle_liest_jsonl(tmp_path):
-    pfad = schreibe(tmp_path, [fall("a"), fall("b", erwartet="abstain")])
+    pfad = schreibe_set(tmp_path, [fall("a"), fall("b", erwartet="abstain")])
     assert [f["id"] for f in lade_faelle(pfad)] == ["a", "b"]
 
 
@@ -46,7 +53,7 @@ DOPPELTE_ID = {"id": "a"}
     [{"erwartet": "maybe"}, DOPPELTE_ID, {"segment": ""}, {"frage": ""}],
 )
 def test_lade_faelle_lehnt_ungueltige_faelle_ab(tmp_path, kaputt):
-    pfad = schreibe(tmp_path, [fall("a"), {**fall("b"), **kaputt}])
+    pfad = schreibe_set(tmp_path, [fall("a"), {**fall("b"), **kaputt}])
     with pytest.raises(ValueError):
         lade_faelle(pfad)
 
@@ -54,12 +61,12 @@ def test_lade_faelle_lehnt_ungueltige_faelle_ab(tmp_path, kaputt):
 def test_lade_faelle_lehnt_fehlendes_pflichtfeld_ab(tmp_path):
     ohne_segment = {k: v for k, v in fall("a").items() if k != "segment"}
     with pytest.raises(ValueError):
-        lade_faelle(schreibe(tmp_path, [ohne_segment]))
+        lade_faelle(schreibe_set(tmp_path, [ohne_segment]))
 
 
 def test_gruppe_faellt_auf_id_zurueck(tmp_path):
     ohne_gruppe = {k: v for k, v in fall("a").items() if k != "gruppe"}
-    assert lade_faelle(schreibe(tmp_path, [ohne_gruppe]))[0]["gruppe"] == "a"
+    assert lade_faelle(schreibe_set(tmp_path, [ohne_gruppe]))[0]["gruppe"] == "a"
 
 
 def test_standard_set_ist_valide_und_splittbar():
@@ -161,9 +168,9 @@ def test_kosten_lehnen_negative_gewichte_ab():
 def test_wilson_grenzfaelle():
     assert wilson(0, 0) == (0.0, 1.0)
     lo, hi = wilson(0, 10)
-    assert lo == 0.0 and 0.2 < hi < 0.4
+    assert lo == 0.0 and hi == pytest.approx(0.2775, abs=1e-3)
     lo, hi = wilson(50, 100)
-    assert lo < 0.5 < hi and hi - lo < 0.21
+    assert (lo, hi) == pytest.approx((0.4038, 0.5962), abs=1e-3)
 
 
 def test_bericht_pro_segment_mit_ci_und_version():
@@ -204,14 +211,10 @@ class FesterRetriever:
         self.scores = scores
 
     def retrieve(self, frage):
-        from types import SimpleNamespace
-
         return [SimpleNamespace(score=self.scores[frage])]
 
 
 def test_erzeuge_bericht_waehlt_schwelle_auf_calibration_und_misst_auf_test():
-    from evaluation.eval_report import erzeuge_bericht
-
     faelle = []
     for i in range(60):
         faelle.append(fall(f"a{i}", erwartet="answer"))
@@ -226,15 +229,47 @@ def test_erzeuge_bericht_waehlt_schwelle_auf_calibration_und_misst_auf_test():
 
 
 def test_erzeuge_bericht_bricht_bei_leeren_splits_ab():
-    from evaluation.eval_report import erzeuge_bericht
-
     with pytest.raises(SystemExit):
         erzeuge_bericht([fall("a")], FesterRetriever({"Frage a?": 0.9}), KOSTEN)
 
 
 def test_schreibe_legt_artefakt_mit_version_im_namen_an(tmp_path):
-    from evaluation.eval_report import schreibe
-
     datei = schreibe({"eval_version": "sha256:" + "ab" * 32}, tmp_path / "reports")
     assert datei.name == "bericht-abababababab.json"
     assert json.loads(datei.read_text())["eval_version"].startswith("sha256:")
+
+
+def test_lade_faelle_nennt_zeilennummer_bei_kaputtem_json(tmp_path):
+    pfad = tmp_path / "set.jsonl"
+    pfad.write_text(json.dumps(fall("a")) + "\n{kaputt\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Zeile 2"):
+        lade_faelle(pfad)
+
+
+def test_ohne_retrieval_treffer_wird_immer_verweigert():
+    leer = [zeile("x", "answer", None), zeile("x", "answer", None), zeile("x", "abstain", 0.1)]
+    schwellen = schwellen_pro_segment(leer, KOSTEN)
+    b = bericht(leer, schwellen, KOSTEN, version="v")
+    assert b["gesamt"]["falschantworten"] == 0
+    assert b["segmente"]["x"]["eskaliert"] >= 2
+
+
+def test_hole_zeilen_markiert_leeres_retrieval_als_none():
+    class Leer:
+        def retrieve(self, frage):
+            return []
+
+    assert hole_zeilen([fall("a")], Leer())[0]["top"] is None
+
+
+def test_einseitige_calibration_segmente_werden_gewarnt():
+    warnungen = einseitige_segmente([zeile("a", "answer", 0.9), zeile("b", "answer", 0.9), zeile("b", "abstain", 0.1)])
+    assert len(warnungen) == 1 and "'a'" in warnungen[0]
+
+
+def test_ausgeliefertes_seed_set_ist_noch_nicht_kalibrierbar():
+    """14 Fälle mit korrekter Normgruppierung lassen keinen Calibration-Split übrig: der Runner sagt das klar."""
+    faelle = lade_faelle(STANDARD_FAELLE)
+    retriever = FesterRetriever({f["frage"]: 0.5 for f in faelle})
+    with pytest.raises(SystemExit, match="Mehr Fälle"):
+        erzeuge_bericht(faelle, retriever, KOSTEN)

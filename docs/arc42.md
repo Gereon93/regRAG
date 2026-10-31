@@ -113,7 +113,7 @@ graph TD
 | `rag.py` | Embedding-Modell, Index laden, Dokumente inkrementell mergen | Den Ablauf, das LLM |
 | `agent.py` | Ablaufsteuerung, Schwellwert als bedingte Kante, Prompt, LLM-Aufruf | Wie retrievt wird |
 | `web/main.py` | HTTP: Chat mit SSE-Streaming, Upload, Job-Status, Dokumentliste | Wie indexiert oder retrievt wird |
-| `evaluation/` | Guard-Trennschärfe kalibrieren und messen, Faithfulness bewerten | Den Produktionspfad — liest nur mit |
+| `evaluation/` | Versioniertes Eval-Set (`evalset/v1.jsonl`), Splits, Kostenfunktion und Segment-Report ([ADR 0012](adr/0012-eval-set-splits-kostenfunktion-report.md)), Guard-Trennschärfe messen, Faithfulness bewerten | Den Produktionspfad — liest nur mit |
 
 Die Trennung ist der Punkt: `rag.py` weiß nichts vom LLM, `agent.py` nichts vom Vektor-Store,
 `web/main.py` nichts von beidem außer den Aufrufen. `dokumente.py` weiß von gar nichts — deshalb
@@ -296,7 +296,7 @@ Pfade würden garantiert auseinanderlaufen — einer davon still.
 
 | Größe | Wert | Woher |
 |---|---|---|
-| Guard-Trennschärfe (8 On-Topic, 6 Off-Topic) | **14/14** bei `MIN_RETRIEVAL_SCORE = 0.62` | `evaluation/run.py`, ADR 0005 |
+| Guard-Trennschärfe (8 On-Topic, 6 Off-Topic, Seed-Set aus `evaluation/evalset/v1.jsonl`) | **14/14** bei `MIN_RETRIEVAL_SCORE = 0.62` | `evaluation/run.py`, ADR 0005 |
 | Faithfulness über die beantworteten Fälle | **Ø 0.93** (Spanne 0.71–1.00, fünfmal 1.00) | `evaluation/judge.py`, deepeval + gehosteter Judge |
 | Kaltstart im Container (DORA, 351k Zeichen) | 360 s | `docker compose up` |
 | Neustart ohne Korpusänderung (DORA + NIS2) | 31 s | `docker compose restart` |

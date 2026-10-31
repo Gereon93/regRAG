@@ -39,3 +39,9 @@ getrennte Splits und eine Version, auf die sich ein Schwellwert zurückführen l
   Beantworteten ist die passende Zielgröße dafür, sobald genug Labels vorliegen.
 - Die Schwellen werden nicht automatisch in die Laufzeit-Config geschrieben. Wer sie übernimmt,
   trägt die `eval_version` aus dem Bericht in den Commit ein.
+- Das Seed-Set (14 Fälle, alle DORA-Fragen in einer Gruppe) lässt keinen Calibration-Split übrig:
+  `eval_report` bricht dort mit Handlungshinweis ab. Das ist gewollt, statt Normfassungen über Splits
+  zu verteilen; ein Test hält das fest.
+- Ein Fall ohne Retrieval-Treffer wird wie im `RetrievalScoreGate` immer verweigert, unabhängig von der Schwelle.
+- `evaluation/calibrate.py` (Accuracy-Schwelle, ADR 0005) bleibt als Einzelmessung bestehen, ist aber für die
+  Schwellenwahl abgelöst; die Ablösung und ein Report je `kategorie` sind als Folgearbeit ausgelagert.

@@ -26,9 +26,17 @@ def hole_zeilen(faelle, retriever):
     zeilen = []
     for fall in faelle:
         nodes = retriever.retrieve(fall["frage"])
-        top = max((n.score for n in nodes), default=0.0)
+        top = max((n.score for n in nodes), default=None)
         zeilen.append({"id": fall["id"], "segment": fall["segment"], "erwartet": fall["erwartet"], "top": top})
     return zeilen
+
+
+def einseitige_segmente(zeilen):
+    """Segmente, deren Calibration-Fälle nur ein Label tragen: die Schwelle sagt dort nichts über Trennschärfe."""
+    labels = {}
+    for z in zeilen:
+        labels.setdefault(z["segment"], set()).add(z["erwartet"])
+    return [f"Segment '{s}': Calibration enthält nur '{next(iter(l))}', Schwelle nicht belastbar." for s, l in sorted(labels.items()) if len(l) == 1]
 
 
 def erzeuge_bericht(faelle, retriever, kosten):
@@ -36,15 +44,22 @@ def erzeuge_bericht(faelle, retriever, kosten):
     splits = teile(faelle)
     leere = [name for name, fs in splits.items() if not fs]
     if leere:
-        raise SystemExit(f"Leere Splits {leere}: zu wenige Fälle für eine Kalibrierung ({len(faelle)}).")
+        raise SystemExit(
+            f"Leere Splits {leere}: zu wenige Fälle für eine Kalibrierung ({len(faelle)}, Ziel >= {ZIEL_FALLZAHL}). "
+            "Mehr Fälle in evaluation/evalset/v1.jsonl labeln."
+        )
     kalibrierung = hole_zeilen(splits["calibration"], retriever)
     schwellen = schwellen_pro_segment(kalibrierung, kosten)
     test = hole_zeilen(splits["test"], retriever)
     fehlend = sorted({z["segment"] for z in test} - set(schwellen))
     if fehlend:
-        raise SystemExit(f"Segmente ohne Calibration-Fälle, keine Schwelle möglich: {fehlend}")
+        raise SystemExit(
+            f"Segmente ohne Calibration-Fälle, keine Schwelle möglich: {fehlend}. "
+            "Mehr Fälle dieser Segmente labeln oder die Segmente zusammenlegen."
+        )
     ergebnis = bericht(test, schwellen, kosten, version)
     ergebnis["split"] = "test"
+    ergebnis["warnungen"] = einseitige_segmente(kalibrierung)
     ergebnis["faelle"] = {name: len(fs) for name, fs in splits.items()}
     ergebnis["zeitpunkt"] = datetime.now(timezone.utc).isoformat()
     return ergebnis

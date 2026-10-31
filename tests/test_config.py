@@ -109,3 +109,14 @@ def test_kosten_sind_ueber_umgebung_konfigurierbar(geladen):
     c = geladen(REGRAG_KOSTEN_FALSCHANTWORT="25", REGRAG_KOSTEN_ESKALATION="2")
 
     assert (c.KOSTEN_FALSCHANTWORT, c.KOSTEN_ESKALATION) == (25.0, 2.0)
+
+
+@pytest.mark.parametrize(
+    "falschantwort, eskalation",
+    [("-1", "1"), ("1", "-1"), ("nan", "1"), ("inf", "1"), ("0", "0")],
+)
+def test_ungueltige_kosten_brechen_beim_import_ab(geladen, monkeypatch, falschantwort, eskalation):
+    with pytest.raises(ValueError, match="REGRAG_KOSTEN"):
+        geladen(REGRAG_KOSTEN_FALSCHANTWORT=falschantwort, REGRAG_KOSTEN_ESKALATION=eskalation)
+    monkeypatch.delenv("REGRAG_KOSTEN_FALSCHANTWORT")
+    monkeypatch.delenv("REGRAG_KOSTEN_ESKALATION")

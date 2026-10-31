@@ -17,6 +17,9 @@ PFLICHTFELDER = ("id", "frage", "erwartet", "segment", "kategorie")
 ERWARTET = ("answer", "abstain")
 SPLIT_ANTEILE = (("train", 60), ("calibration", 20), ("test", 20))
 SPLIT_BUCKETS = sum(anteil for _, anteil in SPLIT_ANTEILE)
+SPLIT_GRENZEN = tuple(
+    (name, sum(anteil for _, anteil in SPLIT_ANTEILE[: i + 1])) for i, (name, _) in enumerate(SPLIT_ANTEILE)
+)
 Z_95 = 1.959963984540054
 
 FALSCHANTWORT_DEFINITION = (
@@ -41,7 +44,10 @@ def lade_faelle(pfad):
     for nummer, zeile in enumerate(Path(pfad).read_text(encoding="utf-8").splitlines(), 1):
         if not zeile.strip():
             continue
-        fall = json.loads(zeile)
+        try:
+            fall = json.loads(zeile)
+        except json.JSONDecodeError as fehler:
+            raise ValueError(f"Zeile {nummer}: kein gültiges JSON ({fehler.msg}).") from fehler
         _pruefe(fall, nummer, gesehen)
         faelle.append({**fall, "gruppe": fall.get("gruppe") or fall["id"]})
     return faelle
@@ -67,24 +73,24 @@ def teile(faelle):
     """Teilt nach Hash der Gruppe, damit Gruppen zusammenbleiben und neue Fälle bestehende nicht verschieben."""
     splits = {name: [] for name, _ in SPLIT_ANTEILE}
     for fall in faelle:
-        splits[_split_von(fall.get("gruppe") or fall["id"])].append(fall)
+        splits[_split_von(fall["gruppe"])].append(fall)
     return splits
 
 
 def _split_von(gruppe):
     bucket = int(hashlib.sha256(gruppe.encode("utf-8")).hexdigest(), 16) % SPLIT_BUCKETS
-    grenze = 0
-    for name, anteil in SPLIT_ANTEILE:
-        grenze += anteil
-        if bucket < grenze:
-            return name
-    raise AssertionError("unerreichbar: Anteile decken alle Buckets ab")
+    return next(name for name, grenze in SPLIT_GRENZEN if bucket < grenze)
+
+
+def _beantwortet(zeile, schwelle):
+    """Ohne Retrieval-Treffer (top=None) verweigert das Gate immer, wie RetrievalScoreGate."""
+    return zeile["top"] is not None and zeile["top"] >= schwelle
 
 
 def _kosten(zeilen, schwelle, kosten):
     summe = 0.0
     for z in zeilen:
-        beantwortet = z["top"] >= schwelle
+        beantwortet = _beantwortet(z, schwelle)
         if beantwortet and z["erwartet"] == "abstain":
             summe += kosten.falschantwort
         elif not beantwortet and z["erwartet"] == "answer":
@@ -93,7 +99,9 @@ def _kosten(zeilen, schwelle, kosten):
 
 
 def _kandidaten(scores):
-    werte = sorted(set(scores))
+    werte = sorted({s for s in scores if s is not None})
+    if not werte:
+        return [math.inf]
     mitten = [(a + b) / 2 for a, b in pairwise(werte)]
     return [werte[0], *mitten, math.nextafter(werte[-1], math.inf)]
 
@@ -128,7 +136,7 @@ def _rate(zaehler, nenner):
 
 
 def _kennzahlen(zeilen, schwelle_von):
-    beantwortet = [z for z in zeilen if z["top"] >= schwelle_von(z)]
+    beantwortet = [z for z in zeilen if _beantwortet(z, schwelle_von(z))]
     n = len(zeilen)
     falsch = sum(z["erwartet"] == "abstain" for z in beantwortet)
     return {
