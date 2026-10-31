@@ -267,6 +267,10 @@ Node-Werkzeug `html-validate` die echte `web/static/index.html` auf HTML-Struktu
 Bild-Alt-Texte und Formularlabels. Dieser Stufe-1-Check läuft nicht in der CI und ersetzt
 keinen Browserlauf für Kontraste, Fokusführung oder responsive Layouts.
 
+**Zwei statische Gates.** Auf `main` läuft SonarQube für Langzeitmetriken; im Pull Request läuft
+zusätzlich Qodana (`qodana-python-community`) als tokenfreies Gate. Es meldet vorerst nur
+(`continue-on-error: true`), bis eine Baseline vorliegt.
+
 **Ein Indexierungspfad.** Start und Upload rufen dieselbe Funktion (`rag.indexiere`). Zwei
 Pfade würden garantiert auseinanderlaufen — einer davon still.
 
