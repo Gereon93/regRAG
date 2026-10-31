@@ -6,8 +6,8 @@ import pytest
 import config
 
 
-@pytest.fixture
-def geladen(monkeypatch):
+@pytest.fixture(name="geladen")
+def _geladen(monkeypatch):
     def laden(**env):
         for name in list(os.environ):
             if name.startswith("REGRAG_"):
