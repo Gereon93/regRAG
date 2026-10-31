@@ -1,0 +1,14 @@
+{"id": "dora-001", "frage": "Welche Anforderungen stellt DORA an das IKT-Risikomanagement?", "erwartet": "answer", "segment": "verordnung", "kategorie": "beantwortbar", "gruppe": "dora-001"}
+{"id": "dora-002", "frage": "Was versteht DORA unter einem schwerwiegenden IKT-bezogenen Vorfall?", "erwartet": "answer", "segment": "verordnung", "kategorie": "beantwortbar", "gruppe": "dora-002"}
+{"id": "dora-003", "frage": "Welche Pflichten bestehen beim Management des IKT-Drittparteienrisikos?", "erwartet": "answer", "segment": "verordnung", "kategorie": "beantwortbar", "gruppe": "dora-003"}
+{"id": "dora-004", "frage": "Was schreibt DORA zu Tests der digitalen operationalen Resilienz vor?", "erwartet": "answer", "segment": "verordnung", "kategorie": "beantwortbar", "gruppe": "dora-004"}
+{"id": "dora-005", "frage": "Welche Rolle hat das Leitungsorgan im IKT-Risikomanagementrahmen?", "erwartet": "answer", "segment": "verordnung", "kategorie": "beantwortbar", "gruppe": "dora-005"}
+{"id": "dora-006", "frage": "Welche Meldepflichten bestehen bei schwerwiegenden IKT-Vorfällen?", "erwartet": "answer", "segment": "verordnung", "kategorie": "beantwortbar", "gruppe": "dora-006"}
+{"id": "dora-007", "frage": "Was verlangt DORA hinsichtlich Ausstiegsstrategien bei IKT-Drittdienstleistern?", "erwartet": "answer", "segment": "verordnung", "kategorie": "beantwortbar", "gruppe": "dora-007"}
+{"id": "dora-008", "frage": "Was regelt DORA zu bedrohungsgeleiteten Penetrationstests?", "erwartet": "answer", "segment": "verordnung", "kategorie": "beantwortbar", "gruppe": "dora-008"}
+{"id": "offtopic-001", "frage": "Wie backe ich einen Schokoladenkuchen?", "erwartet": "abstain", "segment": "ausserhalb", "kategorie": "unbeantwortbar", "gruppe": "offtopic-001"}
+{"id": "offtopic-002", "frage": "Was ist die Hauptstadt von Australien?", "erwartet": "abstain", "segment": "ausserhalb", "kategorie": "unbeantwortbar", "gruppe": "offtopic-002"}
+{"id": "offtopic-003", "frage": "Wie hoch ist der gesetzliche Mindestlohn in Deutschland?", "erwartet": "abstain", "segment": "ausserhalb", "kategorie": "unbeantwortbar", "gruppe": "offtopic-003"}
+{"id": "offtopic-004", "frage": "Welche Aktien sollte ich diese Woche kaufen?", "erwartet": "abstain", "segment": "ausserhalb", "kategorie": "unbeantwortbar", "gruppe": "offtopic-004"}
+{"id": "offtopic-005", "frage": "Wie wird das Wetter morgen in Berlin?", "erwartet": "abstain", "segment": "ausserhalb", "kategorie": "unbeantwortbar", "gruppe": "offtopic-005"}
+{"id": "offtopic-006", "frage": "Wer wurde 2022 Fußballweltmeister?", "erwartet": "abstain", "segment": "ausserhalb", "kategorie": "unbeantwortbar", "gruppe": "offtopic-006"}

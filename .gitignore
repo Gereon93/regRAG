@@ -23,3 +23,5 @@ chroma_pypdf/
 # Offizieller DORA-Rechtstext (EUR-Lex). Nicht selbst hosten — siehe README.
 docs/CELEX_32022R2554_DE_TXT.pdf
 
+
+evaluation/reports/

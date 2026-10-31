@@ -97,3 +97,15 @@ def test_laya_url_mit_zugangsdaten_wird_abgelehnt(geladen, monkeypatch):
     with pytest.raises(ValueError, match="Zugangsdaten"):
         geladen(REGRAG_LAYA_URL="http://user:geheim@laya:8000")
     monkeypatch.delenv("REGRAG_LAYA_URL")
+
+
+def test_kosten_defaults_gewichten_falschantwort_hoeher(geladen):
+    c = geladen()
+
+    assert c.KOSTEN_FALSCHANTWORT > c.KOSTEN_ESKALATION > 0
+
+
+def test_kosten_sind_ueber_umgebung_konfigurierbar(geladen):
+    c = geladen(REGRAG_KOSTEN_FALSCHANTWORT="25", REGRAG_KOSTEN_ESKALATION="2")
+
+    assert (c.KOSTEN_FALSCHANTWORT, c.KOSTEN_ESKALATION) == (25.0, 2.0)

@@ -42,6 +42,14 @@ leer ist. Gestartet wird `laya-serve` (`pip install "laya[serve]"`), das Jev-Pro
 die Kalibrierung vorliegen (#31, #32), ist das Einschalten ein Experiment. Fällt der Judge aus,
 verweigert das Gate (`JUDGE_UNAVAILABLE`). Frage und Evidenz gehen an die konfigurierte URL.
 
+## Eval-Set und Schwellen-Report
+
+Das Eval-Set liegt versioniert in `evaluation/evalset/v1.jsonl` (Segment, Kategorie, Gruppe pro Fall,
+[ADR 0012](docs/adr/0012-eval-set-splits-kostenfunktion-report.md)). `python -m evaluation.eval_report`
+wählt Schwellen pro Segment über die Kostenfunktion auf dem Calibration-Split und berichtet auf dem
+Test-Split Falschantwortrate, Eskalationsrate und Coverage mit 95%-Intervall. **Das Set hat erst 14 Fälle**;
+Ziel sind >= 200, deren Labels der Maintainer liefert. Bis dahin sind die Werte nicht belastbar.
+
 ## Setup
 
 ```bash
