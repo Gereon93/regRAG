@@ -20,6 +20,10 @@ ABSTAIN_ANTWORT_VORGEMERKT = (
     "Die Anfrage wurde zur Prüfung durch einen Menschen vorgemerkt."
 )
 ABSTAIN_ANTWORT_NICHT_VORGEMERKT = "Keine belastbare Grundlage in den indexierten Dokumenten."
+JUDGE_AUSFALL_ANTWORT = "Die Prüfung der Antwortbarkeit ist derzeit nicht verfügbar. Bitte später erneut versuchen."
+JUDGE_AUSFALL_ANTWORT_VORGEMERKT = (
+    f"{JUDGE_AUSFALL_ANTWORT} Die Anfrage wurde zur Prüfung durch einen Menschen vorgemerkt."
+)
 
 
 class Outcome(Enum):
@@ -81,9 +85,9 @@ class Kaskade:
     """Führt Gates der Reihe nach aus; das erste ABSTAIN gewinnt, bei gleichem Score-Feld der frühere Gate."""
 
     def __init__(self, gates):
-        if not gates:
-            raise ValueError("Eine Kaskade braucht mindestens einen Gate.")
         self.gates = tuple(gates)
+        if not self.gates:
+            raise ValueError("Eine Kaskade braucht mindestens einen Gate.")
 
     def entscheide(self, frage, nodes):
         scores = GateScores()
@@ -102,7 +106,16 @@ def _fuehre_zusammen(frueher, spaeter):
     )
 
 
-def abstain_antwort(vorgemerkt):
+def aktiviere_score_log():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        logger.addHandler(logging.StreamHandler())
+
+
+def abstain_antwort(vorgemerkt, reasons=()):
+    if AbstainReason.JUDGE_UNAVAILABLE in reasons:
+        return JUDGE_AUSFALL_ANTWORT_VORGEMERKT if vorgemerkt else JUDGE_AUSFALL_ANTWORT
     return ABSTAIN_ANTWORT_VORGEMERKT if vorgemerkt else ABSTAIN_ANTWORT_NICHT_VORGEMERKT
 
 

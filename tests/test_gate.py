@@ -19,6 +19,7 @@ from gate import (
     Outcome,
     RetrievalScoreGate,
     abstain_antwort,
+    aktiviere_score_log,
     entscheide_und_eskaliere,
     eskalationsdatensatz,
     schreibe_eskalation,
@@ -304,3 +305,33 @@ def test_scores_werden_pro_entscheidung_geloggt_auch_bei_answer(tmp_path, caplog
 
     assert "ANSWER" in caplog.text
     assert "relevance=0.7" in caplog.text
+
+
+def test_kaskade_weist_leeren_generator_zurueck():
+    with pytest.raises(ValueError):
+        Kaskade(g for g in [])
+
+
+def test_abstain_antwort_nennt_judge_ausfall_statt_fehlender_grundlage():
+    for vorgemerkt in (True, False):
+        text = abstain_antwort(vorgemerkt, (AbstainReason.JUDGE_UNAVAILABLE,))
+        assert "nicht verfügbar" in text
+        assert "Keine belastbare Grundlage" not in text
+        assert ("vorgemerkt" in text) is vorgemerkt
+
+
+def test_abstain_antwort_bei_anderen_gruenden_bleibt_unveraendert():
+    assert abstain_antwort(True, (AbstainReason.NOT_ANSWERABLE,)) == ABSTAIN_ANTWORT_VORGEMERKT
+
+
+def test_aktiviere_score_log_macht_info_sichtbar_und_ist_idempotent():
+    logger = logging.getLogger("gate")
+    vorher = (list(logger.handlers), logger.level)
+    try:
+        logger.handlers.clear()
+        aktiviere_score_log()
+        aktiviere_score_log()
+        assert logger.isEnabledFor(logging.INFO)
+        assert len(logger.handlers) == 1
+    finally:
+        logger.handlers[:], logger.level = vorher

@@ -165,6 +165,7 @@ def test_laya_ausfall_verweigert_mit_judge_unavailable(laya_strom):
         events = strom.lauf("Was regelt DORA?", [node(0.8)])
 
         assert events[0]["type"] == "abstain"
+        assert "nicht verfügbar" in events[0]["text"]
         assert strom.llm.aufrufe == 0
         satz = json.loads(strom.eskalationen.read_text(encoding="utf-8"))
         assert satz["reasons"] == ["JUDGE_UNAVAILABLE"]

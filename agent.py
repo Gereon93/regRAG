@@ -9,6 +9,7 @@ import config
 from gate import (
     GateDecision,
     abstain_antwort,
+    aktiviere_score_log,
     entscheide_und_eskaliere,
 )
 from laya import baue_gate
@@ -52,7 +53,7 @@ def naechster_schritt(s):
 
 
 def abstain(s):
-    s["antwort"] = abstain_antwort(s["vorgemerkt"])
+    s["antwort"] = abstain_antwort(s["vorgemerkt"], s["entscheidung"].reasons)
     return s
 
 
@@ -83,6 +84,7 @@ def _baue_graph():
 app = _baue_graph()
 
 if __name__ == "__main__":
+    aktiviere_score_log()
     out = app.invoke({"frage": "Welche Anforderungen stellt DORA an das IKT-Risikomanagement?"})
     print(out["antwort"])
     print("\n--- Quellen ---")

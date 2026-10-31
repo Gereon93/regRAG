@@ -1,4 +1,4 @@
-"""Laya-Adapter hinter dem Gate-Port (System-One-/Jev-Protokoll) — nur httpx, damit die CI ihn testen kann."""
+"""Laya-Adapter hinter dem Gate-Port (System-One-/Jev-Protokoll)."""
 
 import logging
 import math
@@ -22,7 +22,7 @@ CONNECT_TIMEOUT_SEKUNDEN = 2.0
 MODELL = "multilingual"
 FRAGE_ID = "answerable"
 FRAGEN = {FRAGE_ID: {"type": "noul", "instructions": "Enthält die Evidenz die Antwort auf die Frage?"}}
-MAX_EVIDENZ_ZEICHEN = 20_000
+MAX_JUDGE_EVIDENZ_ZEICHEN = 20_000
 LOKALE_HOSTS = {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
 ERSTER_FEHLERSTATUS = 400
 ERSTER_SERVERFEHLER = 500
@@ -67,7 +67,7 @@ class SystemOneClient:
 
 
 class LayaGate:
-    def __init__(self, client, min_answerable, max_len=4096, lang="de", max_evidenz_zeichen=MAX_EVIDENZ_ZEICHEN):
+    def __init__(self, client, min_answerable, max_len=4096, lang="de", max_evidenz_zeichen=MAX_JUDGE_EVIDENZ_ZEICHEN):
         self.client = client
         self.min_answerable = min_answerable
         self.max_len = max_len
@@ -102,9 +102,11 @@ def _lies_wahrscheinlichkeit(antwort):
 
 
 def _warne_bei_auffaelligkeiten(antwort):
-    if (antwort.get("usage") or {}).get("truncated") is True:
+    usage = antwort.get("usage")
+    if isinstance(usage, dict) and usage.get("truncated") is True:
         log.warning("Laya hat den State gekürzt — Antwort beruht auf unvollständiger Evidenz")
-    modell = (antwort.get("routing") or {}).get("model")
+    routing = antwort.get("routing")
+    modell = routing.get("model") if isinstance(routing, dict) else None
     if modell is not None and modell != MODELL:
         log.warning("Laya hat mit Checkpoint %s statt %s geantwortet", modell, MODELL)
 

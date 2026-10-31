@@ -173,3 +173,11 @@ def test_abweichendes_routing_wird_gewarnt(caplog):
     gate_mit(lambda r: antwort(0.9, routing={"model": "english"})).entscheide("f", [node()])
 
     assert "english" in caplog.text
+
+
+@pytest.mark.parametrize("extra", [{"usage": "unbekannt"}, {"routing": ["multilingual"]}, {"usage": 3, "routing": "x"}])
+def test_ungueltige_metadaten_kippen_einen_gueltigen_score_nicht(extra):
+    d = gate_mit(lambda r: antwort(0.9, **extra)).entscheide("f", [node()])
+
+    assert d.outcome is Outcome.ANSWER
+    assert d.scores.answerable == 0.9
