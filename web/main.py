@@ -17,7 +17,9 @@ import dokumente
 import rag
 from agent import llm, prompt, pruefe, retriever
 from convert import pdf_nach_markdown
-from gate import abstain_antwort
+from gate import abstain_antwort, aktiviere_score_log
+
+aktiviere_score_log()
 
 app = FastAPI(title="RegRAG")
 STATIC = Path(__file__).parent / "static"
@@ -56,7 +58,7 @@ async def _antwort_strom(frage):
 
     pruefung = await asyncio.to_thread(pruefe, frage, nodes)
     if pruefung.verweigert:
-        yield _sse({"type": "abstain", "text": abstain_antwort(pruefung.vorgemerkt)})
+        yield _sse({"type": "abstain", "text": abstain_antwort(pruefung.vorgemerkt, pruefung.entscheidung.reasons)})
         yield _sse({"type": "sources", "quellen": quellen})
         yield _sse({"type": "done"})
         return

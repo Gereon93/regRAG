@@ -20,6 +20,10 @@ ABSTAIN_ANTWORT_VORGEMERKT = (
     "Die Anfrage wurde zur Prüfung durch einen Menschen vorgemerkt."
 )
 ABSTAIN_ANTWORT_NICHT_VORGEMERKT = "Keine belastbare Grundlage in den indexierten Dokumenten."
+JUDGE_AUSFALL_ANTWORT = "Die Prüfung der Antwortbarkeit ist derzeit nicht verfügbar. Bitte später erneut versuchen."
+JUDGE_AUSFALL_ANTWORT_VORGEMERKT = (
+    f"{JUDGE_AUSFALL_ANTWORT} Die Anfrage wurde zur Prüfung durch einen Menschen vorgemerkt."
+)
 
 
 class Outcome(Enum):
@@ -33,6 +37,7 @@ class AbstainReason(Enum):
     OUTDATED_SOURCE = "OUTDATED_SOURCE"
     CONFLICTING_PROVISIONS = "CONFLICTING_PROVISIONS"
     UNGROUNDED_CLAIM = "UNGROUNDED_CLAIM"
+    JUDGE_UNAVAILABLE = "JUDGE_UNAVAILABLE"
 
 
 @dataclass(frozen=True)
@@ -76,7 +81,41 @@ class RetrievalScoreGate:
         return GateDecision(Outcome.ANSWER, (), scores)
 
 
-def abstain_antwort(vorgemerkt):
+class Kaskade:
+    """Führt Gates der Reihe nach aus; das erste ABSTAIN gewinnt, bei gleichem Score-Feld der frühere Gate."""
+
+    def __init__(self, gates):
+        self.gates = tuple(gates)
+        if not self.gates:
+            raise ValueError("Eine Kaskade braucht mindestens einen Gate.")
+
+    def entscheide(self, frage, nodes):
+        scores = GateScores()
+        for gate in self.gates:
+            entscheidung = gate.entscheide(frage, nodes)
+            scores = _fuehre_zusammen(scores, entscheidung.scores)
+            if entscheidung.verweigert:
+                return GateDecision(entscheidung.outcome, entscheidung.reasons, scores)
+        return GateDecision(Outcome.ANSWER, (), scores)
+
+
+def _fuehre_zusammen(frueher, spaeter):
+    return GateScores(
+        relevance=frueher.relevance if frueher.relevance is not None else spaeter.relevance,
+        answerable=frueher.answerable if frueher.answerable is not None else spaeter.answerable,
+    )
+
+
+def aktiviere_score_log():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        logger.addHandler(logging.StreamHandler())
+
+
+def abstain_antwort(vorgemerkt, reasons=()):
+    if AbstainReason.JUDGE_UNAVAILABLE in reasons:
+        return JUDGE_AUSFALL_ANTWORT_VORGEMERKT if vorgemerkt else JUDGE_AUSFALL_ANTWORT
     return ABSTAIN_ANTWORT_VORGEMERKT if vorgemerkt else ABSTAIN_ANTWORT_NICHT_VORGEMERKT
 
 
@@ -134,5 +173,12 @@ class Pruefung:
 
 def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes):
     entscheidung = gate.entscheide(frage, nodes)
+    log.info(
+        "Gate: %s reasons=%s relevance=%s answerable=%s",
+        entscheidung.outcome.value,
+        [r.value for r in entscheidung.reasons],
+        entscheidung.scores.relevance,
+        entscheidung.scores.answerable,
+    )
     vorgemerkt = entscheidung.verweigert and schreibe_eskalation(eskalations_datei, frage, nodes, entscheidung)
     return Pruefung(entscheidung, vorgemerkt)

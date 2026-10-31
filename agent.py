@@ -8,14 +8,15 @@ from langgraph.graph import END, StateGraph
 import config
 from gate import (
     GateDecision,
-    RetrievalScoreGate,
     abstain_antwort,
+    aktiviere_score_log,
     entscheide_und_eskaliere,
 )
+from laya import baue_gate
 from rag import index
 
 retriever = index.as_retriever(similarity_top_k=3)
-gate = RetrievalScoreGate(config.MIN_RETRIEVAL_SCORE)
+gate = baue_gate(config)
 
 llm = ChatOpenAI(model=config.LLM_MODELL, base_url=config.LLM_BASE_URL,
                  api_key=config.LLM_API_KEY, temperature=config.LLM_TEMPERATURE,
@@ -52,7 +53,7 @@ def naechster_schritt(s):
 
 
 def abstain(s):
-    s["antwort"] = abstain_antwort(s["vorgemerkt"])
+    s["antwort"] = abstain_antwort(s["vorgemerkt"], s["entscheidung"].reasons)
     return s
 
 
@@ -83,6 +84,7 @@ def _baue_graph():
 app = _baue_graph()
 
 if __name__ == "__main__":
+    aktiviere_score_log()
     out = app.invoke({"frage": "Welche Anforderungen stellt DORA an das IKT-Risikomanagement?"})
     print(out["antwort"])
     print("\n--- Quellen ---")

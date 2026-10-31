@@ -70,3 +70,30 @@ def test_eskalationsdatei_ist_per_env_ueberschreibbar(geladen):
     c = geladen(REGRAG_ESKALATION_DATEI="/tmp/e.jsonl")
 
     assert c.ESKALATION_DATEI == "/tmp/e.jsonl"
+
+
+def test_laya_ist_standardmaessig_aus_mit_dokumentierten_defaults(geladen):
+    c = geladen()
+
+    assert c.LAYA_URL == ""
+    assert c.LAYA_TIMEOUT == 30.0
+    assert c.LAYA_MAX_LEN == 4096
+    assert c.LAYA_LANG == "de"
+    assert c.LAYA_MIN_ANSWERABLE == 0.5
+
+
+def test_laya_url_aus_leerraum_gilt_als_aus(geladen):
+    assert geladen(REGRAG_LAYA_URL="   ").LAYA_URL == ""
+
+
+@pytest.mark.parametrize("wert", ["-0.1", "1.1"])
+def test_laya_schwelle_ausserhalb_von_null_bis_eins_ist_ein_fehler(geladen, monkeypatch, wert):
+    with pytest.raises(ValueError, match="MIN_ANSWERABLE"):
+        geladen(REGRAG_LAYA_MIN_ANSWERABLE=wert)
+    monkeypatch.delenv("REGRAG_LAYA_MIN_ANSWERABLE")
+
+
+def test_laya_url_mit_zugangsdaten_wird_abgelehnt(geladen, monkeypatch):
+    with pytest.raises(ValueError, match="Zugangsdaten"):
+        geladen(REGRAG_LAYA_URL="http://user:geheim@laya:8000")
+    monkeypatch.delenv("REGRAG_LAYA_URL")
