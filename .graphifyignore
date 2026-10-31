@@ -1,0 +1,24 @@
+# Workstation & tooling configs
+.mcp.json
+.repowise/
+.vscode/
+.specify/
+.claude/
+.env*
+.DS_Store
+package.json
+package-lock.json
+.htmlvalidate.json
+.pre-commit-config.yaml
+
+# graphify output (self-reference)
+graphify-out/
+
+# Python virtual environment and caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.deepeval/
+chroma/
+docs_md/
