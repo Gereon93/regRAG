@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-31
+### Neu
+- **Eval-Set versioniert:** `evaluation/evalset/v1.jsonl` mit Segment, Kategorie und Gruppe; Version als SHA-256 über den Inhalt (#31).
+- **Schwellen über Kosten:** Falschantwort-/Eskalationsgewicht als Config, Schwelle pro Segment auf dem Calibration-Split (#31).
+- **Segment-Report:** `python -m evaluation.eval_report` berichtet auf dem Test-Split Falschantwortrate, Eskalationsrate und Coverage mit 95%-Wilson-Intervall (#31).
+### Hinweis
+- Das Set hat 14 Fälle; die geforderten >= 200 gelabelten Fragen stehen aus (Labeln liegt beim Maintainer).
+
 ## 2026-09-30
 ### Neu
 - **Query-Embedding messen:** Reproduzierbarer CPU-/MPS-Benchmark mit Rohmessungen dokumentiert (#10).

@@ -1,3 +1,4 @@
+import math
 import os
 from urllib.parse import urlsplit
 
@@ -31,3 +32,11 @@ JUDGE_MODELL = os.getenv("REGRAG_JUDGE_MODELL") or "qwen/qwen3.5-9b"
 JUDGE_BASE_URL = os.getenv("REGRAG_JUDGE_BASE_URL") or LLM_BASE_URL
 JUDGE_API_KEY = os.getenv("REGRAG_JUDGE_API_KEY") or LLM_API_KEY
 JUDGE_TIMEOUT = float(os.getenv("REGRAG_JUDGE_TIMEOUT") or LLM_TIMEOUT)
+
+KOSTEN_FALSCHANTWORT = float(os.getenv("REGRAG_KOSTEN_FALSCHANTWORT", "10"))
+KOSTEN_ESKALATION = float(os.getenv("REGRAG_KOSTEN_ESKALATION", "1"))
+if not all(math.isfinite(k) and k >= 0 for k in (KOSTEN_FALSCHANTWORT, KOSTEN_ESKALATION)) or not (
+    KOSTEN_FALSCHANTWORT or KOSTEN_ESKALATION
+):
+    raise ValueError("REGRAG_KOSTEN_* müssen endlich und >= 0 sein, mindestens eines > 0.")
+EVAL_BERICHT_VERZEICHNIS = os.getenv("REGRAG_EVAL_BERICHT_DIR", "evaluation/reports")
