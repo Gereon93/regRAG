@@ -206,12 +206,8 @@ def test_bericht_segment_ohne_schwelle_ist_fehler():
         bericht(zeilen(), {"verordnung": 0.5}, KOSTEN, version="v")
 
 
-class FesterRetriever:
-    def __init__(self, scores):
-        self.scores = scores
-
-    def retrieve(self, frage):
-        return [SimpleNamespace(score=self.scores[frage])]
+def fester_retriever(scores):
+    return SimpleNamespace(retrieve=lambda frage: [SimpleNamespace(score=scores[frage])])
 
 
 def test_erzeuge_bericht_waehlt_schwelle_auf_calibration_und_misst_auf_test():
@@ -220,7 +216,7 @@ def test_erzeuge_bericht_waehlt_schwelle_auf_calibration_und_misst_auf_test():
         faelle.append(fall(f"a{i}", erwartet="answer"))
         faelle.append(fall(f"n{i}", erwartet="abstain"))
     scores = {f["frage"]: (0.9 if f["erwartet"] == "answer" else 0.2) for f in faelle}
-    ergebnis = erzeuge_bericht(faelle, FesterRetriever(scores), KOSTEN)
+    ergebnis = erzeuge_bericht(faelle, fester_retriever(scores), KOSTEN)
     assert ergebnis["split"] == "test"
     assert ergebnis["eval_version"] == eval_version(faelle)
     assert 0.2 < ergebnis["schwellen"]["verordnung"] <= 0.9
@@ -230,7 +226,7 @@ def test_erzeuge_bericht_waehlt_schwelle_auf_calibration_und_misst_auf_test():
 
 def test_erzeuge_bericht_bricht_bei_leeren_splits_ab():
     with pytest.raises(SystemExit):
-        erzeuge_bericht([fall("a")], FesterRetriever({"Frage a?": 0.9}), KOSTEN)
+        erzeuge_bericht([fall("a")], fester_retriever({"Frage a?": 0.9}), KOSTEN)
 
 
 def test_schreibe_legt_artefakt_mit_version_im_namen_an(tmp_path):
@@ -255,11 +251,8 @@ def test_ohne_retrieval_treffer_wird_immer_verweigert():
 
 
 def test_hole_zeilen_markiert_leeres_retrieval_als_none():
-    class Leer:
-        def retrieve(self, frage):
-            return []
-
-    assert hole_zeilen([fall("a")], Leer())[0]["top"] is None
+    leer = SimpleNamespace(retrieve=lambda frage: [])
+    assert hole_zeilen([fall("a")], leer)[0]["top"] is None
 
 
 def test_einseitige_calibration_segmente_werden_gewarnt():
@@ -270,6 +263,6 @@ def test_einseitige_calibration_segmente_werden_gewarnt():
 def test_ausgeliefertes_seed_set_ist_noch_nicht_kalibrierbar():
     """14 Fälle mit korrekter Normgruppierung lassen keinen Calibration-Split übrig: der Runner sagt das klar."""
     faelle = lade_faelle(STANDARD_FAELLE)
-    retriever = FesterRetriever({f["frage"]: 0.5 for f in faelle})
+    retriever = fester_retriever({f["frage"]: 0.5 for f in faelle})
     with pytest.raises(SystemExit, match="Mehr Fälle"):
         erzeuge_bericht(faelle, retriever, KOSTEN)
