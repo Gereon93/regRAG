@@ -48,8 +48,9 @@ Details und Grenzen: [ADR 0013](docs/adr/0013-laya-kalibrierung-segmentschwellen
 
 - **Segment** pro Dokument steht im Sidecar `<datei>.source.json` als `"segment"` (`gesetz`, `verordnung`,
   `richtlinie`, `leitlinie`, `auslegung`). Fehlt es oder ist es ungültig (auch bei Uploads und Bestandsindizes),
-  gilt `unbekannt` mit der strengsten Schwelle. Nach dem Ergänzen einmal neu indexieren:
-  `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
+  gilt `unbekannt` mit der strengsten Schwelle. Ein neu ergänztes oder geändertes Segment indexiert das betroffene
+  Dokument beim nächsten Start automatisch neu (der Sidecar geht in den Datei-Hash ein); `REGRAG_INDEX_NEU_BAUEN=1
+  python agent.py` ist nur nötig, um Segmente auf alle bestehenden Dokumente auf einmal anzuwenden.
 - **Manifest erzeugen:** `python -m evaluation.eval_report --checkpoint-revision <REV>` (mit gesetzter
   `REGRAG_LAYA_URL`) schreibt Schwellen, Temperatur, Checkpoint und `eval_version` nach `evaluation/manifest/`.
   Die Revision ist deklariert, nicht verifiziert.

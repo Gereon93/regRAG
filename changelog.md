@@ -8,9 +8,9 @@
 - **Vergleich:** `python -m evaluation.vergleich` vergleicht zwei Reports per Cluster-Bootstrap über die Gruppen (#32).
 - **Eskalationsmetriken:** `GET /metrics` mit Raten pro Reason und Segment sowie Score-Histogrammen; der Eskalationsdatensatz trägt `segment` (#32).
 ### Geändert
-- Ein gesetztes, aber fehlendes oder ungültiges Manifest lässt den Start fehlschlagen; unter Manifest führt ein abweichendes `routing.model` zu ABSTAIN `JUDGE_UNAVAILABLE`.
+- Ein gesetztes, aber fehlendes oder ungültiges Manifest lässt den Start fehlschlagen; unter Manifest führt ein abweichendes oder malformtes `routing` bzw. `routing.model` zu ABSTAIN `JUDGE_UNAVAILABLE`; fehlt `routing.model` ganz, warnt das Gate einmalig "Checkpoint nicht verifizierbar".
 ### Hinweis
-- Bestandsindizes kennen kein `segment` und gelten als `unbekannt`; Segmente nach Sidecar-Pflege mit `REGRAG_INDEX_NEU_BAUEN=1` neu indexieren.
+- Bestandsindizes kennen kein `segment` und gelten als `unbekannt`; ein ergänztes Segment im Sidecar indexiert das Dokument automatisch neu, `REGRAG_INDEX_NEU_BAUEN=1` wendet Segmente auf alle Dokumente auf einmal an. `segment` fließt nicht in den Embedding-Text.
 - **Offen:** "Fine-getuntes Laya schlägt Zero-Shot signifikant" ist nicht gemessen; es fehlen Labels und ein trainierter Checkpoint. Nicht umgesetzt: Fine-Tuning, `relevance`-Judge, Raten-Warnung, Trainingsexport (ADR 0013).
 
 ## 2026-10-31

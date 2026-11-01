@@ -27,10 +27,14 @@ Das ist gewollt.
 - **Quelle der Segmente:** das optionale Feld `segment` im `.source.json`-Sidecar, nur vom Betreiber gepflegt.
   `rag._quelle_metadata` schreibt es in die Node-Metadaten. `convert.py` schreibt es nicht, Uploads
   landen daher immer in `unbekannt`.
-- **Bestandsindex:** Der Fingerprint ändert sich durch die neue Metadaten-Spalte nicht. Nodes eines
-  Bestandsindex haben kein `segment` und gelten als `unbekannt` (streng). Wer Segmente nutzen will, ergänzt
-  die Sidecars und baut den Index einmal neu: `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`
-  (`rag.NEU_BAUEN`, siehe README).
+- **Kein Einfluss auf Embeddings:** `segment` ist ausdrücklich aus `excluded_embed_metadata_keys` und
+  `excluded_llm_metadata_keys` ausgenommen (`rag.indexiere`). Sonst stünde "segment: verordnung" im Embedding-Text,
+  und ein Neuaufbau würde die Cosine-Scores verschieben, auf denen `REGRAG_MIN_SCORE` und die Kalibrierung gemessen wurden.
+- **Bestandsindex:** Nodes ohne `segment` gelten als `unbekannt` (streng). Wird ein Segment im Sidecar ergänzt
+  oder geändert, ändert sich der Datei-Hash des Dokuments (`dokumente.py` hasht den Sidecar mit) und genau dieses
+  Dokument wird beim nächsten Start inkrementell neu indexiert. `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`
+  (`rag.NEU_BAUEN`, siehe README) braucht man nur, um Segmente auf **alle** bestehenden Dokumente auf einmal
+  anzuwenden bzw. einen Bestandsindex ohne Segmente komplett umzustellen.
 - **Segment einer Anfrage:** `segment_von(nodes)` (reine Funktion in `gate.py`) liefert das gemeinsame Segment,
   wenn **alle** Nodes dasselbe Segment aus `SEGMENTE` tragen; bei leerer Liste, gemischten Segmenten oder einem
   `unbekannt`-Node liefert sie `unbekannt`. Laya urteilt über die Evidenz aller Nodes, nicht nur den Top-Treffer;
@@ -45,14 +49,17 @@ Das ist gewollt.
 ### Temperature Scaling
 
 - `fitte_temperatur` (`evaluation/kalibrierung.py`, nur stdlib) minimiert die mittlere NLL per Goldenem Schnitt
-  über `log T` in `[0.05, 20]`. Nur ein Label oder zu wenige Zeilen: `T = 1.0` mit Warnung "Temperatur nicht
+  über `log T` in `[0.05, 20]`. Nur eine Klasse im Label: `T = 1.0` mit Warnung "Temperatur nicht
   schätzbar". Optimum am Rand: Randwert mit Warnung.
 - `skaliere(p, T)` = `sigmoid(logit(clip(p, EPS, 1-EPS)) / T)`, `EPS = 1e-6`. Der **Fit** benutzt die ungeklemmte
   `skaliere`. `kalibriere` (Gate und Report) klemmt die **Ausgabe** zusätzlich auf `[EPS, 1-EPS]`, weil kleines T
   sonst auf exakt 0.0 bzw. 1.0 sättigt und Schwellenkandidaten außerhalb von `[0, 1]` oder nicht unterscheidbare
   Scores entstehen. Alle Schwellenkandidaten sind deshalb endliche Werte in `[0, 1]`.
-- **Ehrliche Wirkung: T ändert keine Gate-Entscheidung.** Temperature Scaling ist streng monoton, und die Schwelle
+- **Ehrliche Wirkung: T ändert (fast) keine Gate-Entscheidung.** Temperature Scaling ist streng monoton, und die Schwelle
   wird danach auf denselben Calibration-Daten gewählt; dieselbe Reihenfolge der Scores ergibt dieselbe Entscheidung.
+  Einschränkung durch die Ausgabeklemmung `[EPS, 1-EPS]`: Gesättigte Scores (logit/T > ca. 13,8, z. B. T = 0,1 und
+  p > ca. 0,8) werden ununterscheidbar, die Schwellenwahl kann dort gröber sein als auf der Rohskala. Sonst monoton.
+  Ein T nahe `T_MIN` (0,05) verdient deshalb Aufmerksamkeit.
   T dient der Interpretierbarkeit (Score ≈ Wahrscheinlichkeit), der Vergleichbarkeit von Schwellen über Segmente
   und Checkpoints und dem ECE-Bericht (5 gleich breite Bins, auf dem Test-Split, vor und nach Kalibrierung).
 - Temperatur und Schwellen werden nur auf Calibration-Zeilen mit Laya-Score gewählt, nie auf Train oder Test.
@@ -91,6 +98,7 @@ ist ein `ValueError` mit Feldname): `schema == 1`; alle Felder vorhanden und vom
 | nicht gesetzt oder leer | beliebig | bisheriges Verhalten: `REGRAG_LAYA_MIN_ANSWERABLE` global auf dem Rohscore, keine Kalibrierung |
 | gesetzt | leer | `ValueError`, Start schlägt fehl |
 | gesetzt, Datei fehlt, unlesbar oder ungültig | gesetzt | `ValueError`, Start schlägt fehl |
+| gesetzt, gültiges Manifest | gesetzt | Kaskade aus Score-Guard und Laya mit kalibrierten Segmentschwellen, Temperatur und strenger Modellprüfung (`modell_streng`) |
 
 Es gibt **keinen** Rückfall auf 0.5: Ein gesetztes, aber kaputtes Manifest lockert das Gate nie.
 
@@ -103,8 +111,11 @@ diese Revision lädt. Geprüft wird nur der Name:
 
 - weicht `routing.model` ab: ohne Manifest nur WARNING (wie 0011); **mit Manifest** WARNING und ABSTAIN mit
   `JUDGE_UNAVAILABLE`, weil die kalibrierten Schwellen für diesen Checkpoint nicht gelten;
-- **fehlt `routing.model` in der Antwort, wird sie auch unter Manifest akzeptiert.** Das ist eine bekannte
-  Grenze: Der Jev-Strict-Modus (`LAYA_JEV_STRICT=1`) sendet kein `routing`; dort ist der Checkpoint vollständig
+- ist `routing` vorhanden, aber kein Objekt, oder `routing.model` vorhanden, aber kein String, zählt das unter
+  Manifest als **Mismatch** (ABSTAIN `JUDGE_UNAVAILABLE`), nicht als "kein routing";
+- **fehlt `routing` bzw. `routing.model` in der Antwort ganz, wird sie auch unter Manifest akzeptiert.** Dann wird
+  einmal pro Gate-Instanz (nicht pro Anfrage) gewarnt: "Checkpoint nicht verifizierbar; Schwellen gelten nur
+  deklariert". Das ist eine bekannte Grenze: Der Jev-Strict-Modus (`LAYA_JEV_STRICT=1`) sendet kein `routing`; dort ist der Checkpoint vollständig
   unverifiziert. Wer sich auf das Manifest verlässt, darf den Server nicht im Strict-Modus betreiben, oder muss
   den Checkpoint operativ absichern.
 
@@ -153,7 +164,17 @@ Der Report des aktuellen (zero-shot) Checkpoints ist die Baseline. Der Vergleich
   und damit beim strengsten Fallback; das mildert, schützt nicht.
 - Die Schwellen werden weiterhin nicht automatisch in die Laufzeit-Config geschrieben; der Weg ist das Manifest,
   das der Betreiber bewusst ins Deployment legt und per `REGRAG_GATE_MANIFEST` aktiviert.
-- Ein Judge-Ausfall oder ein abweichender Checkpoint unter Manifest führt zu ABSTAIN, nie zu ANSWER.
+- Ein Judge-Ausfall oder ein abweichender Checkpoint unter Manifest führt zu ABSTAIN, nie zu ANSWER. Die Entscheidung
+  ist NaN-sicher formuliert (`not (kalibriert >= schwelle)` führt zu ABSTAIN).
+
+### Bekannte Grenzen
+
+- Ein Segment, dessen Calibration-Fälle nur eine Klasse enthalten (einseitige Kalibrierung), bekommt eine lockere
+  eigene Schwelle plus Warnung. Folgearbeit: solche Segmente ausschließen oder das Manifest verweigern.
+- Das Manifest ist nicht an den Index-Fingerprint gebunden; nur der Report trägt `index_fingerprint`.
+- Der Report bricht ab, wenn ein TEST-Segment keine Calibration-Fälle hat (z. B. das Eval-Segment `ausserhalb`),
+  obwohl der Laya-Pfad dieses Segment gar nicht braucht.
+- Gleiche `eval_version` mit anderer Revision überschreibt das eingecheckte Manifest (`git diff` macht es sichtbar).
 
 ## Bewusst nicht umgesetzt
 
