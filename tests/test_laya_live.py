@@ -25,7 +25,7 @@ def node(text):
 @pytest.fixture(scope="module")
 def gate():
     client = SystemOneClient(URL, os.getenv("REGRAG_LAYA_API_KEY", ""), float(os.getenv("REGRAG_LAYA_TIMEOUT", "30")))
-    return LayaGate(client, SCHWELLE)
+    return LayaGate(client, lambda segment: SCHWELLE)
 
 
 def test_antwort_haengt_von_der_evidenz_ab(gate):

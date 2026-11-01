@@ -13,13 +13,15 @@ from gate import (
     Kaskade,
     Outcome,
     RetrievalScoreGate,
+    kalibriere,
+    segment_von,
 )
+from manifest import lade_manifest
 
 log = logging.getLogger(__name__)
 
 PFAD = "/v1/systemone"
 CONNECT_TIMEOUT_SEKUNDEN = 2.0
-MODELL = "multilingual"
 FRAGE_ID = "answerable"
 FRAGEN = {FRAGE_ID: {"type": "noul", "instructions": "Enthält die Evidenz die Antwort auf die Frage?"}}
 MAX_JUDGE_EVIDENZ_ZEICHEN = 20_000
@@ -67,26 +69,57 @@ class SystemOneClient:
 
 
 class LayaGate:
-    def __init__(self, client, min_answerable, max_len=4096, lang="de", max_evidenz_zeichen=MAX_JUDGE_EVIDENZ_ZEICHEN):
+    def __init__(
+        self,
+        client,
+        schwelle_fuer,
+        kalibriere_score=lambda p: p,
+        max_len=4096,
+        lang="de",
+        max_evidenz_zeichen=MAX_JUDGE_EVIDENZ_ZEICHEN,
+        modell="multilingual",
+        modell_streng=False,
+    ):
         self.client = client
-        self.min_answerable = min_answerable
+        self.schwelle_fuer = schwelle_fuer
+        self.kalibriere_score = kalibriere_score
         self.max_len = max_len
         self.lang = lang
         self.max_evidenz_zeichen = max_evidenz_zeichen
+        self.modell = modell
+        self.modell_streng = modell_streng
 
-    def entscheide(self, frage, nodes):
+    def answerable_roh(self, frage, nodes):
+        """Rohwahrscheinlichkeit von Laya; wirft JudgeFehler bei Ausfall oder (streng) fremdem Checkpoint."""
         evidenz = "\n\n".join(n.text for n in nodes)[: self.max_evidenz_zeichen]
         state = {"frage": frage, "evidenz": evidenz}
+        antwort = self.client.entscheide(state, FRAGEN, model=self.modell, lang=self.lang, max_len=self.max_len)
+        wahrscheinlichkeit = _lies_wahrscheinlichkeit(antwort)
+        if not self._pruefe_auffaelligkeiten(antwort) and self.modell_streng:
+            raise JudgeFehler
+        return wahrscheinlichkeit
+
+    def entscheide(self, frage, nodes):
         try:
-            antwort = self.client.entscheide(state, FRAGEN, model=MODELL, lang=self.lang, max_len=self.max_len)
-            wahrscheinlichkeit = _lies_wahrscheinlichkeit(antwort)
+            wahrscheinlichkeit = self.answerable_roh(frage, nodes)
         except JudgeFehler:
             return GateDecision(Outcome.ABSTAIN, (AbstainReason.JUDGE_UNAVAILABLE,), GateScores())
-        _warne_bei_auffaelligkeiten(antwort)
         scores = GateScores(answerable=wahrscheinlichkeit)
-        if wahrscheinlichkeit < self.min_answerable:
+        if self.kalibriere_score(wahrscheinlichkeit) < self.schwelle_fuer(segment_von(nodes)):
             return GateDecision(Outcome.ABSTAIN, (AbstainReason.NOT_ANSWERABLE,), scores)
         return GateDecision(Outcome.ANSWER, (), scores)
+
+    def _pruefe_auffaelligkeiten(self, antwort):
+        """Loggt Auffälligkeiten; gibt False zurück, wenn ein anderer Checkpoint geantwortet hat."""
+        usage = antwort.get("usage")
+        if isinstance(usage, dict) and usage.get("truncated") is True:
+            log.warning("Laya hat den State gekürzt — Antwort beruht auf unvollständiger Evidenz")
+        routing = antwort.get("routing")
+        modell = routing.get("model") if isinstance(routing, dict) else None
+        if modell is not None and modell != self.modell:
+            log.warning("Laya hat mit Checkpoint %s statt %s geantwortet", modell, self.modell)
+            return False
+        return True
 
 
 def _lies_wahrscheinlichkeit(antwort):
@@ -101,16 +134,6 @@ def _lies_wahrscheinlichkeit(antwort):
     return wert
 
 
-def _warne_bei_auffaelligkeiten(antwort):
-    usage = antwort.get("usage")
-    if isinstance(usage, dict) and usage.get("truncated") is True:
-        log.warning("Laya hat den State gekürzt — Antwort beruht auf unvollständiger Evidenz")
-    routing = antwort.get("routing")
-    modell = routing.get("model") if isinstance(routing, dict) else None
-    if modell is not None and modell != MODELL:
-        log.warning("Laya hat mit Checkpoint %s statt %s geantwortet", modell, MODELL)
-
-
 def warne_wenn_nicht_lokal(url):
     host = urlsplit(url).hostname
     if host not in LOKALE_HOSTS:
@@ -120,9 +143,27 @@ def warne_wenn_nicht_lokal(url):
 def baue_gate(einstellungen, transport=None):
     score_gate = RetrievalScoreGate(einstellungen.MIN_RETRIEVAL_SCORE)
     url = (einstellungen.LAYA_URL or "").strip()
+    manifest_pfad = (einstellungen.GATE_MANIFEST or "").strip()
     if not url:
+        if manifest_pfad:
+            raise ValueError("REGRAG_GATE_MANIFEST ist gesetzt, aber REGRAG_LAYA_URL fehlt.")
         return score_gate
     warne_wenn_nicht_lokal(url)
     client = SystemOneClient(url, einstellungen.LAYA_API_KEY, einstellungen.LAYA_TIMEOUT, transport)
-    laya = LayaGate(client, einstellungen.LAYA_MIN_ANSWERABLE, einstellungen.LAYA_MAX_LEN, einstellungen.LAYA_LANG)
+    optionen = {
+        "max_len": einstellungen.LAYA_MAX_LEN,
+        "lang": einstellungen.LAYA_LANG,
+        "modell": einstellungen.LAYA_MODELL,
+    }
+    if manifest_pfad:
+        manifest = lade_manifest(manifest_pfad, einstellungen)
+        laya = LayaGate(
+            client,
+            manifest.schwelle_fuer,
+            lambda p: kalibriere(p, manifest.temperatur),
+            modell_streng=True,
+            **optionen,
+        )
+    else:
+        laya = LayaGate(client, lambda segment: einstellungen.LAYA_MIN_ANSWERABLE, **optionen)
     return Kaskade([score_gate, laya])

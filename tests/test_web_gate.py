@@ -107,6 +107,8 @@ def laya_strom(tmp_path):
             LAYA_MAX_LEN=4096,
             LAYA_LANG="de",
             LAYA_MIN_ANSWERABLE=0.5,
+            LAYA_MODELL="multilingual",
+            GATE_MANIFEST="",
         )
         gate = baue_gate(einstellungen, transport=httpx.MockTransport(handler))
         with _strom(gate, tmp_path / "eskalationen.jsonl") as s:

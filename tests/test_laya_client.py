@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from gate import AbstainReason, Outcome
-from laya import LayaGate, SystemOneClient
+from laya import JudgeFehler, LayaGate, SystemOneClient
 
 KEY = "geheim-123"
 ANTWORT_FRAGE = "answerable"
@@ -21,7 +21,7 @@ def antwort(wert, **extra):
 
 def gate_mit(handler, key="", **optionen):
     client = SystemOneClient("http://laya.test:8000/", api_key=key, transport=httpx.MockTransport(handler))
-    return LayaGate(client, min_answerable=0.5, **optionen)
+    return LayaGate(client, schwelle_fuer=lambda segment: 0.5, **optionen)
 
 
 def test_request_folgt_dem_system_one_schema():
@@ -181,3 +181,45 @@ def test_ungueltige_metadaten_kippen_einen_gueltigen_score_nicht(extra):
 
     assert d.outcome is Outcome.ANSWER
     assert d.scores.answerable == 0.9
+
+
+def test_modell_aus_dem_gate_geht_in_den_request():
+    gesehen = []
+
+    def handler(request):
+        gesehen.append(json.loads(request.content))
+        return antwort(0.9, routing={"model": "mein-modell"})
+
+    d = gate_mit(handler, modell="mein-modell", modell_streng=True).entscheide("f", [node()])
+
+    assert gesehen[0]["model"] == "mein-modell"
+    assert d.outcome is Outcome.ANSWER
+
+
+def test_routing_abweichung_ohne_manifest_bleibt_eine_warnung(caplog):
+    d = gate_mit(lambda r: antwort(0.9, routing={"model": "english"})).entscheide("f", [node()])
+
+    assert d.outcome is Outcome.ANSWER
+    assert "english" in caplog.text
+
+
+def test_routing_abweichung_mit_modell_streng_ist_judge_unavailable(caplog):
+    d = gate_mit(lambda r: antwort(0.99, routing={"model": "english"}), modell_streng=True).entscheide("f", [node()])
+
+    assert d.outcome is Outcome.ABSTAIN
+    assert d.reasons == (AbstainReason.JUDGE_UNAVAILABLE,)
+    assert "english" in caplog.text
+
+
+def test_routing_ohne_modellangabe_ist_auch_streng_kein_fehler():
+    d = gate_mit(lambda r: antwort(0.9), modell_streng=True).entscheide("f", [node()])
+
+    assert d.outcome is Outcome.ANSWER
+
+
+def test_answerable_roh_liefert_den_rohwert_und_wirft_bei_fehlern():
+    assert gate_mit(lambda r: antwort(0.37)).answerable_roh("f", [node()]) == 0.37
+    with pytest.raises(JudgeFehler):
+        gate_mit(lambda r: httpx.Response(503)).answerable_roh("f", [node()])
+    with pytest.raises(JudgeFehler):
+        gate_mit(lambda r: antwort(0.9, routing={"model": "english"}), modell_streng=True).answerable_roh("f", [node()])
