@@ -11,10 +11,13 @@ from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
 
+from gate import SEGMENTE
+
 STANDARD_FAELLE = Path(__file__).parent / "evalset" / "v1.jsonl"
 
 PFLICHTFELDER = ("id", "frage", "erwartet", "segment", "kategorie")
 ERWARTET = ("answer", "abstain")
+AUSSERHALB = "ausserhalb"
 SPLIT_ANTEILE = (("train", 60), ("calibration", 20), ("test", 20))
 SPLIT_BUCKETS = sum(anteil for _, anteil in SPLIT_ANTEILE)
 SPLIT_GRENZEN = tuple(
@@ -59,6 +62,12 @@ def _pruefe(fall, nummer, gesehen):
             raise ValueError(f"Zeile {nummer}: Feld '{feld}' fehlt oder ist leer.")
     if fall["erwartet"] not in ERWARTET:
         raise ValueError(f"Zeile {nummer}: erwartet muss {ERWARTET} sein, nicht {fall['erwartet']!r}.")
+    ausserhalb = fall["segment"] == AUSSERHALB and fall["erwartet"] == "abstain"
+    if fall["segment"] not in SEGMENTE and not ausserhalb:
+        raise ValueError(
+            f"Zeile {nummer}: segment muss {SEGMENTE} sein oder '{AUSSERHALB}' mit erwartet abstain, "
+            f"nicht {fall['segment']!r} bei erwartet {fall['erwartet']!r}."
+        )
     if fall["id"] in gesehen:
         raise ValueError(f"Zeile {nummer}: doppelte id {fall['id']!r}.")
     gesehen.add(fall["id"])

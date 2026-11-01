@@ -76,6 +76,25 @@ def test_standard_set_ist_valide_und_splittbar():
     assert eval_version(faelle).startswith("sha256:")
 
 
+def test_standard_set_eval_version_ist_unveraendert():
+    faelle = lade_faelle(STANDARD_FAELLE)
+    assert eval_version(faelle) == "sha256:f671a47c676c5e912f565dc8191116d665d04a39cdeba6360646b7053173b375"
+
+
+def test_ausserhalb_mit_answer_ist_ein_fehler(tmp_path):
+    with pytest.raises(ValueError, match="Zeile 1"):
+        lade_faelle(schreibe_set(tmp_path, [fall("a", erwartet="answer", segment="ausserhalb")]))
+
+
+def test_ausserhalb_mit_abstain_ist_gueltig(tmp_path):
+    assert lade_faelle(schreibe_set(tmp_path, [fall("a", erwartet="abstain", segment="ausserhalb")]))
+
+
+def test_unbekanntes_segment_ist_ein_fehler(tmp_path):
+    with pytest.raises(ValueError, match="Zeile 1"):
+        lade_faelle(schreibe_set(tmp_path, [fall("a", segment="foo")]))
+
+
 def test_eval_version_aendert_sich_mit_inhalt_nicht_mit_reihenfolge():
     a, b = fall("a"), fall("b")
     assert eval_version([a, b]) == eval_version([b, a])

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,36 @@ log = logging.getLogger(__name__)
 MAX_FRAGE_ZEICHEN = 2000
 MAX_EVIDENZ_ZEICHEN = 2000
 ESKALATIONS_DATEI_RECHTE = 0o600
+
+SEGMENTE = ("gesetz", "verordnung", "richtlinie", "leitlinie", "auslegung")
+UNBEKANNT = "unbekannt"
+EPS = 1e-6
+_GEWARNTE_SEGMENTE = set()
+
+
+def normalisiere_segment(wert, quelle=None):
+    """Bildet einen Metadatenwert auf SEGMENTE oder UNBEKANNT ab; unbekannte nicht leere Werte warnen einmalig."""
+    if not isinstance(wert, str):
+        return UNBEKANNT
+    segment = wert.strip().lower()
+    if segment in SEGMENTE:
+        return segment
+    if segment and (segment, quelle) not in _GEWARNTE_SEGMENTE:
+        _GEWARNTE_SEGMENTE.add((segment, quelle))
+        log.warning("Unbekanntes Segment %r in %s; behandelt als %s.", wert, quelle or "Metadaten", UNBEKANNT)
+    return UNBEKANNT
+
+
+def segment_von(nodes):
+    """Gemeinsames Segment aller Nodes, sonst UNBEKANNT (gemischte Evidenz bekommt die strengste Schwelle)."""
+    segmente = {normalisiere_segment(n.metadata.get("segment")) for n in nodes}
+    return segmente.pop() if len(segmente) == 1 else UNBEKANNT
+
+
+def kalibriere(p, T):
+    """Temperature Scaling: sigmoid(logit(clip(p, EPS, 1-EPS)) / T)."""
+    p = min(max(p, EPS), 1 - EPS)
+    return 1 / (1 + math.exp(-math.log(p / (1 - p)) / T))
 
 ABSTAIN_ANTWORT_VORGEMERKT = (
     "Keine belastbare Grundlage in den indexierten Dokumenten. "

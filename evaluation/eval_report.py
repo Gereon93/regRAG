@@ -36,7 +36,7 @@ def einseitige_segmente(zeilen):
     labels = {}
     for z in zeilen:
         labels.setdefault(z["segment"], set()).add(z["erwartet"])
-    return [f"Segment '{s}': Calibration enthält nur '{next(iter(l))}', Schwelle nicht belastbar." for s, l in sorted(labels.items()) if len(l) == 1]
+    return [f"Segment '{s}': Calibration enthält nur '{next(iter(werte))}', Schwelle nicht belastbar." for s, werte in sorted(labels.items()) if len(werte) == 1]
 
 
 def erzeuge_bericht(faelle, retriever, kosten):

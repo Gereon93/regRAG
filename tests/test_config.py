@@ -120,3 +120,22 @@ def test_ungueltige_kosten_brechen_beim_import_ab(geladen, monkeypatch, falschan
         geladen(REGRAG_KOSTEN_FALSCHANTWORT=falschantwort, REGRAG_KOSTEN_ESKALATION=eskalation)
     monkeypatch.delenv("REGRAG_KOSTEN_FALSCHANTWORT")
     monkeypatch.delenv("REGRAG_KOSTEN_ESKALATION")
+
+
+def test_gate_manifest_und_laya_modell_defaults(geladen):
+    c = geladen()
+    assert c.GATE_MANIFEST == ""
+    assert c.LAYA_MODELL == "multilingual"
+
+
+def test_gate_manifest_und_laya_modell_werden_getrimmt(geladen):
+    c = geladen(REGRAG_GATE_MANIFEST="  gate.json ", REGRAG_LAYA_MODELL=" mein-modell ")
+    assert c.GATE_MANIFEST == "gate.json"
+    assert c.LAYA_MODELL == "mein-modell"
+
+
+@pytest.mark.parametrize("wert", ["", "   "])
+def test_leeres_laya_modell_ist_ein_fehler(geladen, monkeypatch, wert):
+    with pytest.raises(ValueError, match="LAYA_MODELL"):
+        geladen(REGRAG_LAYA_MODELL=wert)
+    monkeypatch.delenv("REGRAG_LAYA_MODELL")

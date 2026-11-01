@@ -15,6 +15,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 import config
 import dokumente
 import embedding
+from gate import normalisiere_segment
 
 DISTANZMETRIK_WIE_IN_MEMORY = {"hnsw:space": "cosine"}  # docs/adr/0003
 METRIK = DISTANZMETRIK_WIE_IN_MEMORY["hnsw:space"]
@@ -42,6 +43,7 @@ def _quelle_metadata(pfad):
         "file_name": p.name,
         "quelle": daten.get("titel", p.name),
         "pdf": daten.get("pdf"),
+        "segment": normalisiere_segment(daten.get("segment"), p.name),
     }
 
 

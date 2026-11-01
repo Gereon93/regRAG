@@ -17,12 +17,17 @@ from gate import (
     GateScores,
     Kaskade,
     Outcome,
+    SEGMENTE,
+    UNBEKANNT,
     RetrievalScoreGate,
     abstain_antwort,
     aktiviere_score_log,
     entscheide_und_eskaliere,
     eskalationsdatensatz,
+    kalibriere,
+    normalisiere_segment,
     schreibe_eskalation,
+    segment_von,
 )
 
 
@@ -335,3 +340,46 @@ def test_aktiviere_score_log_macht_info_sichtbar_und_ist_idempotent():
         assert len(logger.handlers) == 1
     finally:
         logger.handlers[:], logger.level = vorher
+
+
+@pytest.mark.parametrize(
+    ("wert", "erwartet"),
+    [("Verordnung ", "verordnung"), ("gesetz", "gesetz"), ("foo", UNBEKANNT), (None, UNBEKANNT), ("", UNBEKANNT), (5, UNBEKANNT)],
+)
+def test_normalisiere_segment(wert, erwartet):
+    assert normalisiere_segment(wert) == erwartet
+
+
+def test_unbekannt_ist_kein_segment_und_vokabular_ist_fest():
+    assert SEGMENTE == ("gesetz", "verordnung", "richtlinie", "leitlinie", "auslegung")
+    assert UNBEKANNT not in SEGMENTE
+
+
+def test_normalisiere_segment_warnt_bei_unbekanntem_nicht_leerem_wert(caplog):
+    with caplog.at_level(logging.WARNING, logger="gate"):
+        normalisiere_segment("foo", "dora.md")
+    assert "dora.md" in caplog.text
+    assert "foo" in caplog.text
+
+
+def segment_node(segment):
+    metadata = {} if segment is None else {"segment": segment}
+    return SimpleNamespace(metadata=metadata, score=0.9, text="Art. 5")
+
+
+def test_segment_von_einheitlich():
+    assert segment_von([segment_node("verordnung"), segment_node("verordnung")]) == "verordnung"
+
+
+def test_segment_von_gemischt_leer_und_ohne_feld_ist_unbekannt():
+    assert segment_von([segment_node("verordnung"), segment_node("gesetz")]) == UNBEKANNT
+    assert segment_von([]) == UNBEKANNT
+    assert segment_von([segment_node("verordnung"), segment_node(None)]) == UNBEKANNT
+    assert segment_von([segment_node(UNBEKANNT)]) == UNBEKANNT
+
+
+def test_kalibriere_identitaet_bei_t1_und_clip():
+    assert kalibriere(0.3, 1.0) == pytest.approx(0.3)
+    assert 0 < kalibriere(0.0, 1.0) < 1
+    assert 0 < kalibriere(1.0, 1.0) < 1
+    assert kalibriere(0.8, 2.0) < 0.8
