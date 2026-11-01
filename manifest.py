@@ -60,7 +60,7 @@ def _text(wert, feld: str) -> str:
 
 def _objekt(wert, feld: str) -> dict:
     if not isinstance(wert, dict):
-        raise ValueError(f"Manifest: {feld} muss ein Objekt sein.")
+        raise ValueError(f"Manifest: {feld} muss ein Objekt sein.")  # noqa: TRY004 - Spec 23: jede Verletzung ist ValueError
     return wert
 
 

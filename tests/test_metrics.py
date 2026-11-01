@@ -1,5 +1,6 @@
 import sys
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -7,7 +8,6 @@ import gate
 import metrics
 from gate import AbstainReason, GateDecision, GateScores, Outcome, RetrievalScoreGate
 from metrics import Metriken
-from types import SimpleNamespace
 
 
 def antwort(**scores):

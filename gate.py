@@ -214,7 +214,7 @@ def _zaehle(entscheidung, nodes):
     """Metriken sind Beiwerk: ein Fehler beim Zaehlen darf die Entscheidung nie veraendern."""
     try:
         metrics.METRIKEN.zaehle(entscheidung, segment_von(nodes))
-    except Exception:  # noqa: BLE001 - Zaehlen darf die Gate-Entscheidung nie kippen
+    except Exception:  # Zaehlen darf die Gate-Entscheidung nie kippen (breit gefangen mit Absicht)
         log.exception("Metriken konnten nicht gezaehlt werden")
 
 
