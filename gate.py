@@ -43,10 +43,15 @@ def segment_von(nodes):
     return segmente.pop() if len(segmente) == 1 else UNBEKANNT
 
 
-def kalibriere(p, T):
-    """Temperature Scaling: sigmoid(logit(clip(p, EPS, 1-EPS)) / T)."""
+def skaliere(p, T):
+    """sigmoid(logit(clip(p, EPS, 1-EPS)) / T) ohne Ausgabe-Clip; Grundlage fuer den NLL-Fit (kein flacher Rand)."""
     p = min(max(p, EPS), 1 - EPS)
     return 1 / (1 + math.exp(-math.log(p / (1 - p)) / T))
+
+
+def kalibriere(p, T):
+    """Temperature Scaling, Ausgabe auf [EPS, 1-EPS] geklemmt (kleines T saettigt sonst auf exakt 0/1)."""
+    return min(max(skaliere(p, T), EPS), 1 - EPS)
 
 ABSTAIN_ANTWORT_VORGEMERKT = (
     "Keine belastbare Grundlage in den indexierten Dokumenten. "

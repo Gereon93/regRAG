@@ -1,5 +1,6 @@
 import hashlib
 import json
+import random
 import sys
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from evaluation.eval_report import (
     schreibe,
 )
 from evaluation.evalset import Kosten, eval_version, teile
+from gate import Kaskade, Outcome, RetrievalScoreGate, kalibriere
 from laya import LayaGate, SystemOneClient
 from manifest import lade_manifest, schreibe_manifest
 
@@ -39,8 +41,10 @@ def fall(id, erwartet, segment, gruppe=None):
 class Szenario:
     """n=100: answer/abstain je Segment, Fälle unter dem Guard, ausserhalb-Fälle unter 'verordnung'."""
 
-    def __init__(self, mit_ausserhalb=True, ausserhalb_prob=0.7):
+    def __init__(self, mit_ausserhalb=True, ausserhalb_prob=0.7, leer=False):
         self.faelle, self.treffer, self.prob, self.aufrufe = [], {}, {}, []
+        if leer:
+            return
         for i in range(25):
             self.add(f"va{i}", "answer", "verordnung", "verordnung", 0.9, 0.6 + (i % 4) * 0.1)
             self.add(f"vn{i}", "abstain", "verordnung", "verordnung", 0.9, 0.1 + (i % 4) * 0.05)
@@ -286,3 +290,107 @@ def test_vergleich_cli_bricht_bei_unvergleichbaren_reports_ab(chroma, tmp_path):
     c.write_text(json.dumps({**b, "eval_version": "sha256:x"}), encoding="utf-8")
     with pytest.raises(SystemExit, match="nicht vergleichbar"):
         vergleich.main([str(a), str(c)])
+
+
+def zufalls_szenario(seed=1, n=300):
+    """Übersichere Scores (p hoch, Trefferquote deutlich niedriger): T liegt klar über 1."""
+    rng = random.Random(seed)
+    s = Szenario(leer=True)
+    for i in range(n):
+        segment = ("verordnung", "gesetz")[i % 2]
+        p = rng.uniform(0.5, 0.99)
+        erwartet = "answer" if rng.random() < 0.3 + 0.4 * (p - 0.5) else "abstain"
+        s.add(f"r{i}", erwartet, segment, segment, 0.9, p)
+    return s
+
+
+def test_kalibriere_bleibt_auch_bei_kleinem_t_strikt_innerhalb_0_1():
+    for p in (1 - 1e-6, 0.99, 1e-6, 0.01):
+        assert 0 < kalibriere(p, 0.05) < 1
+
+
+def test_scharfer_judge_erzeugt_gueltiges_manifest(chroma, tmp_path, monkeypatch):
+    monkeypatch.setattr(eval_report, "fitte_temperatur", lambda p, y: (0.05, []))  # Rand des Suchintervalls
+    s = Szenario(leer=True)
+    for i in range(120):
+        erwartet = "answer" if i % 2 else "abstain"
+        s.add(f"s{i}", erwartet, "verordnung", "verordnung", 0.9, 0.99 if erwartet == "answer" else 0.01)
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "r1")
+    assert b["laya"]["temperatur"] == 0.05
+    assert 0 < b["laya"]["schwellen"]["verordnung"] <= 1
+    assert lade_manifest(schreibe_manifest(manifest, tmp_path / "m"), config).temperatur == b["laya"]["temperatur"]
+
+
+def test_gate_mit_manifest_reproduziert_die_kosten_aus_dem_report(chroma, tmp_path):
+    s = zufalls_szenario()
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "r1")
+    assert b["laya"]["temperatur"] > 1.5  # Szenario trennt Roh- und kalibrierte Skala wirklich
+    geladen = lade_manifest(schreibe_manifest(manifest, tmp_path / "m"), config)
+    gate = Kaskade(
+        [
+            RetrievalScoreGate(config.MIN_RETRIEVAL_SCORE),
+            LayaGate(
+                s.laya().client,
+                geladen.schwelle_fuer,
+                lambda p: kalibriere(p, geladen.temperatur),
+                modell="multilingual",
+                modell_streng=True,
+            ),
+        ]
+    )
+    erwartet = {f["id"]: f["kosten"] for f in b["laya"]["test_faelle"]}
+    test = {f["id"]: f for f in teile(s.faelle)["test"]}
+    assert test.keys() == erwartet.keys()
+    for id, f in test.items():
+        antwort = gate.entscheide(f["frage"], s.treffer[f["frage"]]).outcome is Outcome.ANSWER
+        kosten = KOSTEN.falschantwort if antwort and f["erwartet"] == "abstain" else 0.0
+        kosten = KOSTEN.eskalation if not antwort and f["erwartet"] == "answer" else kosten
+        assert kosten == erwartet[id], id
+
+
+def test_aenderung_nur_der_test_scores_aendert_schwellen_und_temperatur_nicht(chroma):
+    s = zufalls_szenario()
+    vorher, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None)
+    for f in teile(s.faelle)["test"]:
+        s.prob[f["frage"]] = 0.5
+    nachher, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None)
+    assert nachher["laya"]["schwellen"] == vorher["laya"]["schwellen"]
+    assert nachher["laya"]["temperatur"] == vorher["laya"]["temperatur"]
+    assert nachher["laya"]["test_faelle"] != vorher["laya"]["test_faelle"]
+
+
+def einseitiges_szenario():
+    s = Szenario(leer=True)
+    for i in range(60):
+        s.add(f"v{i}", "answer" if i % 2 else "abstain", "verordnung", "verordnung", 0.9, 0.9 if i % 2 else 0.2)
+    for i in range(40):
+        s.add(f"e{i}", "answer", "gesetz", "gesetz", 0.9, 0.8)
+    return s
+
+
+def test_einseitiges_calibration_segment_wird_gewarnt(chroma):
+    s = einseitiges_szenario()
+    b, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None)
+    assert any("'gesetz'" in w and "nur 'answer'" in w for w in b["laya"]["warnungen"])
+
+
+def test_main_zeigt_laya_schwellen_und_warnungen_auf_stderr(tmp_path, monkeypatch, capsys, chroma):
+    s = einseitiges_szenario()
+    vorbereitet(s, tmp_path, monkeypatch, "http://laya.test")
+    eval_report.main(["--checkpoint-revision", "r1"])
+    err = capsys.readouterr().err
+    assert "T=" in err and "Schwellen=" in err and "WARNUNG (Laya)" in err and "'gesetz'" in err
+
+
+def test_nicht_schaetzbare_temperatur_schreibt_kein_manifest(tmp_path, monkeypatch, capsys, chroma):
+    s = Szenario(leer=True)
+    for i in range(60):
+        s.add(f"a{i}", "answer", "verordnung", "verordnung", 0.9, 0.8)
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "r1")
+    assert manifest is None
+    assert any("nicht schätzbar" in w for w in b["laya"]["warnungen"])
+    vorbereitet(s, tmp_path, monkeypatch, "http://laya.test")
+    eval_report.main(["--checkpoint-revision", "r1"])
+    assert "Kein Manifest" in capsys.readouterr().err
+    assert not (tmp_path / "manifest").exists()
+    assert list((tmp_path / "reports").glob("bericht-*laya*.json"))

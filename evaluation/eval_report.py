@@ -164,9 +164,17 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
             "Kein Calibration-Segment hat einen Laya-Score (alle Fälle unter dem Retrieval-Guard oder "
             "ohne eindeutiges Segment). Mehr Calibration-Fälle labeln oder REGRAG_MIN_SCORE prüfen."
         )
-    temperatur, warnungen = fitte_temperatur(
-        [z["laya_roh"] for z in bewertet], [int(z["erwartet"] == "answer") for z in bewertet]
-    )
+    labels = [int(z["erwartet"] == "answer") for z in bewertet]
+    temperatur, warnungen = fitte_temperatur([z["laya_roh"] for z in bewertet], labels)
+    schaetzbar = len(set(labels)) == 2
+    warnungen = [
+        *warnungen,
+        *einseitige_segmente(
+            [{**z, "segment": z["segment_laufzeit"]} for z in bewertet if z["segment_laufzeit"] in SEGMENTE]
+        ),
+    ]
+    if not schaetzbar:
+        warnungen.append("Kein Manifest: Temperatur nicht schätzbar, T = 1.0 ist nicht einsetzbar.")
     schwellen = schwellen_pro_segment(
         _mit_kalibriert(bewertet, temperatur), kosten, score_feld="laya_kal", segment_feld="segment_laufzeit"
     )
@@ -205,7 +213,7 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
         ],
     }
     manifest = None
-    if checkpoint_revision:
+    if checkpoint_revision and schaetzbar:
         manifest = Manifest(
             checkpoint_modell=laya_gate.modell,
             checkpoint_revision=checkpoint_revision,
@@ -259,8 +267,16 @@ def main(argv=None):
     manifest = None
     if config.LAYA_URL:
         ergebnis, manifest = erzeuge_laya_bericht(faelle, retriever, baue_laya_gate(), kosten, args.checkpoint_revision)
-        if manifest is None:
+        laya = ergebnis["laya"]
+        if not args.checkpoint_revision:
             print("Hinweis: ohne --checkpoint-revision wird kein Gate-Manifest geschrieben.", file=sys.stderr)
+        if manifest:
+            print(
+                f"Laya: T={laya['temperatur']} Schwellen={laya['schwellen']} Fallback={laya['fallback_schwelle']}",
+                file=sys.stderr,
+            )
+        for warnung in laya["warnungen"]:
+            print(f"WARNUNG (Laya): {warnung}", file=sys.stderr)
     else:
         ergebnis = erzeuge_bericht(faelle, retriever, kosten)
     datei = schreibe(ergebnis, config.EVAL_BERICHT_VERZEICHNIS)
