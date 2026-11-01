@@ -88,6 +88,7 @@ class LayaGate:
         self.max_evidenz_zeichen = max_evidenz_zeichen
         self.modell = modell
         self.modell_streng = modell_streng
+        self._warnte_kein_modell = False
 
     def answerable_roh(self, frage, nodes):
         """Rohwahrscheinlichkeit von Laya; wirft JudgeFehler bei Ausfall oder (streng) fremdem Checkpoint."""
@@ -105,7 +106,8 @@ class LayaGate:
         except JudgeFehler:
             return GateDecision(Outcome.ABSTAIN, (AbstainReason.JUDGE_UNAVAILABLE,), GateScores())
         scores = GateScores(answerable=wahrscheinlichkeit)
-        if self.kalibriere_score(wahrscheinlichkeit) < self.schwelle_fuer(segment_von(nodes)):
+        # NaN-sicher: ein NaN auf einer Seite darf nie zu ANSWER fuehren
+        if not (self.kalibriere_score(wahrscheinlichkeit) >= self.schwelle_fuer(segment_von(nodes))):
             return GateDecision(Outcome.ABSTAIN, (AbstainReason.NOT_ANSWERABLE,), scores)
         return GateDecision(Outcome.ANSWER, (), scores)
 
@@ -115,8 +117,19 @@ class LayaGate:
         if isinstance(usage, dict) and usage.get("truncated") is True:
             log.warning("Laya hat den State gekürzt — Antwort beruht auf unvollständiger Evidenz")
         routing = antwort.get("routing")
-        modell = routing.get("model") if isinstance(routing, dict) else None
-        if modell is not None and modell != self.modell:
+        if routing is not None and not isinstance(routing, dict):
+            log.warning("Laya-Antwort mit unlesbarem routing (%s)", type(routing).__name__)
+            return not self.modell_streng
+        modell = routing.get("model") if routing else None
+        if modell is not None and not isinstance(modell, str):
+            log.warning("Laya-Antwort mit unlesbarem routing.model (%s)", type(modell).__name__)
+            return not self.modell_streng
+        if modell is None:
+            if self.modell_streng and not self._warnte_kein_modell:
+                self._warnte_kein_modell = True
+                log.warning("Checkpoint nicht verifizierbar; Schwellen gelten nur deklariert")
+            return True
+        if modell != self.modell:
             log.warning("Laya hat mit Checkpoint %s statt %s geantwortet", modell, self.modell)
             return False
         return True

@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 
 import httpx
 import pytest
@@ -215,6 +216,51 @@ def test_routing_ohne_modellangabe_ist_auch_streng_kein_fehler():
     d = gate_mit(lambda r: antwort(0.9), modell_streng=True).entscheide("f", [node()])
 
     assert d.outcome is Outcome.ANSWER
+
+
+@pytest.mark.parametrize(
+    "routing",
+    [["multilingual"], "multilingual", 3, {"model": 3}, {"model": ["multilingual"]}, {"model": {"name": "multilingual"}}],
+    ids=["liste", "string", "zahl", "model_zahl", "model_liste", "model_dict"],
+)
+def test_malformtes_routing_ist_mit_modell_streng_ein_mismatch(routing):
+    d = gate_mit(lambda r: antwort(0.99, routing=routing), modell_streng=True).entscheide("f", [node()])
+
+    assert d.outcome is Outcome.ABSTAIN
+    assert d.reasons == (AbstainReason.JUDGE_UNAVAILABLE,)
+
+
+def test_routing_ohne_modellangabe_warnt_streng_genau_einmal_pro_gate(caplog):
+    gate = gate_mit(lambda r: antwort(0.9), modell_streng=True)
+    for _ in range(3):
+        gate.entscheide("f", [node()])
+
+    treffer = [r for r in caplog.records if "Checkpoint nicht verifizierbar" in r.getMessage()]
+    assert len(treffer) == 1
+    assert treffer[0].levelno == logging.WARNING
+
+
+def test_routing_ohne_modellangabe_warnt_ohne_modell_streng_nicht(caplog):
+    gate_mit(lambda r: antwort(0.9)).entscheide("f", [node()])
+
+    assert "nicht verifizierbar" not in caplog.text
+
+
+def test_nan_schwelle_ergibt_nie_answer():
+    client = SystemOneClient("http://laya.test:8000/", transport=httpx.MockTransport(lambda r: antwort(0.99)))
+    gate = LayaGate(client, schwelle_fuer=lambda segment: math.nan)
+
+    d = gate.entscheide("f", [node()])
+
+    assert d.outcome is Outcome.ABSTAIN
+    assert d.reasons == (AbstainReason.NOT_ANSWERABLE,)
+
+
+def test_nan_kalibrierter_score_ergibt_nie_answer():
+    client = SystemOneClient("http://laya.test:8000/", transport=httpx.MockTransport(lambda r: antwort(0.99)))
+    gate = LayaGate(client, schwelle_fuer=lambda segment: 0.5, kalibriere_score=lambda p: math.nan)
+
+    assert gate.entscheide("f", [node()]).outcome is Outcome.ABSTAIN
 
 
 def test_answerable_roh_liefert_den_rohwert_und_wirft_bei_fehlern():
