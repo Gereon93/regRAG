@@ -6,7 +6,6 @@ Aufruf: python -m evaluation.eval_report. Braucht den Index, läuft deshalb nich
 import argparse
 import hashlib
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +24,7 @@ from evaluation.evalset import (
 from evaluation.kalibrierung import ece, fitte_temperatur
 from gate import SEGMENTE, kalibriere, segment_von
 from laya import JudgeFehler, LayaGate, SystemOneClient
-from manifest import Manifest, schreibe_manifest
+from manifest import Manifest, dateiname_revision, schreibe_manifest
 
 ZIEL_FALLZAHL = 200
 MANIFEST_VERZEICHNIS = Path(__file__).parent / "manifest"
@@ -240,7 +239,7 @@ def schreibe(ergebnis, verzeichnis):
     name = f"bericht-{ergebnis['eval_version'].removeprefix('sha256:')[:12]}"
     if "laya" in ergebnis:
         revision = ergebnis["laya"]["checkpoint"]["revision"]
-        name += "-laya" + (f"-{re.sub(r'[^A-Za-z0-9._-]', '_', revision)[:40]}" if revision else "")
+        name += "-laya" + (f"-{dateiname_revision(revision)}" if revision else "")
     datei = ziel / f"{name}.json"
     datei.write_text(json.dumps(ergebnis, ensure_ascii=False, indent=2), encoding="utf-8")
     return datei

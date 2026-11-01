@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from manifest import Manifest, lade_manifest, schreibe_manifest
+from manifest import Manifest, dateiname_revision, lade_manifest, schreibe_manifest
 
 EINSTELLUNGEN = SimpleNamespace(LAYA_MODELL="multilingual", MIN_RETRIEVAL_SCORE=0.62)
 
@@ -59,6 +59,37 @@ def test_zweite_revision_ueberschreibt_das_erste_manifest_nicht(tmp_path):
     assert erstes != zweites
     assert lade_manifest(erstes, EINSTELLUNGEN).checkpoint_revision == "abc123"
     assert lade_manifest(zweites, EINSTELLUNGEN).checkpoint_revision == "r/2"
+
+
+def test_kollision_der_bereinigten_revision_bricht_ab_statt_zu_ueberschreiben(tmp_path):
+    """PR #43: r/2 und r_2 bereinigen auf denselben Namen; die Baseline bleibt erhalten."""
+    erstes = schreibe_manifest(Manifest(**{**_manifest().__dict__, "checkpoint_revision": "r/2"}), tmp_path)
+    with pytest.raises(ValueError, match="r_2"):
+        schreibe_manifest(Manifest(**{**_manifest().__dict__, "checkpoint_revision": "r_2"}), tmp_path)
+    assert lade_manifest(erstes, EINSTELLUNGEN).checkpoint_revision == "r/2"
+
+
+def test_gleiche_revision_darf_neu_geschrieben_werden(tmp_path):
+    schreibe_manifest(_manifest(), tmp_path)
+    neu = schreibe_manifest(Manifest(**{**_manifest().__dict__, "temperatur": 2.0}), tmp_path)
+    assert lade_manifest(neu, EINSTELLUNGEN).temperatur == 2.0
+
+
+def test_unlesbare_bestehende_datei_wird_nicht_ueberschrieben(tmp_path):
+    (tmp_path / "gate-manifest-0123456789ab-abc123.json").write_text("{kaputt", encoding="utf-8")
+    with pytest.raises(ValueError, match="abc123"):
+        schreibe_manifest(_manifest(), tmp_path)
+
+
+def test_report_und_manifest_bereinigen_die_revision_gleich(tmp_path):
+    from evaluation.eval_report import schreibe
+
+    revision = "org/modell@" + "a" * 60
+    assert dateiname_revision(revision) == "org_modell_" + "a" * 29
+    bericht = {"eval_version": "sha256:" + "ab" * 32, "laya": {"checkpoint": {"revision": revision}}}
+    assert schreibe(bericht, tmp_path / "r").name == f"bericht-abababababab-laya-{dateiname_revision(revision)}.json"
+    manifest = Manifest(**{**_manifest().__dict__, "checkpoint_revision": revision})
+    assert schreibe_manifest(manifest, tmp_path / "m").name == f"gate-manifest-0123456789ab-{dateiname_revision(revision)}.json"
 
 
 def test_leeres_schwellen_erlaubt(tmp_path):

@@ -56,7 +56,7 @@ Rückfrage entschieden; sie sind reversibel und im PR-Body aufzuführen.
 ### 2.4 Schwellen und Manifest
 18. **Schwelle pro Segment:** `schwellen_pro_segment(zeilen, kosten, score_feld="laya_kal", segment_feld="segment_laufzeit")` auf den Calibration-Zeilen aus 12. Kandidaten wie #31. Da `gate.kalibriere` seine Ausgabe auf `[EPS, 1-EPS]` klemmt (sonst sättigt kleines T auf exakt 1.0), sind alle Kandidaten endliche Werte in `[0, 1]`; ein Kandidat > 1 oder nicht endlich ist ein Programmierfehler (`ValueError`).
 19. **Fallback:** `fallback_schwelle = max(schwellen.values())`. Gilt für `unbekannt` und jedes Segment ohne Eintrag.
-20. **Entscheidung (Review): Manifest-Format** (`gate-manifest-<eval_version[7:19]>-<revision>.json`, Revision getrimmt und wie im Report-Namen bereinigt, damit ein zweiter Checkpoint auf demselben Eval-Set das erste Manifest nicht still überschreibt (PR #43); UTF-8, gültiges JSON ohne `Infinity`/`NaN`):
+20. **Entscheidung (Review): Manifest-Format** (`gate-manifest-<eval_version[7:19]>-<revision>.json`, Revision getrimmt und wie im Report-Namen bereinigt, damit ein zweiter Checkpoint auf demselben Eval-Set das erste Manifest nicht still überschreibt; eine Namenskollision mit einer anderen oder unlesbaren Revision ist `ValueError` (PR #43); UTF-8, gültiges JSON ohne `Infinity`/`NaN`):
     ```json
     {
       "schema": 1,

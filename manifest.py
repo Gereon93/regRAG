@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 SCHEMA = 1
 TEMPERATUR_MIN = 0.05
 TEMPERATUR_MAX = 20.0
+MAX_REVISION_ZEICHEN = 40
 
 
 # noinspection PyClassHasNoInit
@@ -167,8 +168,23 @@ def lade_manifest(pfad, einstellungen) -> Manifest:
     )
 
 
+def dateiname_revision(revision: str) -> str:
+    """Revision als Dateinamen-Teil; gemeinsam fuer Report- und Manifest-Namen (docs/adr/0013)."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", revision)[:MAX_REVISION_ZEICHEN]
+
+
+def _gespeicherte_revision(datei: Path):
+    try:
+        return json.loads(datei.read_text(encoding="utf-8"))["checkpoint"]["revision"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def schreibe_manifest(manifest: Manifest, verzeichnis) -> Path:
-    """Schreibt gate-manifest-<eval_version[7:19]>-<revision>.json; ein zweiter Checkpoint ersetzt den ersten nicht."""
+    """Schreibt gate-manifest-<eval_version[7:19]>-<revision>.json; ein zweiter Checkpoint ersetzt den ersten nie.
+
+    Kollidiert die bereinigte Revision mit einer bestehenden Datei einer anderen Revision: ValueError.
+    """
     inhalt = {
         "schema": SCHEMA,
         "checkpoint": {
@@ -186,7 +202,11 @@ def schreibe_manifest(manifest: Manifest, verzeichnis) -> Path:
     text = json.dumps(inhalt, indent=2, ensure_ascii=False, allow_nan=False)
     verzeichnis = Path(verzeichnis)
     verzeichnis.mkdir(parents=True, exist_ok=True)
-    revision = re.sub(r"[^A-Za-z0-9._-]", "_", manifest.checkpoint_revision)[:40]
-    datei = verzeichnis / f"gate-manifest-{manifest.eval_version[7:19]}-{revision}.json"
+    datei = verzeichnis / f"gate-manifest-{manifest.eval_version[7:19]}-{dateiname_revision(manifest.checkpoint_revision)}.json"
+    if datei.exists() and _gespeicherte_revision(datei) != manifest.checkpoint_revision:
+        raise ValueError(
+            f"Manifest {datei.name} existiert bereits für eine andere oder unlesbare Revision; "
+            f"wird für {manifest.checkpoint_revision!r} nicht überschrieben. Datei prüfen und ggf. selbst entfernen."
+        )
     datei.write_text(text + "\n", encoding="utf-8")
     return datei

@@ -73,8 +73,10 @@ Das ist gewollt.
 `python -m evaluation.eval_report --checkpoint-revision REV` schreibt
 `evaluation/manifest/gate-manifest-<eval_version[7:19]>-<REV>.json` (REV getrimmt und wie im Report-Namen auf
 `[A-Za-z0-9._-]`, 40 Zeichen bereinigt; eine leere oder blanke Revision schreibt kein Manifest). Die Revision im
-Namen verhindert, dass ein zweiter Checkpoint auf demselben Eval-Set das Manifest des ersten still ersetzt; der
-Loader hängt nicht vom Namen ab. (Eingecheckt; der Report bleibt gitignored unter `REGRAG_EVAL_BERICHT_DIR`.)
+Namen verhindert, dass ein zweiter Checkpoint auf demselben Eval-Set das Manifest des ersten still ersetzt; bilden
+zwei Revisionen denselben bereinigten Namen (`r/2` und `r_2`) oder ist die bestehende Datei unlesbar, bricht das
+Schreiben mit `ValueError` ab, statt zu überschreiben. Dieselbe Revision darf neu geschrieben werden. Der Loader
+hängt nicht vom Namen ab. (Eingecheckt; der Report bleibt gitignored unter `REGRAG_EVAL_BERICHT_DIR`.)
 Format (UTF-8, JSON ohne `Infinity`/`NaN`):
 
 ```json
