@@ -85,6 +85,10 @@ def indexiere(md_pfad):
     for dok in SimpleDirectoryReader(
         input_files=[str(md_pfad)], file_metadata=_quelle_metadata
     ).load_data():
+        # segment ist Gate-Metadatum, kein Inhalt: nicht in den Embedding-Text (verschiebt Cosine-Scores) und nicht ins LLM-Prompt
+        for schluessel in (dok.excluded_embed_metadata_keys, dok.excluded_llm_metadata_keys):
+            if "segment" not in schluessel:
+                schluessel.append("segment")
         index.insert(dok)
 
     fp = _fingerprint_lesen() or dokumente.leerer_fingerprint(config.EMBEDDING_MODELL, METRIK)
