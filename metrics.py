@@ -1,4 +1,7 @@
-"""Prozesslokale Eskalationsmetriken fuer GET /metrics — nur Zaehler, keine Inhalte, nur stdlib."""
+"""Prozesslokale Eskalationsmetriken fuer GET /metrics — nur Zaehler, keine Inhalte, nur stdlib.
+
+NaN-Scores zaehlen wie fehlende Scores im Bucket "none"; +inf -> "ueber_1", -inf -> "unter_0".
+"""
 
 import threading
 from collections import Counter
@@ -11,7 +14,7 @@ SCORE_FELDER = ("answerable", "relevance")
 
 
 def _bucket(wert):
-    if wert is None:
+    if wert is None or wert != wert:  # NaN ist weder <0 noch >1 und wuerde int() sprengen
         return "none"
     if wert < 0:
         return "unter_0"

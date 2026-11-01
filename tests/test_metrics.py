@@ -1,3 +1,4 @@
+import sys
 import threading
 
 import pytest
@@ -55,6 +56,9 @@ def test_zaehler_pro_reason_und_segment():
         (-0.2, "unter_0"),
         (1.2, "ueber_1"),
         (None, "none"),
+        (float("nan"), "none"),
+        (float("inf"), "ueber_1"),
+        (float("-inf"), "unter_0"),
     ],
 )
 def test_histogramm_grenzen(feld, wert, bucket):
@@ -74,11 +78,19 @@ def test_histogramm_hat_alle_schluessel_auch_leer():
     assert set(h) == {f"{i / 10:.1f}-{(i + 1) / 10:.1f}" for i in range(10)} | {"unter_0", "ueber_1", "none"}
 
 
-def test_threads_zaehlen_exakt():
+@pytest.fixture
+def enges_threadfenster():
+    alt = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    yield
+    sys.setswitchinterval(alt)
+
+
+def test_threads_zaehlen_exakt(enges_threadfenster):
     m = Metriken()
 
     def arbeit():
-        for _ in range(500):
+        for _ in range(2000):
             m.zaehle(abstain(AbstainReason.LOW_RELEVANCE, relevance=0.3), "gesetz")
 
     threads = [threading.Thread(target=arbeit) for _ in range(8)]
@@ -88,10 +100,43 @@ def test_threads_zaehlen_exakt():
         t.join()
 
     s = m.schnappschuss()
-    assert s["entscheidungen_gesamt"] == 4000
-    assert s["eskalationen_nach_reason"] == {"LOW_RELEVANCE": 4000}
-    assert s["nach_segment"]["gesetz"]["entscheidungen"] == 4000
-    assert sum(s["histogramme"]["relevance"].values()) == 4000
+    assert s["entscheidungen_gesamt"] == 16000
+    assert s["eskalationen_nach_reason"] == {"LOW_RELEVANCE": 16000}
+    assert s["nach_segment"]["gesetz"]["entscheidungen"] == 16000
+    assert sum(s["histogramme"]["relevance"].values()) == 16000
+
+
+def test_zaehle_und_schnappschuss_nehmen_den_lock():
+    class SpyLock:
+        def __init__(self):
+            self.betreten = 0
+
+        def __enter__(self):
+            self.betreten += 1
+
+        def __exit__(self, *a):
+            return False
+
+    m = Metriken()
+    m._lock = spy = SpyLock()
+
+    m.zaehle(antwort(), "gesetz")
+    assert spy.betreten == 1
+    m.schnappschuss()
+    assert spy.betreten == 2
+
+
+def test_nan_score_wird_trotzdem_gezaehlt(monkeypatch, tmp_path):
+    m = Metriken()
+    monkeypatch.setattr(metrics, "METRIKEN", m)
+    n = SimpleNamespace(score=float("nan"), text="t", metadata={"segment": "gesetz"})
+
+    gate.entscheide_und_eskaliere(RetrievalScoreGate(0.62), tmp_path / "e.jsonl", "f", [n])
+
+    s = m.schnappschuss()
+    assert s["entscheidungen_gesamt"] == 1
+    assert s["nach_segment"]["gesetz"]["entscheidungen"] == 1
+    assert s["histogramme"]["relevance"]["none"] == 1
 
 
 def test_gate_zaehlt_einmal_mit_segment(monkeypatch, tmp_path):
