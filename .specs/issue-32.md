@@ -47,7 +47,7 @@ Rückfrage entschieden; sie sind reversibel und im PR-Body aufzuführen.
 14. **Abbruchregeln** (zusätzlich zu #31): kein Calibration-Segment aus `SEGMENTE` mit Laya-Score → Abbruch; Segment im Test-Split ohne Schwelle (inkl. `unbekannt`) → wird mit `fallback_schwelle` bewertet, nicht abgebrochen (gleiches Verhalten wie das Gate). Dafür bekommt `bericht` den Parameter `fallback=None`: `None` behält das #31-Verhalten (`KeyError` bei fehlender Schwelle), ein Wert wird für fehlende Segmente verwendet. Nur der Laya-Teil übergibt `fallback_schwelle`.
 
 ### 2.3 Temperature Scaling
-15. **Funktion:** `fitte_temperatur(p, y) -> (T, warnungen)` in `evaluation/kalibrierung.py` (nur stdlib). `kalibriere(p, T) = sigmoid(logit(clip(p, EPS, 1-EPS)) / T)` mit `EPS = 1e-6`; `kalibriere` liegt in `gate.py`, damit Gate und Report dieselbe Formel nutzen. `T` minimiert die mittlere NLL per Goldenem Schnitt über `log T` im Intervall `[0.05, 20]`, Toleranz `1e-4` in `log T`.
+15. **Funktion:** `fitte_temperatur(p, y) -> (T, warnungen)` in `evaluation/kalibrierung.py` (nur stdlib). `kalibriere(p, T) = sigmoid(logit(clip(p, EPS, 1-EPS)) / T)` mit `EPS = 1e-6`; `kalibriere` liegt in `gate.py`, damit Gate und Report dieselbe Formel nutzen. `T` minimiert die mittlere NLL per Goldenem Schnitt über `log T` im Intervall `[0.05, 20]`, Toleranz `1e-4` in `log T`. Die NLL wird numerisch stabil aus dem skalierten Logit berechnet (softplus); nur die Eingabe `p` wird geklemmt, nie die skalierte Wahrscheinlichkeit (PR #43).
    - Nur ein Label oder weniger als 2 Zeilen → `T = 1.0` und Warnung "Temperatur nicht schätzbar".
    - Optimum am Intervallrand (Abstand < Toleranz) → `T` = Randwert und Warnung.
 16. **Ehrliche Wirkung (Review):** Temperature Scaling ist streng monoton. Da die Schwelle danach auf denselben Calibration-Daten gewählt wird, **ändert T keine einzige Gate-Entscheidung**. T dient nur der Interpretierbarkeit (Score ≈ Wahrscheinlichkeit), der Vergleichbarkeit von Schwellen über Segmente und Checkpoints und dem ECE-Bericht. Das steht so in ADR 0013.
@@ -56,7 +56,7 @@ Rückfrage entschieden; sie sind reversibel und im PR-Body aufzuführen.
 ### 2.4 Schwellen und Manifest
 18. **Schwelle pro Segment:** `schwellen_pro_segment(zeilen, kosten, score_feld="laya_kal", segment_feld="segment_laufzeit")` auf den Calibration-Zeilen aus 12. Kandidaten wie #31. Da `gate.kalibriere` seine Ausgabe auf `[EPS, 1-EPS]` klemmt (sonst sättigt kleines T auf exakt 1.0), sind alle Kandidaten endliche Werte in `[0, 1]`; ein Kandidat > 1 oder nicht endlich ist ein Programmierfehler (`ValueError`).
 19. **Fallback:** `fallback_schwelle = max(schwellen.values())`. Gilt für `unbekannt` und jedes Segment ohne Eintrag.
-20. **Entscheidung (Review): Manifest-Format** (`gate-manifest-<eval_version[7:19]>.json`, UTF-8, gültiges JSON ohne `Infinity`/`NaN`):
+20. **Entscheidung (Review): Manifest-Format** (`gate-manifest-<eval_version[7:19]>-<revision>.json`, Revision getrimmt und wie im Report-Namen bereinigt, damit ein zweiter Checkpoint auf demselben Eval-Set das erste Manifest nicht still überschreibt (PR #43); UTF-8, gültiges JSON ohne `Infinity`/`NaN`):
     ```json
     {
       "schema": 1,

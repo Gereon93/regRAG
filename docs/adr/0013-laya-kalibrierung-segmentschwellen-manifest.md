@@ -51,8 +51,11 @@ Das ist gewollt.
 - `fitte_temperatur` (`evaluation/kalibrierung.py`, nur stdlib) minimiert die mittlere NLL per Goldenem Schnitt
   über `log T` in `[0.05, 20]`. Nur eine Klasse im Label: `T = 1.0` mit Warnung "Temperatur nicht
   schätzbar". Optimum am Rand: Randwert mit Warnung.
-- `skaliere(p, T)` = `sigmoid(logit(clip(p, EPS, 1-EPS)) / T)`, `EPS = 1e-6`. Der **Fit** benutzt die ungeklemmte
-  `skaliere`. `kalibriere` (Gate und Report) klemmt die **Ausgabe** zusätzlich auf `[EPS, 1-EPS]`, weil kleines T
+- `skaliere(p, T)` = `sigmoid(logit(clip(p, EPS, 1-EPS)) / T)`, `EPS = 1e-6`. Der **Fit** rechnet die NLL
+  numerisch stabil direkt aus dem skalierten Logit `z = logit(clip(p)) / T` (`softplus(-z)` bzw. `softplus(z)`);
+  geklemmt wird nur die Eingabe `p`, nie die Wahrscheinlichkeit. Ein geklemmtes `q` würde den Verlust sicher falscher
+  Fälle deckeln und ein zu scharfes T ins Manifest schreiben (PR #43: T = 0,05 mit echter NLL 2,736 statt T ≈ 0,614
+  mit 0,635). `kalibriere` (Gate und Report) klemmt die **Ausgabe** zusätzlich auf `[EPS, 1-EPS]`, weil kleines T
   sonst auf exakt 0.0 bzw. 1.0 sättigt und Schwellenkandidaten außerhalb von `[0, 1]` oder nicht unterscheidbare
   Scores entstehen. Alle Schwellenkandidaten sind deshalb endliche Werte in `[0, 1]`.
 - **Ehrliche Wirkung: T ändert (fast) keine Gate-Entscheidung.** Temperature Scaling ist streng monoton, und die Schwelle
@@ -67,8 +70,12 @@ Das ist gewollt.
 
 ### Gate-Manifest
 
-`python -m evaluation.eval_report --checkpoint-revision REV` schreibt `evaluation/manifest/gate-manifest-<eval_version[7:19]>.json`
-(eingecheckt; der Report bleibt gitignored unter `REGRAG_EVAL_BERICHT_DIR`). Format (UTF-8, JSON ohne `Infinity`/`NaN`):
+`python -m evaluation.eval_report --checkpoint-revision REV` schreibt
+`evaluation/manifest/gate-manifest-<eval_version[7:19]>-<REV>.json` (REV getrimmt und wie im Report-Namen auf
+`[A-Za-z0-9._-]`, 40 Zeichen bereinigt; eine leere oder blanke Revision schreibt kein Manifest). Die Revision im
+Namen verhindert, dass ein zweiter Checkpoint auf demselben Eval-Set das Manifest des ersten still ersetzt; der
+Loader hängt nicht vom Namen ab. (Eingecheckt; der Report bleibt gitignored unter `REGRAG_EVAL_BERICHT_DIR`.)
+Format (UTF-8, JSON ohne `Infinity`/`NaN`):
 
 ```json
 {
@@ -112,8 +119,9 @@ diese Revision lädt. Geprüft wird nur der Name:
 - weicht `routing.model` ab: ohne Manifest nur WARNING (wie 0011); **mit Manifest** WARNING und ABSTAIN mit
   `JUDGE_UNAVAILABLE`, weil die kalibrierten Schwellen für diesen Checkpoint nicht gelten;
 - ist `routing` vorhanden, aber kein Objekt, oder `routing.model` vorhanden, aber kein String, zählt das unter
-  Manifest als **Mismatch** (ABSTAIN `JUDGE_UNAVAILABLE`), nicht als "kein routing";
-- **fehlt `routing` bzw. `routing.model` in der Antwort ganz, wird sie auch unter Manifest akzeptiert.** Dann wird
+  Manifest als **Mismatch** (ABSTAIN `JUDGE_UNAVAILABLE`), nicht als "kein routing". Das gilt auch für ein
+  explizites JSON-`null` (`"routing": null`, `"routing": {"model": null}`): vorhanden ist vorhanden;
+- **fehlt der Schlüssel `routing` bzw. `routing.model` in der Antwort ganz, wird sie auch unter Manifest akzeptiert.** Dann wird
   einmal pro Gate-Instanz (nicht pro Anfrage) gewarnt: "Checkpoint nicht verifizierbar; Schwellen gelten nur
   deklariert". Das ist eine bekannte Grenze: Der Jev-Strict-Modus (`LAYA_JEV_STRICT=1`) sendet kein `routing`; dort ist der Checkpoint vollständig
   unverifiziert. Wer sich auf das Manifest verlässt, darf den Server nicht im Strict-Modus betreiben, oder muss
