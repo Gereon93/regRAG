@@ -34,13 +34,23 @@ class TestFitteTemperatur:
 
 
     def test_saettigung_bei_kleinem_t_wirft_nicht(self):
-        # Ein sicher falsches Sample (p=0.99, Label 0) plus gut trennbare Daten treibt T an den
-        # unteren Rand; dort saettigt q zu 1.0 und log(1 - q) wuerde werfen.
+        """Kleines T saettigt sigmoid auf exakt 0/1; der Verlust aus dem Logit wirft nicht und trifft das Optimum.
+
+        Echtes Optimum T ~ 0.144 (mittlere NLL ~ 0.217); ein gekappter Verlust landete am Rand T = 0.05.
+        """
         p = [0.99] + [0.6, 0.4] * 100
         y = [0] + [1, 0] * 100
         T, warnungen = fitte_temperatur(p, y)
-        assert 0.05 * 0.999 <= T <= 20.0
-        assert isinstance(warnungen, list)
+        assert T == pytest.approx(0.1442, rel=0.01)
+        assert warnungen == []
+
+    def test_sicher_falsches_sample_zieht_t_nicht_an_den_rand(self):
+        """PR #43: geklemmtes q deckelte den Verlust; T = 0.05 (NLL 2.736) statt T ~ 0.614 (NLL 0.635)."""
+        p = [0.999999] + [0.6, 0.4] * 50
+        y = [0] + [1, 0] * 50
+        T, warnungen = fitte_temperatur(p, y)
+        assert T == pytest.approx(0.6144, rel=0.01)
+        assert warnungen == []
 
 
 class TestEce:
@@ -120,6 +130,18 @@ class TestVergleiche:
     def test_abweichende_eval_version(self):
         with pytest.raises(ValueError):
             vergleiche(_report([1.0] * 12), _report([1.0] * 12, eval_version="v2"))
+
+    def test_abweichender_index_fingerprint(self):
+        a, b = _report([1.0] * 12), _report([1.0] * 12)
+        a["laya"] = {"index_fingerprint": "aaa"}
+        b["laya"] = {"index_fingerprint": "bbb"}
+        with pytest.raises(ValueError, match="index_fingerprint"):
+            vergleiche(a, b)
+
+    def test_gleicher_index_fingerprint_ist_vergleichbar(self):
+        a, b = _report([1.0] * 12), _report([1.0] * 12)
+        a["laya"] = b["laya"] = {"index_fingerprint": "aaa"}
+        assert vergleiche(a, b, b_resamples=50)["differenz"] == 0
 
     def test_abweichende_id_menge(self):
         b = _report([1.0] * 12)

@@ -85,6 +85,14 @@ def test_keine_treffer_ist_abstain_mit_reason():
     assert d.scores.relevance is None
 
 
+def test_nan_score_ist_abstain():
+    """PR #43: NaN < min_score ist False; der Guard laesst NaN trotzdem nie durch (wie der Report-Guard)."""
+    d = RetrievalScoreGate(min_score=0.62).entscheide("f", [node(float("nan"))])
+
+    assert d.outcome is Outcome.ABSTAIN
+    assert d.reasons == (AbstainReason.LOW_RELEVANCE,)
+
+
 def test_bester_treffer_zaehlt_nicht_die_reihenfolge():
     d = RetrievalScoreGate(min_score=0.62).entscheide("f", [node(0.5), node(0.7)])
 

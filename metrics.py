@@ -54,7 +54,7 @@ class Metriken:
 
     def schnappschuss(self):
         with self._lock:
-            return {
+            schnappschuss = {
                 "entscheidungen_gesamt": self._gesamt,
                 "eskalationen_gesamt": self._eskalationen,
                 "eskalationsrate": _rate(self._eskalationen, self._gesamt),
@@ -73,6 +73,7 @@ class Metriken:
                 },
                 "seit": self._seit.isoformat(),
             }
+        return schnappschuss
 
 
 METRIKEN = Metriken()

@@ -3,21 +3,30 @@
 import math
 import random
 
-from gate import skaliere
+from gate import logit
 
 T_MIN, T_MAX = 0.05, 20.0
 TOLERANZ_LOG_T = 1e-4
 MIN_GRUPPEN = 10
 _GOLDEN = (math.sqrt(5) - 1) / 2
-_Q_MIN = 1e-15
 _NICHT_SCHAETZBAR = "Temperatur nicht schätzbar"
 
 
-def _nll(p, y, T):
+def _softplus(x):
+    """log(1 + exp(x)) ohne Overflow und ohne Saettigung."""
+    return max(x, 0.0) + math.log1p(math.exp(-abs(x)))
+
+
+def _nll(p, y, temperatur):
+    """Mittlere binaere Kreuzentropie direkt aus dem skalierten Logit z = logit(p) / T.
+
+    -log(sigmoid(z)) = softplus(-z), -log(1 - sigmoid(z)) = softplus(z). Nur die Eingabe p wird geklemmt
+    (wie im Gate); ein geklemmtes q wuerde den Verlust sicher falscher Faelle deckeln und ein zu scharfes T waehlen.
+    """
     summe = 0.0
     for pi, yi in zip(p, y, strict=True):
-        q = min(max(skaliere(pi, T), _Q_MIN), 1 - _Q_MIN)  # Saettigung bei kleinem T abfangen
-        summe -= math.log(q if yi else 1 - q)
+        z = logit(pi) / temperatur
+        summe += _softplus(-z) if yi else _softplus(z)
     return summe / len(p)
 
 
@@ -38,11 +47,11 @@ def fitte_temperatur(p, y):
             lo, c, fc = c, d, fd
             d = lo + _GOLDEN * (hi - lo)
             fd = _nll(p, y, math.exp(d))
-    T = math.exp((lo + hi) / 2)
+    temperatur = math.exp((lo + hi) / 2)
     warnungen = []
     if (hi - math.log(T_MAX)) > -2 * TOLERANZ_LOG_T or (lo - math.log(T_MIN)) < 2 * TOLERANZ_LOG_T:
         warnungen.append(f"Temperatur am Rand des Suchintervalls [{T_MIN}, {T_MAX}]")
-    return T, warnungen
+    return temperatur, warnungen
 
 
 def ece(p, y, bins=5):
@@ -66,10 +75,16 @@ def ece(p, y, bins=5):
     return {"ece": fehler, "bins": ergebnis}
 
 
+def _index_fingerprint(report):
+    return (report.get("laya") or {}).get("index_fingerprint")
+
+
 def _pruefe_vergleichbar(a, b):
     for feld in ("eval_version", "min_retrieval_score", "kosten"):
         if a[feld] != b[feld]:
             raise ValueError(f"Reports nicht vergleichbar: {feld} weicht ab")
+    if _index_fingerprint(a) != _index_fingerprint(b):
+        raise ValueError("Reports nicht vergleichbar: laya.index_fingerprint weicht ab (Index neu gebaut?)")
     ids_a = {f["id"] for f in a["test_faelle"]}
     ids_b = {f["id"] for f in b["test_faelle"]}
     if ids_a != ids_b or len(ids_a) != len(a["test_faelle"]) or len(ids_b) != len(b["test_faelle"]):
