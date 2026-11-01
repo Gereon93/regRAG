@@ -126,6 +126,27 @@ def test_zaehle_und_schnappschuss_nehmen_den_lock():
     assert spy.betreten == 2
 
 
+def test_schnappschuss_liest_alle_felder_unter_dem_lock():
+    """PR #43: ein Schreiber direkt nach dem Lock-Release darf den Snapshot nicht mehr veraendern."""
+    m = Metriken()
+    m.zaehle(antwort(), "gesetz")
+
+    class SchreiberNachRelease:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, *a):
+            m._gesamt += 1
+            m._segment_gesamt["gesetz"] += 1
+            return False
+
+    m._lock = SchreiberNachRelease()
+    s = m.schnappschuss()
+
+    assert s["entscheidungen_gesamt"] == 1
+    assert s["nach_segment"]["gesetz"]["entscheidungen"] == 1
+
+
 def test_nan_score_wird_trotzdem_gezaehlt(monkeypatch, tmp_path):
     m = Metriken()
     monkeypatch.setattr(metrics, "METRIKEN", m)
