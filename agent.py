@@ -11,12 +11,14 @@ from gate import (
     abstain_antwort,
     aktiviere_score_log,
     entscheide_und_eskaliere,
+    grenzen_aus,
 )
 from laya import baue_gate
 from rag import index
 
 retriever = index.as_retriever(similarity_top_k=3)
 gate = baue_gate(config)
+ESKALATIONS_GRENZEN = grenzen_aus(config)
 
 llm = ChatOpenAI(model=config.LLM_MODELL, base_url=config.LLM_BASE_URL,
                  api_key=config.LLM_API_KEY, temperature=config.LLM_TEMPERATURE,
@@ -37,7 +39,7 @@ class S(TypedDict):
 
 
 def pruefe(frage, nodes):
-    return entscheide_und_eskaliere(gate, config.ESKALATION_DATEI, frage, nodes)
+    return entscheide_und_eskaliere(gate, config.ESKALATION_DATEI, frage, nodes, ESKALATIONS_GRENZEN)
 
 
 def retrieve(s):

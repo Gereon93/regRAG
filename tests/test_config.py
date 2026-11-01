@@ -139,3 +139,21 @@ def test_leeres_laya_modell_ist_ein_fehler(geladen, monkeypatch, wert):
     with pytest.raises(ValueError, match="LAYA_MODELL"):
         geladen(REGRAG_LAYA_MODELL=wert)
     monkeypatch.delenv("REGRAG_LAYA_MODELL")
+
+
+def test_eskalationsgrenzen_haben_dokumentierte_defaults(geladen):
+    c = geladen()
+
+    assert c.ESKALATION_MAX_BYTES == 5 * 1024 * 1024
+    assert c.ESKALATION_MAX_ARCHIVE == 5
+    assert c.ESKALATION_AUFBEWAHRUNG_TAGE == 90
+
+
+def test_eskalationsgrenzen_sind_per_env_ueberschreibbar(geladen):
+    c = geladen(
+        REGRAG_ESKALATION_MAX_BYTES="1000",
+        REGRAG_ESKALATION_MAX_ARCHIVE="2",
+        REGRAG_ESKALATION_AUFBEWAHRUNG_TAGE="7",
+    )
+
+    assert (c.ESKALATION_MAX_BYTES, c.ESKALATION_MAX_ARCHIVE, c.ESKALATION_AUFBEWAHRUNG_TAGE) == (1000, 2, 7)

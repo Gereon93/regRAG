@@ -30,10 +30,45 @@ eine Verweigerung hinterließ weder Begründung noch Spur.
 
 - Weitere Judges (#28 Laya, #29 Grounding, #30 Gültigkeit) werden Adapter, die Gate-Logik bleibt.
 - Der Datensatz enthält Fragen und Textauszüge im Klartext; die Datei liegt lokal, ist nicht im Repo
-  und nur für den Besitzer lesbar. Rotation, Aufbewahrungsfrist und Rate-Limit fehlen noch
-  (Issue #34); bis dahin wächst die Datei mit jeder Verweigerung.
+  und nur für den Besitzer lesbar. Aufbewahrung, Rotation und Löschweg: siehe
+  Abschnitt "Aufbewahrung und Löschung" unten. Ein Rate-Limit fehlt noch (Issue #44).
 - Evaluationsläufe (`evaluation/run.py`) verwerfen Eskalationsdatensätze (`os.devnull`), damit sie
   die echte Datei nicht füllen.
 - Wohin eskaliert wird (Queue, Fachexperte) ist offen; bis dahin ist die Datei nur Export.
 - Noch nicht umgesetzt: Nur `LOW_RELEVANCE` wird erzeugt, die übrigen Reasons sind Platzhalter
   für die Folge-Issues.
+
+## Aufbewahrung und Löschung (Issue #34)
+
+Fragen können personenbezogen sein; die Datei ist deshalb in Größe und Alter begrenzt
+(`gate.EskalationsGrenzen`, Konfiguration über `REGRAG_ESKALATION_MAX_BYTES`, `_MAX_ARCHIVE`,
+`_AUFBEWAHRUNG_TAGE`, siehe `env.example`).
+
+- **Rotation:** Vor jedem Append wird die aktive Datei nach `<name>.<UTC-Zeitstempel>.<pid>` verschoben,
+  wenn sie `max_bytes` (Default 5 MiB) erreicht oder ihr ältester Datensatz älter als die halbe Frist ist.
+  Eine Datei bleibt damit höchstens `max_bytes` − 1 plus eine Zeile (ca. 50 KB) groß.
+- **Frist:** Archive, deren ältester Datensatz die Aufbewahrungsfrist (Default **90 Tage**) überschreitet,
+  werden gelöscht. Gelöscht wird die ganze Datei; jüngere Datensätze darin gehen mit. Jeder Datensatz lebt
+  dadurch mindestens die halbe und höchstens die volle Frist, sofern geschrieben oder gestartet wird.
+  Die 90 Tage sind ein **technischer Startwert, keine rechtliche Festlegung.**
+- **Anzahl:** Höchstens `max_archive` (Default 5) Archive. Überzählige, älteste zuerst, werden gelöscht
+  und mit WARNING geloggt. Das verdrängt Datensätze vor Fristende und ist ein Signal für eine Flut. Die
+  Zusage "zur Prüfung vorgemerkt" gilt deshalb nur, solange die Datensätze nicht verdrängt wurden.
+  Gesamtgröße höchstens (`max_archive` + 1) × (`max_bytes` + eine Zeile).
+- **Start:** Beim Serverstart läuft dieselbe Bereinigung einmal. Ohne neue Verweigerung und ohne Neustart
+  wird eine abgelaufene Datei nicht gelöscht; diese Lücke ist bekannt.
+- **Archiv-Erkennung:** Nur Namen im Muster `<name>.<YYYYmmddTHHMMSSffffffZ>.<pid>` zählen. Fremde Dateien
+  (`.bak`, Editor-Kopien) bleiben unangetastet. Sonderdateien wie `/dev/null` (Evaluation) werden nie rotiert.
+- **Zeitstempel:** Ein Zeitstempel ohne Zeitzone gilt als UTC; ein unlesbarer Datensatz verhindert nie den Append.
+- **Mehrere Prozesse:** Innerhalb eines Prozesses serialisiert ein Lock Rotation und Append. Mehrere
+  Prozesse (z. B. CLI parallel zum Server) können gleichzeitig rotieren. Das ist akzeptiert: keine Zeile
+  geht verloren, im ungünstigen Fall entsteht eine früh rotierte kleine Datei oder ein geloggter Rotationsfehler.
+  Ein `flock` wäre nur auf POSIX verfügbar und brächte eine zusätzliche Datei im Volume.
+- **Rotations- und Bereinigungsfehler** (`OSError`) werden geloggt und kippen weder Append noch Verweigerung.
+- **Längenlimit:** `Frage.frage` ist auf 2000 Zeichen (Unicode-Zeichen, nicht Bytes) und mindestens ein
+  Zeichen begrenzt; Verstöße liefern 422 statt stillem Abschneiden. Die UI setzt `maxlength="2000"`.
+- **Manueller Löschweg:** Server stoppen, dann `rm chroma/eskalationen.jsonl chroma/eskalationen.jsonl.*`.
+  Einzelne Personen entfernt man bei gestopptem Server mit einem `jq`-Filter auf die Zeilen in der aktiven Datei
+  und in jedem Archiv.
+- **Nicht umgesetzt (Issue #44):** Rate-Limit und Begrenzung der Body-Größe vor dem Parsen. Das Längenlimit
+  greift erst, nachdem der Body gelesen wurde.

@@ -1,8 +1,9 @@
 import json
 import logging
+import os
 import stat
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +16,7 @@ from gate import (
     SEGMENTE,
     UNBEKANNT,
     AbstainReason,
+    EskalationsGrenzen,
     GateDecision,
     GateScores,
     Kaskade,
@@ -22,6 +24,7 @@ from gate import (
     RetrievalScoreGate,
     abstain_antwort,
     aktiviere_score_log,
+    bereinige_eskalationen,
     entscheide_und_eskaliere,
     eskalationsdatensatz,
     kalibriere,
@@ -399,3 +402,210 @@ def test_eskalationsdatensatz_enthaelt_segment():
 
     assert eskalationsdatensatz("F?", [segment_node("gesetz")], d)["segment"] == "gesetz"
     assert eskalationsdatensatz("F?", [segment_node(None)], d)["segment"] == UNBEKANNT
+
+
+def _abstain():
+    return GateDecision(Outcome.ABSTAIN, (AbstainReason.LOW_RELEVANCE,), GateScores(relevance=0.4))
+
+
+def _archive(ziel):
+    return sorted(p.name for p in ziel.parent.glob(f"{ziel.name}.*"))
+
+
+def test_datei_wird_bei_maximalgroesse_rotiert(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    grenzen = EskalationsGrenzen(max_bytes=600, max_archive=5, aufbewahrung_tage=30)
+
+    for i in range(6):
+        assert schreibe_eskalation(ziel, f"frage {i}", [], _abstain(), grenzen=grenzen)
+
+    assert _archive(ziel)
+    assert ziel.stat().st_size <= 600 + 500  # eine Zeile darf die Grenze überschreiten, danach wird rotiert
+    gesamt = ziel.read_text(encoding="utf-8") + "".join(
+        (tmp_path / n).read_text(encoding="utf-8") for n in _archive(ziel)
+    )
+    assert gesamt.count("\n") == 6
+
+
+def test_aktive_datei_bleibt_nach_rotation_0600(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    grenzen = EskalationsGrenzen(max_bytes=1, max_archive=5, aufbewahrung_tage=30)
+
+    schreibe_eskalation(ziel, "a", [], _abstain(), grenzen=grenzen)
+    schreibe_eskalation(ziel, "b", [], _abstain(), grenzen=grenzen)
+
+    assert stat.S_IMODE(ziel.stat().st_mode) == 0o600
+    assert [stat.S_IMODE((tmp_path / n).stat().st_mode) for n in _archive(ziel)] == [0o600]
+
+
+def test_archivzahl_ist_begrenzt_aelteste_fliegt_zuerst(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    grenzen = EskalationsGrenzen(max_bytes=1, max_archive=2, aufbewahrung_tage=30)
+
+    for i in range(6):
+        schreibe_eskalation(ziel, f"frage {i}", [], _abstain(), grenzen=grenzen)
+
+    assert len(_archive(ziel)) == 2
+    erhalten = "".join((tmp_path / n).read_text(encoding="utf-8") for n in _archive(ziel))
+    assert "frage 4" in erhalten
+    assert "frage 0" not in erhalten
+
+
+def test_archive_nach_aufbewahrungsfrist_werden_geloescht(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    alt = tmp_path / "eskalationen.jsonl.20200101T000000000000Z.1"
+    alt.write_text("{}\n")
+    vor_60_tagen = (datetime.now(timezone.utc) - timedelta(days=60)).timestamp()
+    os.utime(alt, (vor_60_tagen, vor_60_tagen))
+    grenzen = EskalationsGrenzen(max_bytes=10_000, max_archive=5, aufbewahrung_tage=30)
+
+    schreibe_eskalation(ziel, "neu", [], _abstain(), grenzen=grenzen)
+
+    assert not alt.exists()
+
+
+def test_aktive_datei_aelter_als_frist_wird_rotiert_und_geloescht(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    alt = datetime.now(timezone.utc) - timedelta(days=40)
+    satz = {"zeitpunkt": alt.isoformat(), "frage": "alt"}
+    ziel.write_text(json.dumps(satz) + "\n", encoding="utf-8")
+    os.utime(ziel, (alt.timestamp(), alt.timestamp()))
+    grenzen = EskalationsGrenzen(max_bytes=10_000, max_archive=5, aufbewahrung_tage=30)
+
+    schreibe_eskalation(ziel, "neu", [], _abstain(), grenzen=grenzen)
+
+    inhalt = ziel.read_text(encoding="utf-8")
+    assert "neu" in inhalt
+    assert "alt" not in inhalt
+    assert _archive(ziel) == []
+
+
+def test_rotationsfehler_kippt_das_schreiben_nicht(tmp_path, monkeypatch, caplog):
+    ziel = tmp_path / "eskalationen.jsonl"
+    ziel.write_text("x" * 100)
+    grenzen = EskalationsGrenzen(max_bytes=10, max_archive=5, aufbewahrung_tage=30)
+
+    def kaputt(*a, **k):
+        raise OSError("kein Zugriff")
+
+    monkeypatch.setattr(os, "replace", kaputt)
+
+    with caplog.at_level(logging.ERROR):
+        assert schreibe_eskalation(ziel, "f", [], _abstain(), grenzen=grenzen) is True
+
+    assert "Rotation" in caplog.text
+
+
+def test_grenzen_validieren_ihre_werte():
+    for kaputt in ({"max_bytes": 0}, {"max_archive": -1}, {"aufbewahrung_tage": 0}):
+        with pytest.raises(ValueError):
+            EskalationsGrenzen(**kaputt)
+
+
+def _archivname(ziel, tage_alt=0, pid=1):
+    zeit = datetime.now(timezone.utc) - timedelta(days=tage_alt)
+    return ziel.with_name(f"{ziel.name}.{zeit:%Y%m%dT%H%M%S%fZ}.{pid}")
+
+
+def _zeile(tage_alt, naiv=False):
+    zeit = datetime.now(timezone.utc) - timedelta(days=tage_alt)
+    if naiv:
+        zeit = zeit.replace(tzinfo=None)
+    return json.dumps({"zeitpunkt": zeit.isoformat(), "frage": "x"}) + "\n"
+
+
+def test_zeitstempel_ohne_zeitzone_verhindert_den_append_nicht(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    ziel.write_text(_zeile(1, naiv=True), encoding="utf-8")
+    grenzen = EskalationsGrenzen(max_bytes=10_000, max_archive=5, aufbewahrung_tage=30)
+
+    assert schreibe_eskalation(ziel, "neu", [], _abstain(), grenzen=grenzen) is True
+    assert schreibe_eskalation(ziel, "neu2", [], _abstain(), grenzen=grenzen) is True
+
+
+def test_zeitstempel_ohne_zeitzone_gilt_als_utc_und_wird_nach_frist_rotiert(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    ziel.write_text(_zeile(40, naiv=True), encoding="utf-8")
+    grenzen = EskalationsGrenzen(max_bytes=10_000, max_archive=5, aufbewahrung_tage=30)
+
+    schreibe_eskalation(ziel, "neu", [], _abstain(), grenzen=grenzen)
+
+    assert _archive(ziel) == []
+    assert "neu" in ziel.read_text(encoding="utf-8")
+
+
+def test_fremde_dateien_zaehlen_nicht_als_archiv(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    fremd = tmp_path / "eskalationen.jsonl.bak"
+    fremd.write_text("sicher")
+    grenzen = EskalationsGrenzen(max_bytes=1, max_archive=1, aufbewahrung_tage=30)
+
+    for i in range(4):
+        schreibe_eskalation(ziel, f"f{i}", [], _abstain(), grenzen=grenzen)
+
+    assert fremd.read_text() == "sicher"
+    assert len([n for n in _archive(ziel) if not n.endswith(".bak")]) == 1
+
+
+def test_sonderdatei_wird_nie_rotiert(tmp_path, monkeypatch):
+    grenzen = EskalationsGrenzen(max_bytes=1, max_archive=0, aufbewahrung_tage=1)
+    aufrufe = []
+    monkeypatch.setattr(os, "replace", lambda *a, **k: aufrufe.append(a))
+
+    assert schreibe_eskalation(os.devnull, "f", [], _abstain(), grenzen=grenzen) is True
+    assert aufrufe == []
+
+
+def test_parallele_threads_verlieren_keine_zeile(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    grenzen = EskalationsGrenzen(max_bytes=2000, max_archive=1000, aufbewahrung_tage=30)
+
+    def lauf():
+        for i in range(50):
+            assert schreibe_eskalation(ziel, f"f{i}", [], _abstain(), grenzen=grenzen)
+
+    threads = [threading.Thread(target=lauf) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    gesamt = ziel.read_text(encoding="utf-8").count("\n") + sum(
+        (tmp_path / n).read_text(encoding="utf-8").count("\n") for n in _archive(ziel)
+    )
+    assert gesamt == 400
+
+
+def test_verdraengung_ueber_max_archive_loggt_warnung(tmp_path, caplog):
+    ziel = tmp_path / "eskalationen.jsonl"
+    grenzen = EskalationsGrenzen(max_bytes=1, max_archive=1, aufbewahrung_tage=30)
+
+    with caplog.at_level(logging.WARNING):
+        for i in range(4):
+            schreibe_eskalation(ziel, f"f{i}", [], _abstain(), grenzen=grenzen)
+
+    assert "verdrängt" in caplog.text
+
+
+def test_aktive_datei_zwischen_halber_und_voller_frist_wird_rotiert_und_bleibt(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    ziel.write_text(_zeile(20), encoding="utf-8")
+    grenzen = EskalationsGrenzen(max_bytes=10_000, max_archive=5, aufbewahrung_tage=30)
+
+    schreibe_eskalation(ziel, "neu", [], _abstain(), grenzen=grenzen)
+
+    assert len(_archive(ziel)) == 1
+    assert "neu" in ziel.read_text(encoding="utf-8")
+
+
+def test_bereinigung_ohne_append_loescht_ueberfaelliges_archiv(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    alt = _archivname(ziel, tage_alt=40)
+    alt.write_text(_zeile(40), encoding="utf-8")
+    jung = _archivname(ziel, tage_alt=1, pid=2)
+    jung.write_text(_zeile(1), encoding="utf-8")
+
+    bereinige_eskalationen(ziel, EskalationsGrenzen(max_bytes=10_000, max_archive=5, aufbewahrung_tage=30))
+
+    assert not alt.exists()
+    assert jung.exists()

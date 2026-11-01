@@ -4,6 +4,8 @@ import json
 import logging
 import math
 import os
+import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -17,6 +19,9 @@ log = logging.getLogger(__name__)
 MAX_FRAGE_ZEICHEN = 2000
 MAX_EVIDENZ_ZEICHEN = 2000
 ESKALATIONS_DATEI_RECHTE = 0o600
+STANDARD_MAX_BYTES = 5 * 1024 * 1024
+STANDARD_MAX_ARCHIVE = 5
+STANDARD_AUFBEWAHRUNG_TAGE = 90
 
 SEGMENTE = ("gesetz", "verordnung", "richtlinie", "leitlinie", "auslegung")
 UNBEKANNT = "unbekannt"
@@ -188,17 +193,121 @@ def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None):
     }
 
 
-def schreibe_eskalation(ziel, frage, nodes, entscheidung):
+@dataclass(frozen=True)
+class EskalationsGrenzen:
+    """Obergrenzen des Eskalationsdatensatzes: aktive Datei, Zahl der Archive, Alter (ADR 0010)."""
+
+    max_bytes: int = STANDARD_MAX_BYTES
+    max_archive: int = STANDARD_MAX_ARCHIVE
+    aufbewahrung_tage: int = STANDARD_AUFBEWAHRUNG_TAGE
+
+    def __post_init__(self):
+        if self.max_bytes < 1 or self.aufbewahrung_tage < 1 or self.max_archive < 0:
+            raise ValueError("Grenzen: max_bytes und aufbewahrung_tage >= 1, max_archive >= 0.")
+
+
+def grenzen_aus(einstellungen):
+    return EskalationsGrenzen(
+        einstellungen.ESKALATION_MAX_BYTES,
+        einstellungen.ESKALATION_MAX_ARCHIVE,
+        einstellungen.ESKALATION_AUFBEWAHRUNG_TAGE,
+    )
+
+
+# Rotation und Append laufen im Prozess nie parallel; mehrere Prozesse bleiben ein akzeptiertes Race (ADR 0010).
+_ESKALATIONS_SPERRE = threading.Lock()
+
+
+def _aeltester_zeitpunkt(datei):
+    """Zeitpunkt des ältesten Datensatzes: erste Zeile mit gültigem `zeitpunkt`, sonst die Änderungszeit.
+
+    Ein Zeitstempel ohne Zeitzone gilt als UTC. Ein Parsingproblem darf den Append nie verhindern.
+    """
+    with open(datei, encoding="utf-8", errors="replace") as f:
+        for zeile in f:
+            try:
+                zeitpunkt = datetime.fromisoformat(json.loads(zeile)["zeitpunkt"])
+            except (ValueError, KeyError, TypeError):
+                continue
+            return zeitpunkt if zeitpunkt.tzinfo else zeitpunkt.replace(tzinfo=timezone.utc)
+    return datetime.fromtimestamp(Path(datei).stat().st_mtime, timezone.utc)
+
+
+def _archive(ziel):
+    """Archive heißen `<name>.<UTC-Zeitstempel>.<pid>`; fremde Dateien (`.bak`, `.lock`) zählen nicht."""
+    muster = re.compile(re.escape(ziel.name) + r"\.\d{8}T\d{12}Z\.\d+")
+    return sorted(p for p in ziel.parent.glob(f"{ziel.name}.*") if muster.fullmatch(p.name))
+
+
+def _ist_aelter(datei, grenze):
+    try:
+        return _aeltester_zeitpunkt(datei) < grenze
+    except FileNotFoundError:
+        return False
+
+
+def _rotiere(ziel, grenzen, jetzt):
+    halbe_frist = jetzt - timedelta(days=grenzen.aufbewahrung_tage) / 2
+    try:
+        groesse = ziel.stat().st_size
+    except FileNotFoundError:
+        return
+    if groesse and (groesse >= grenzen.max_bytes or _ist_aelter(ziel, halbe_frist)):
+        archiv = ziel.with_name(f"{ziel.name}.{jetzt:%Y%m%dT%H%M%S%fZ}.{os.getpid()}")
+        if not archiv.exists():
+            os.replace(ziel, archiv)
+
+
+def _bereinige(ziel, grenzen, jetzt):
+    """Rotiert die aktive Datei bei Größe oder halber Frist, löscht Archive über Frist oder Anzahl."""
+    if ziel.exists() and not ziel.is_file():
+        return
+    _rotiere(ziel, grenzen, jetzt)
+    frist = jetzt - timedelta(days=grenzen.aufbewahrung_tage)
+    veraltet = [a for a in _archive(ziel) if _ist_aelter(a, frist)]
+    for archiv in veraltet:
+        archiv.unlink(missing_ok=True)
+    if veraltet:
+        log.info("Eskalationsarchive nach Aufbewahrungsfrist gelöscht: %d", len(veraltet))
+    archive = _archive(ziel)
+    ueberzaehlig = archive[: max(0, len(archive) - grenzen.max_archive)]
+    for archiv in ueberzaehlig:
+        archiv.unlink(missing_ok=True)
+    if ueberzaehlig:
+        log.warning(
+            "Eskalationsarchive vor Fristende wegen max_archive=%d verdrängt: %d (Flut?)",
+            grenzen.max_archive,
+            len(ueberzaehlig),
+        )
+
+
+def bereinige_eskalationen(ziel, grenzen):
+    """Wendet Frist und Archivgrenze ohne neuen Datensatz an (Start des Servers). Fehler werden nur geloggt."""
+    ziel = Path(ziel)
+    with _ESKALATIONS_SPERRE:
+        try:
+            _bereinige(ziel, grenzen, datetime.now(timezone.utc))
+        except OSError:
+            log.exception("Bereinigung des Eskalationsdatensatzes %s fehlgeschlagen", ziel)
+
+
+def schreibe_eskalation(ziel, frage, nodes, entscheidung, grenzen=None):
     """Hängt den Datensatz als JSONL-Zeile an und meldet, ob das gelang. Ein Fehler kippt die Verweigerung nicht."""
+    grenzen = grenzen or EskalationsGrenzen()
     try:
         zeile = json.dumps(eskalationsdatensatz(frage, nodes, entscheidung), ensure_ascii=False) + "\n"
         ziel = Path(ziel)
         ziel.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(ziel, os.O_WRONLY | os.O_APPEND | os.O_CREAT, ESKALATIONS_DATEI_RECHTE)
-        try:
-            os.write(fd, zeile.encode("utf-8"))
-        finally:
-            os.close(fd)
+        with _ESKALATIONS_SPERRE:
+            try:
+                _bereinige(ziel, grenzen, datetime.now(timezone.utc))
+            except OSError:
+                log.exception("Rotation des Eskalationsdatensatzes %s fehlgeschlagen", ziel)
+            fd = os.open(ziel, os.O_WRONLY | os.O_APPEND | os.O_CREAT, ESKALATIONS_DATEI_RECHTE)
+            try:
+                os.write(fd, zeile.encode("utf-8"))
+            finally:
+                os.close(fd)
     except (OSError, TypeError, ValueError):
         log.exception("Eskalationsdatensatz konnte nicht nach %s geschrieben werden", ziel)
         return False
@@ -223,7 +332,7 @@ def _zaehle(entscheidung, nodes):
         log.exception("Metriken konnten nicht gezaehlt werden")
 
 
-def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes):
+def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes, grenzen=None):
     entscheidung = gate.entscheide(frage, nodes)
     log.info(
         "Gate: %s reasons=%s relevance=%s answerable=%s",
@@ -233,5 +342,7 @@ def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes):
         entscheidung.scores.answerable,
     )
     _zaehle(entscheidung, nodes)
-    vorgemerkt = entscheidung.verweigert and schreibe_eskalation(eskalations_datei, frage, nodes, entscheidung)
+    vorgemerkt = entscheidung.verweigert and schreibe_eskalation(
+        eskalations_datei, frage, nodes, entscheidung, grenzen
+    )
     return Pruefung(entscheidung, vorgemerkt)

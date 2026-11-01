@@ -4,13 +4,13 @@ import tempfile
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import config
 import dokumente
@@ -18,11 +18,25 @@ import metrics
 import rag
 from agent import llm, prompt, pruefe, retriever
 from convert import pdf_nach_markdown
-from gate import abstain_antwort, aktiviere_score_log
+from gate import (
+    MAX_FRAGE_ZEICHEN,
+    abstain_antwort,
+    aktiviere_score_log,
+    bereinige_eskalationen,
+    grenzen_aus,
+)
 
 aktiviere_score_log()
 
-app = FastAPI(title="RegRAG")
+
+
+@asynccontextmanager
+async def _lebenszyklus(_app):
+    await asyncio.to_thread(bereinige_eskalationen, config.ESKALATION_DATEI, grenzen_aus(config))
+    yield
+
+
+app = FastAPI(title="RegRAG", lifespan=_lebenszyklus)
 STATIC = Path(__file__).parent / "static"
 DOKUMENTE = Path(config.DOKUMENTE_VERZEICHNIS)
 
@@ -36,7 +50,7 @@ KEIN_JOBSTART_WAEHREND_GELOESCHT_WIRD = threading.Lock()
 
 
 class Frage(BaseModel):
-    frage: str
+    frage: str = Field(min_length=1, max_length=MAX_FRAGE_ZEICHEN)
 
 
 def _quellen(nodes):
