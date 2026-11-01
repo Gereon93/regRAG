@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from manifest import Manifest, dateiname_revision, lade_manifest, schreibe_manifest
+from manifest import Manifest, checkpoint_kennung, lade_manifest, schreibe_manifest
 
 EINSTELLUNGEN = SimpleNamespace(LAYA_MODELL="multilingual", MIN_RETRIEVAL_SCORE=0.62)
 
@@ -46,62 +46,78 @@ def _manifest():
     )
 
 
+NAME_MANIFEST = r"gate-manifest-0123456789ab-[0-9a-f]{12}\.json"
+
+
+def _mit(**felder):
+    return Manifest(**{**_manifest().__dict__, **felder})
+
+
+def _identitaet(datei):
+    checkpoint = json.loads(datei.read_text(encoding="utf-8"))["checkpoint"]
+    return checkpoint["modell"], checkpoint["revision"]
+
+
 def test_round_trip(tmp_path):
     datei = schreibe_manifest(_manifest(), tmp_path)
-    assert re.fullmatch(r"gate-manifest-0123456789ab-abc123-[0-9a-f]{8}\.json", datei.name)
+    assert re.fullmatch(NAME_MANIFEST, datei.name)
+    assert datei.name == f"gate-manifest-0123456789ab-{checkpoint_kennung('multilingual', 'abc123')}.json"
     assert lade_manifest(datei, EINSTELLUNGEN) == _manifest()
 
 
-def test_zweite_revision_ueberschreibt_das_erste_manifest_nicht(tmp_path):
-    """PR #43: Baseline und Kandidat auf demselben Eval-Set ersetzen sich nicht still."""
-    erstes = schreibe_manifest(_manifest(), tmp_path)
-    zweites = schreibe_manifest(Manifest(**{**_manifest().__dict__, "checkpoint_revision": "r/2"}), tmp_path)
-    assert re.fullmatch(r"gate-manifest-0123456789ab-r_2-[0-9a-f]{8}\.json", zweites.name)
+@pytest.mark.parametrize(
+    ("erste", "zweite"),
+    [
+        (("multilingual", "abc123"), ("multilingual", "r/2")),
+        (("multilingual", "r/2"), ("multilingual", "r_2")),
+        (("multilingual", "org/modell@" + "a" * 60 + "1"), ("multilingual", "org/modell@" + "a" * 60 + "2")),
+        (("multilingual", "main"), ("fine-tuned", "main")),
+        (("a\x00b", "c"), ("a", "b\x00c")),
+    ],
+    ids=["andere_revision", "gleich_bereinigt", "langer_praefix", "gleiche_revision_anderes_modell", "nul_grenze"],
+)
+def test_verschiedene_checkpoints_ueberschreiben_sich_nie(tmp_path, erste, zweite):
+    """PR #43: der Dateiname kommt aus der Identitaet (modell, revision); Baseline und Kandidat bleiben beide erhalten."""
+    erstes = schreibe_manifest(_mit(checkpoint_modell=erste[0], checkpoint_revision=erste[1]), tmp_path)
+    zweites = schreibe_manifest(_mit(checkpoint_modell=zweite[0], checkpoint_revision=zweite[1]), tmp_path)
     assert erstes != zweites
-    assert lade_manifest(erstes, EINSTELLUNGEN).checkpoint_revision == "abc123"
-    assert lade_manifest(zweites, EINSTELLUNGEN).checkpoint_revision == "r/2"
+    assert re.fullmatch(NAME_MANIFEST, zweites.name)
+    assert _identitaet(erstes) == erste
+    assert _identitaet(zweites) == zweite
 
 
-def test_gleich_bereinigte_revisionen_bekommen_eigene_manifeste(tmp_path):
-    """PR #43: r/2 und r_2 bereinigen gleich; der Hash der Originalrevision haelt beide Dateien getrennt."""
-    erstes = schreibe_manifest(Manifest(**{**_manifest().__dict__, "checkpoint_revision": "r/2"}), tmp_path)
-    zweites = schreibe_manifest(Manifest(**{**_manifest().__dict__, "checkpoint_revision": "r_2"}), tmp_path)
-    assert erstes != zweites
-    assert lade_manifest(erstes, EINSTELLUNGEN).checkpoint_revision == "r/2"
-    assert lade_manifest(zweites, EINSTELLUNGEN).checkpoint_revision == "r_2"
-
-
-def test_bestehende_datei_einer_anderen_revision_wird_nicht_ueberschrieben(tmp_path, monkeypatch):
-    erstes = schreibe_manifest(_manifest(), tmp_path)
-    monkeypatch.setattr("manifest.dateiname_revision", lambda revision: erstes.name.removeprefix("gate-manifest-0123456789ab-").removesuffix(".json"))
-    with pytest.raises(ValueError, match="r9"):
-        schreibe_manifest(Manifest(**{**_manifest().__dict__, "checkpoint_revision": "r9"}), tmp_path)
-    assert lade_manifest(erstes, EINSTELLUNGEN).checkpoint_revision == "abc123"
-
-
-def test_gleiche_revision_darf_neu_geschrieben_werden(tmp_path):
+def test_gleicher_checkpoint_darf_neu_geschrieben_werden(tmp_path):
     schreibe_manifest(_manifest(), tmp_path)
-    neu = schreibe_manifest(Manifest(**{**_manifest().__dict__, "temperatur": 2.0}), tmp_path)
+    neu = schreibe_manifest(_mit(temperatur=2.0), tmp_path)
     assert lade_manifest(neu, EINSTELLUNGEN).temperatur == 2.0
 
 
+def test_anderer_checkpoint_unter_gleichem_namen_bricht_vor_dem_schreiben_ab(tmp_path, monkeypatch):
+    erstes = schreibe_manifest(_manifest(), tmp_path)
+    vorher = erstes.read_text(encoding="utf-8")
+    monkeypatch.setattr("manifest.checkpoint_kennung", lambda modell, revision: "0" * 12)
+    erstes = erstes.rename(tmp_path / f"gate-manifest-0123456789ab-{'0' * 12}.json")
+    with pytest.raises(ValueError, match="r9"):
+        schreibe_manifest(_mit(checkpoint_revision="r9"), tmp_path)
+    assert erstes.read_text(encoding="utf-8") == vorher
+
+
 def test_unlesbare_bestehende_datei_wird_nicht_ueberschrieben(tmp_path):
-    (tmp_path / f"gate-manifest-0123456789ab-{dateiname_revision('abc123')}.json").write_text("{kaputt", encoding="utf-8")
+    ziel = tmp_path / f"gate-manifest-0123456789ab-{checkpoint_kennung('multilingual', 'abc123')}.json"
+    ziel.write_text("{kaputt", encoding="utf-8")
     with pytest.raises(ValueError, match="abc123"):
         schreibe_manifest(_manifest(), tmp_path)
+    assert ziel.read_text(encoding="utf-8") == "{kaputt"
 
 
-def test_report_und_manifest_bereinigen_die_revision_gleich(tmp_path):
+def test_report_und_manifest_nutzen_dieselbe_checkpoint_kennung(tmp_path):
     from evaluation.eval_report import schreibe
 
-    revision = "org/modell@" + "a" * 60
-    assert re.fullmatch("org_modell_" + "a" * 29 + "-[0-9a-f]{8}", dateiname_revision(revision))
-    assert dateiname_revision("r/2") != dateiname_revision("r_2")
-    assert dateiname_revision(revision) != dateiname_revision(revision + "b")
-    bericht = {"eval_version": "sha256:" + "ab" * 32, "laya": {"checkpoint": {"revision": revision}}}
-    assert schreibe(bericht, tmp_path / "r").name == f"bericht-abababababab-laya-{dateiname_revision(revision)}.json"
-    manifest = Manifest(**{**_manifest().__dict__, "checkpoint_revision": revision})
-    assert schreibe_manifest(manifest, tmp_path / "m").name == f"gate-manifest-0123456789ab-{dateiname_revision(revision)}.json"
+    kennung = checkpoint_kennung("multilingual", "abc123")
+    assert re.fullmatch("[0-9a-f]{12}", kennung)
+    bericht = {"eval_version": "sha256:" + "01234567" + "89ab" + "cd" * 26, "laya": {"checkpoint": {"modell": "multilingual", "revision": "abc123"}}}
+    assert schreibe(bericht, tmp_path / "r").name == f"bericht-0123456789ab-laya-{kennung}.json"
+    assert schreibe_manifest(_manifest(), tmp_path / "m").name == f"gate-manifest-0123456789ab-{kennung}.json"
 
 
 def test_leeres_schwellen_erlaubt(tmp_path):

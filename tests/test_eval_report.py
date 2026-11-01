@@ -281,22 +281,62 @@ def test_main_mit_laya_ohne_revision_schreibt_kein_manifest_und_hinweis(tmp_path
     assert len(list((tmp_path / "reports").glob("bericht-*laya*.json"))) == 1
     eval_report.main(["--checkpoint-revision", "r9"])
     assert len(list((tmp_path / "manifest").glob("gate-manifest-*.json"))) == 1
-    assert len(list((tmp_path / "reports").glob("bericht-*laya*.json"))) == 2  # Revision im Namen: keine Kollision
+    assert len(list((tmp_path / "reports").glob("bericht-*laya*.json"))) == 2
 
 
-def test_schreibe_unterscheidet_laya_reports_nach_revision(tmp_path):
-    b = {"eval_version": "sha256:" + "ab" * 32, "laya": {"checkpoint": {"revision": "r/1"}}}
-    assert re.fullmatch(r"bericht-abababababab-laya-r_1-[0-9a-f]{8}\.json", schreibe(b, tmp_path).name)
+def _laya_bericht(modell, revision):
+    return {"eval_version": "sha256:" + "ab" * 32, "laya": {"checkpoint": {"modell": modell, "revision": revision}}}
 
 
-def test_gleich_bereinigte_revisionen_ueberschreiben_den_baseline_report_nicht(tmp_path):
-    """PR #43 (Codex): r/2 und r_2 bereinigen gleich; der Baseline-Report fuer den Vergleich bleibt erhalten."""
-    basis = {"eval_version": "sha256:" + "ab" * 32}
-    erster = schreibe({**basis, "laya": {"checkpoint": {"revision": "r/2"}}}, tmp_path)
-    zweiter = schreibe({**basis, "laya": {"checkpoint": {"revision": "r_2"}}}, tmp_path)
+def test_schreibe_benennt_laya_reports_nach_der_checkpoint_identitaet(tmp_path):
+    assert re.fullmatch(r"bericht-abababababab-laya-[0-9a-f]{12}\.json", schreibe(_laya_bericht("m", "r/1"), tmp_path).name)
+
+
+@pytest.mark.parametrize(
+    ("erste", "zweite"),
+    [
+        (("multilingual", "r/2"), ("multilingual", "r_2")),
+        (("multilingual", "x" * 60 + "1"), ("multilingual", "x" * 60 + "2")),
+        (("multilingual", "main"), ("fine-tuned", "main")),
+        (("multilingual", None), ("fine-tuned", None)),
+    ],
+    ids=["gleich_bereinigt", "langer_praefix", "gleiche_revision_anderes_modell", "ohne_revision_anderes_modell"],
+)
+def test_verschiedene_checkpoints_ueberschreiben_den_baseline_report_nicht(tmp_path, erste, zweite):
+    """PR #43 (Codex): der Baseline-Report fuer evaluation.vergleich bleibt erhalten."""
+    erster = schreibe(_laya_bericht(*erste), tmp_path)
+    zweiter = schreibe(_laya_bericht(*zweite), tmp_path)
     assert erster != zweiter
-    assert json.loads(erster.read_text(encoding="utf-8"))["laya"]["checkpoint"]["revision"] == "r/2"
-    assert json.loads(zweiter.read_text(encoding="utf-8"))["laya"]["checkpoint"]["revision"] == "r_2"
+    assert json.loads(erster.read_text(encoding="utf-8"))["laya"]["checkpoint"] == dict(zip(("modell", "revision"), erste, strict=True))
+    assert json.loads(zweiter.read_text(encoding="utf-8"))["laya"]["checkpoint"] == dict(zip(("modell", "revision"), zweite, strict=True))
+
+
+def test_gleicher_checkpoint_darf_den_report_neu_schreiben(tmp_path):
+    erster = schreibe(_laya_bericht("m", "r1"), tmp_path)
+    assert schreibe({**_laya_bericht("m", "r1"), "neu": True}, tmp_path) == erster
+    assert json.loads(erster.read_text(encoding="utf-8"))["neu"] is True
+
+
+def test_anderer_checkpoint_unter_gleichem_reportnamen_bricht_vor_dem_schreiben_ab(tmp_path, monkeypatch):
+    monkeypatch.setattr(eval_report, "checkpoint_kennung", lambda modell, revision: "0" * 12)
+    erster = schreibe(_laya_bericht("m", "r1"), tmp_path)
+    vorher = erster.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="r2"):
+        schreibe(_laya_bericht("m", "r2"), tmp_path)
+    assert erster.read_text(encoding="utf-8") == vorher
+
+
+def test_main_bricht_bei_manifest_konflikt_ab_bevor_der_report_geschrieben_wird(tmp_path, monkeypatch, chroma):
+    s = Szenario()
+    vorbereitet(s, tmp_path, monkeypatch, "http://laya.test")
+    eval_report.main(["--checkpoint-revision", "r9"])
+    (manifest,) = (tmp_path / "manifest").glob("gate-manifest-*.json")
+    (bericht,) = (tmp_path / "reports").glob("bericht-*laya*.json")
+    manifest.write_text("{kaputt", encoding="utf-8")
+    vorher = bericht.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="r9"):
+        eval_report.main(["--checkpoint-revision", "r9"])
+    assert bericht.read_text(encoding="utf-8") == vorher
 
 
 def test_vergleich_cli_vergleicht_zwei_laya_reports(chroma, tmp_path, capsys):

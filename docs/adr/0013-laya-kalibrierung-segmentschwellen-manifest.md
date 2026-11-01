@@ -71,13 +71,18 @@ Das ist gewollt.
 ### Gate-Manifest
 
 `python -m evaluation.eval_report --checkpoint-revision REV` schreibt
-`evaluation/manifest/gate-manifest-<eval_version[7:19]>-<REV>-<hash8>.json`. REV wird getrimmt (leer oder blank:
-kein Manifest), auf `[A-Za-z0-9._-]` und 40 Zeichen bereinigt; `<hash8>` sind die ersten 8 Hex-Zeichen von SHA-256
-der Originalrevision. Report (`bericht-<eval>-laya-<REV>-<hash8>.json`) und Manifest nutzen dieselbe Funktion
-`manifest.dateiname_revision`. So ersetzt ein zweiter Checkpoint auf demselben Eval-Set weder Manifest noch
-Baseline-Report des ersten, auch wenn die Revisionen gleich bereinigen (`r/2` und `r_2`) oder denselben Präfix
-teilen. Liegt unter dem Manifest-Namen trotzdem eine Datei einer anderen oder unlesbaren Revision, bricht das
-Schreiben mit `ValueError` ab. Dieselbe Revision darf neu geschrieben werden. Der Loader hängt nicht vom Namen ab. (Eingecheckt; der Report bleibt gitignored unter `REGRAG_EVAL_BERICHT_DIR`.)
+`evaluation/manifest/gate-manifest-<eval_version[7:19]>-<kennung>.json`; REV wird getrimmt (leer oder blank: kein
+Manifest). **Dateinamen kommen aus der Checkpoint-Identität, nicht aus bereinigtem Text:** `<kennung>` sind die
+ersten 12 Hex-Zeichen von SHA-256 über `[modell, revision]` (JSON, also eindeutig getrennt) aus
+`manifest.checkpoint_kennung`. Der Laya-Report heißt `bericht-<eval_version[7:19]>-laya-<kennung>.json` (ohne Revision:
+Identität `[modell, null]`). Lesbar stehen Modell und Revision nur im Dateiinhalt (`checkpoint`). Damit ersetzt ein
+anderer Checkpoint auf demselben Eval-Set weder Manifest noch Baseline-Report, egal ob sich nur die Schreibweise der
+Revision (`r/2`/`r_2`), ein langes Präfix oder nur das Modell bei gleicher Revision (`multilingual@main`/
+`fine-tuned@main`) unterscheidet; drei Review-Runden an einer Bereinigungsfunktion haben gezeigt, dass jede lesbare
+Kodierung wieder eine Lücke hat. Überschrieben wird nur bei identischer Identität (Neulauf desselben Checkpoints).
+Liegt am Zielnamen eine Datei mit anderer oder unlesbarer Identität (konstruktionsbedingt nur bei einer Hash-Kollision
+oder einer verdorbenen Datei), bricht das Schreiben mit `ValueError` ab, und zwar bevor Report oder Manifest
+geschrieben werden (`eval_report.main` prüft das Manifest-Ziel vor dem Report). Der Loader hängt nicht vom Namen ab. (Eingecheckt; der Report bleibt gitignored unter `REGRAG_EVAL_BERICHT_DIR`.)
 Format (UTF-8, JSON ohne `Infinity`/`NaN`):
 
 ```json

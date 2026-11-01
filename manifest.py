@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 import math
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,8 +14,7 @@ log = logging.getLogger(__name__)
 SCHEMA = 1
 TEMPERATUR_MIN = 0.05
 TEMPERATUR_MAX = 20.0
-MAX_REVISION_ZEICHEN = 40
-REVISION_HASH_ZEICHEN = 8
+CHECKPOINT_KENNUNG_ZEICHEN = 12
 
 
 # noinspection PyClassHasNoInit
@@ -170,28 +168,46 @@ def lade_manifest(pfad, einstellungen) -> Manifest:
     )
 
 
-def dateiname_revision(revision: str) -> str:
-    """Revision als Dateinamen-Teil fuer Report und Manifest (docs/adr/0013): lesbar bereinigt plus Hash des Originals.
+def checkpoint_kennung(modell: str, revision) -> str:
+    """Dateinamen-Teil fuer Report und Manifest: Hash der Checkpoint-Identitaet (modell, revision) (docs/adr/0013).
 
-    Der Hash haelt Revisionen getrennt, die gleich bereinigen (r/2 und r_2) oder denselben Praefix teilen.
+    Verschiedene Identitaeten bekommen verschiedene Namen, ohne Bereinigung, die kollidieren koennte; lesbar
+    stehen modell und revision nur im Dateiinhalt.
     """
-    lesbar = re.sub(r"[^A-Za-z0-9._-]", "_", revision)[:MAX_REVISION_ZEICHEN]
-    kennung = hashlib.sha256(revision.encode("utf-8")).hexdigest()[:REVISION_HASH_ZEICHEN]
-    return f"{lesbar}-{kennung}"
+    identitaet = json.dumps([modell, revision], ensure_ascii=False)
+    return hashlib.sha256(identitaet.encode("utf-8")).hexdigest()[:CHECKPOINT_KENNUNG_ZEICHEN]
 
 
-def _gespeicherte_revision(datei: Path):
+def pruefe_ueberschreibbar(datei: Path, identitaet: tuple, identitaet_von) -> None:
+    """Ueberschreiben nur bei gleicher Checkpoint-Identitaet; sonst ValueError, bevor etwas geschrieben wird."""
+    if not datei.exists():
+        return
     try:
-        return json.loads(datei.read_text(encoding="utf-8"))["checkpoint"]["revision"]
+        vorhanden = identitaet_von(json.loads(datei.read_text(encoding="utf-8")))
     except (OSError, ValueError, KeyError, TypeError):
-        return None
+        vorhanden = None
+    if vorhanden != identitaet:
+        modell, revision = identitaet
+        raise ValueError(
+            f"{datei.name} existiert bereits für einen anderen oder unlesbaren Checkpoint; "
+            f"wird für {modell}@{revision} nicht überschrieben. Datei prüfen und ggf. selbst entfernen."
+        )
+
+
+def _manifest_identitaet(daten) -> tuple:
+    return daten["checkpoint"]["modell"], daten["checkpoint"]["revision"]
+
+
+def manifest_ziel(manifest: Manifest, verzeichnis) -> Path:
+    """Zieldatei des Manifests; wirft ValueError, wenn dort ein anderer Checkpoint liegt."""
+    kennung = checkpoint_kennung(manifest.checkpoint_modell, manifest.checkpoint_revision)
+    datei = Path(verzeichnis) / f"gate-manifest-{manifest.eval_version[7:19]}-{kennung}.json"
+    pruefe_ueberschreibbar(datei, (manifest.checkpoint_modell, manifest.checkpoint_revision), _manifest_identitaet)
+    return datei
 
 
 def schreibe_manifest(manifest: Manifest, verzeichnis) -> Path:
-    """Schreibt gate-manifest-<eval_version[7:19]>-<dateiname_revision>.json; ein zweiter Checkpoint ersetzt den ersten nie.
-
-    Liegt unter dem Namen bereits eine Datei einer anderen oder unlesbaren Revision: ValueError statt Ueberschreiben.
-    """
+    """Schreibt gate-manifest-<eval_version[7:19]>-<checkpoint_kennung>.json (siehe manifest_ziel)."""
     inhalt = {
         "schema": SCHEMA,
         "checkpoint": {
@@ -209,11 +225,6 @@ def schreibe_manifest(manifest: Manifest, verzeichnis) -> Path:
     text = json.dumps(inhalt, indent=2, ensure_ascii=False, allow_nan=False)
     verzeichnis = Path(verzeichnis)
     verzeichnis.mkdir(parents=True, exist_ok=True)
-    datei = verzeichnis / f"gate-manifest-{manifest.eval_version[7:19]}-{dateiname_revision(manifest.checkpoint_revision)}.json"
-    if datei.exists() and _gespeicherte_revision(datei) != manifest.checkpoint_revision:
-        raise ValueError(
-            f"Manifest {datei.name} existiert bereits für eine andere oder unlesbare Revision; "
-            f"wird für {manifest.checkpoint_revision!r} nicht überschrieben. Datei prüfen und ggf. selbst entfernen."
-        )
+    datei = manifest_ziel(manifest, verzeichnis)
     datei.write_text(text + "\n", encoding="utf-8")
     return datei

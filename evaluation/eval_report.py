@@ -24,7 +24,13 @@ from evaluation.evalset import (
 from evaluation.kalibrierung import ece, fitte_temperatur
 from gate import SEGMENTE, kalibriere, segment_von
 from laya import JudgeFehler, LayaGate, SystemOneClient
-from manifest import Manifest, dateiname_revision, schreibe_manifest
+from manifest import (
+    Manifest,
+    checkpoint_kennung,
+    manifest_ziel,
+    pruefe_ueberschreibbar,
+    schreibe_manifest,
+)
 
 ZIEL_FALLZAHL = 200
 MANIFEST_VERZEICHNIS = Path(__file__).parent / "manifest"
@@ -233,14 +239,21 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
     return ergebnis, manifest
 
 
+def _bericht_identitaet(daten):
+    return daten["laya"]["checkpoint"]["modell"], daten["laya"]["checkpoint"]["revision"]
+
+
 def schreibe(ergebnis, verzeichnis):
     ziel = Path(verzeichnis)
     ziel.mkdir(parents=True, exist_ok=True)
     name = f"bericht-{ergebnis['eval_version'].removeprefix('sha256:')[:12]}"
+    identitaet = None
     if "laya" in ergebnis:
-        revision = ergebnis["laya"]["checkpoint"]["revision"]
-        name += "-laya" + (f"-{dateiname_revision(revision)}" if revision else "")
+        identitaet = (ergebnis["laya"]["checkpoint"]["modell"], ergebnis["laya"]["checkpoint"]["revision"])
+        name += f"-laya-{checkpoint_kennung(*identitaet)}"
     datei = ziel / f"{name}.json"
+    if identitaet:
+        pruefe_ueberschreibbar(datei, identitaet, _bericht_identitaet)
     datei.write_text(json.dumps(ergebnis, ensure_ascii=False, indent=2), encoding="utf-8")
     return datei
 
@@ -284,6 +297,8 @@ def main(argv=None):
             print(f"WARNUNG (Laya): {warnung}", file=sys.stderr)
     else:
         ergebnis = erzeuge_bericht(faelle, retriever, kosten)
+    if manifest:
+        manifest_ziel(manifest, MANIFEST_VERZEICHNIS)
     datei = schreibe(ergebnis, config.EVAL_BERICHT_VERZEICHNIS)
     print(json.dumps({"eval_version": ergebnis["eval_version"], "schwellen": ergebnis["schwellen"]}, indent=2))
     print(f"Bericht: {datei}")

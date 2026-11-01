@@ -10,7 +10,7 @@
 ### Geändert
 - Ein gesetztes, aber fehlendes oder ungültiges Manifest lässt den Start fehlschlagen; unter Manifest führt ein abweichendes oder malformtes `routing` bzw. `routing.model` zu ABSTAIN `JUDGE_UNAVAILABLE`; explizites `null` zählt dabei als malformt; fehlt der Schlüssel `routing.model` ganz, warnt das Gate einmalig "Checkpoint nicht verifizierbar".
 - Der Temperatur-Fit rechnet die NLL aus dem skalierten Logit statt aus einer geklemmten Wahrscheinlichkeit; ein sicher falsches Calibration-Sample zieht T nicht mehr an den unteren Rand (#32).
-- Manifest und Laya-Report tragen die Revision plus einen kurzen Hash der Originalrevision im Namen; Baseline und Kandidat auf demselben Eval-Set überschreiben sich nicht mehr, auch bei gleich bereinigten Revisionen (#32).
+- Manifest und Laya-Report heißen nach einem Hash der Checkpoint-Identität (Modell, Revision); ein anderer Checkpoint auf demselben Eval-Set überschreibt die Baseline nicht mehr, überschrieben wird nur beim Neulauf desselben Checkpoints (#32).
 - Der Retrieval-Guard behandelt einen NaN-Score als zu niedrig (ABSTAIN `LOW_RELEVANCE`); `evaluation.vergleich` lehnt Reports mit abweichendem `laya.index_fingerprint` ab (#32).
 ### Hinweis
 - Bestandsindizes kennen kein `segment` und gelten als `unbekannt`; ein ergänztes Segment im Sidecar indexiert das Dokument automatisch neu, `REGRAG_INDEX_NEU_BAUEN=1` wendet Segmente auf alle Dokumente auf einmal an. `segment` fließt nicht in den Embedding-Text.

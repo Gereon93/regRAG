@@ -52,7 +52,9 @@ Details und Grenzen: [ADR 0013](docs/adr/0013-laya-kalibrierung-segmentschwellen
   Dokument beim nächsten Start automatisch neu (der Sidecar geht in den Datei-Hash ein); `REGRAG_INDEX_NEU_BAUEN=1
   python agent.py` ist nur nötig, um Segmente auf alle bestehenden Dokumente auf einmal anzuwenden.
 - **Manifest erzeugen:** `python -m evaluation.eval_report --checkpoint-revision <REV>` (mit gesetzter
-  `REGRAG_LAYA_URL`) schreibt Schwellen, Temperatur, Checkpoint und `eval_version` nach `evaluation/manifest/`.
+  `REGRAG_LAYA_URL`) schreibt Schwellen, Temperatur, Checkpoint und `eval_version` nach `evaluation/manifest/`
+  (Dateiname `gate-manifest-<eval>-<kennung>.json`, Kennung = Hash aus Modell und Revision; welcher Checkpoint
+  drinsteckt, steht im Feld `checkpoint`).
   Die Revision ist deklariert, nicht verifiziert.
 - **Aktivieren:** `REGRAG_GATE_MANIFEST=<Pfad>` und `REGRAG_LAYA_MODELL` (Default `multilingual`). Ein gesetztes,
   aber fehlendes oder ungültiges Manifest (oder fehlende `REGRAG_LAYA_URL`) lässt den Start fehlschlagen; es gibt

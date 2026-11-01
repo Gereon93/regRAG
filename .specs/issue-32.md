@@ -56,7 +56,7 @@ Rückfrage entschieden; sie sind reversibel und im PR-Body aufzuführen.
 ### 2.4 Schwellen und Manifest
 18. **Schwelle pro Segment:** `schwellen_pro_segment(zeilen, kosten, score_feld="laya_kal", segment_feld="segment_laufzeit")` auf den Calibration-Zeilen aus 12. Kandidaten wie #31. Da `gate.kalibriere` seine Ausgabe auf `[EPS, 1-EPS]` klemmt (sonst sättigt kleines T auf exakt 1.0), sind alle Kandidaten endliche Werte in `[0, 1]`; ein Kandidat > 1 oder nicht endlich ist ein Programmierfehler (`ValueError`).
 19. **Fallback:** `fallback_schwelle = max(schwellen.values())`. Gilt für `unbekannt` und jedes Segment ohne Eintrag.
-20. **Entscheidung (Review): Manifest-Format** (`gate-manifest-<eval_version[7:19]>-<revision>-<hash8>.json`, Revision getrimmt, bereinigt und um 8 Hex-Zeichen SHA-256 der Originalrevision ergänzt, identisch zum Report-Namen (`manifest.dateiname_revision`), damit ein zweiter Checkpoint auf demselben Eval-Set weder Manifest noch Baseline-Report still überschreibt; liegt unter dem Namen eine Datei einer anderen oder unlesbaren Revision, ist das `ValueError` (PR #43); UTF-8, gültiges JSON ohne `Infinity`/`NaN`):
+20. **Entscheidung (Review): Manifest-Format** (`gate-manifest-<eval_version[7:19]>-<kennung>.json` mit `<kennung>` = erste 12 Hex-Zeichen SHA-256 über die Checkpoint-Identität `[modell, revision]` (`manifest.checkpoint_kennung`, gleiche Funktion für den Report-Namen `bericht-…-laya-<kennung>.json`); ein anderer Checkpoint überschreibt so weder Manifest noch Baseline-Report; überschrieben wird nur bei identischer Identität, sonst `ValueError` vor jedem Schreiben (PR #43); UTF-8, gültiges JSON ohne `Infinity`/`NaN`):
     ```json
     {
       "schema": 1,
@@ -71,7 +71,7 @@ Rückfrage entschieden; sie sind reversibel und im PR-Body aufzuführen.
     }
     ```
     `kosten` ist nur Herkunftsangabe und wird zur Laufzeit nicht ausgewertet; `REGRAG_KOSTEN_*` bleiben die Quelle für den Report.
-21. **Wer schreibt es:** `python -m evaluation.eval_report --checkpoint-revision REV` schreibt das Manifest nach `evaluation/manifest/` (eingecheckt, siehe 6) und den Report nach `REGRAG_EVAL_BERICHT_DIR` (gitignored). Ohne `--checkpoint-revision` wird kein Manifest geschrieben (Hinweis auf stderr). `checkpoint.modell` = `config.LAYA_MODELL` (siehe 25), `min_retrieval_score` = `config.MIN_RETRIEVAL_SCORE`. Der Betreiber kopiert die Datei ins Deployment (z. B. `chroma/`) und setzt `REGRAG_GATE_MANIFEST`. Es gibt kein händisches Nachbearbeiten.
+21. **Wer schreibt es:** `python -m evaluation.eval_report --checkpoint-revision REV` schreibt das Manifest nach `evaluation/manifest/` (eingecheckt, siehe 6) und den Report nach `REGRAG_EVAL_BERICHT_DIR` (gitignored). Ohne `--checkpoint-revision` (oder mit leerer/blanker Revision) wird kein Manifest geschrieben (Hinweis auf stderr). Dateinamen von Manifest und Laya-Report siehe 20; ein Konflikt am Manifest-Ziel bricht ab, bevor der Report geschrieben wird. `checkpoint.modell` = `config.LAYA_MODELL` (siehe 25), `min_retrieval_score` = `config.MIN_RETRIEVAL_SCORE`. Der Betreiber kopiert die Datei ins Deployment (z. B. `chroma/`) und setzt `REGRAG_GATE_MANIFEST`. Es gibt kein händisches Nachbearbeiten.
 22. **Entscheidung (Review): Laden — drei Zustände**, geprüft in `laya.baue_gate` beim Start:
     - `REGRAG_GATE_MANIFEST` leer/nicht gesetzt → bisheriges Verhalten (`REGRAG_LAYA_MIN_ANSWERABLE` global auf Rohscore, keine Kalibrierung).
     - gesetzt, aber `REGRAG_LAYA_URL` leer → `ValueError`, Start schlägt fehl.
