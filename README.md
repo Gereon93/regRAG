@@ -42,6 +42,27 @@ leer ist. Gestartet wird `laya-serve` (`pip install "laya[serve]"`), das Jev-Pro
 die Kalibrierung vorliegen (#31, #32), ist das Einschalten ein Experiment. Fällt der Judge aus,
 verweigert das Gate (`JUDGE_UNAVAILABLE`). Frage und Evidenz gehen an die konfigurierte URL.
 
+### Kalibrierte Segmentschwellen und Manifest
+
+Details und Grenzen: [ADR 0013](docs/adr/0013-laya-kalibrierung-segmentschwellen-manifest.md).
+
+- **Segment** pro Dokument steht im Sidecar `<datei>.source.json` als `"segment"` (`gesetz`, `verordnung`,
+  `richtlinie`, `leitlinie`, `auslegung`). Fehlt es oder ist es ungültig (auch bei Uploads und Bestandsindizes),
+  gilt `unbekannt` mit der strengsten Schwelle. Nach dem Ergänzen einmal neu indexieren:
+  `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
+- **Manifest erzeugen:** `python -m evaluation.eval_report --checkpoint-revision <REV>` (mit gesetzter
+  `REGRAG_LAYA_URL`) schreibt Schwellen, Temperatur, Checkpoint und `eval_version` nach `evaluation/manifest/`.
+  Die Revision ist deklariert, nicht verifiziert.
+- **Aktivieren:** `REGRAG_GATE_MANIFEST=<Pfad>` und `REGRAG_LAYA_MODELL` (Default `multilingual`). Ein gesetztes,
+  aber fehlendes oder ungültiges Manifest (oder fehlende `REGRAG_LAYA_URL`) lässt den Start fehlschlagen; es gibt
+  keinen Rückfall auf `REGRAG_LAYA_MIN_ANSWERABLE`.
+- **Vergleich:** `python -m evaluation.vergleich <baseline.json> <kandidat.json>` (Cluster-Bootstrap; der
+  Kandidat muss auf dem Train-Split derselben `eval_version` trainiert sein).
+- **Metriken:** `GET /metrics` liefert Eskalationsraten pro Reason und Segment sowie Score-Histogramme. Prozesslokal,
+  beim Neustart leer, wie die übrige App nicht authentifiziert; keine Fragetexte, Schwellen oder Pfade.
+
+"Fine-getuntes Laya schlägt Zero-Shot signifikant" ist **nicht gemessen**; dafür fehlen Labels und ein trainierter Checkpoint.
+
 ## Eval-Set und Schwellen-Report
 
 Das Eval-Set liegt versioniert in `evaluation/evalset/v1.jsonl` (Segment, Kategorie, Gruppe pro Fall,
@@ -196,6 +217,7 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 - [0007](docs/adr/0007-sprachgrenze-im-code.md) — Sprachgrenze im Code: Domäne deutsch, Technik englisch
 - [0008](docs/adr/0008-korpus-agnostisch-dora-ist-nur-der-seed.md) — Korpus-agnostisch: DORA ist nur der Seed
 - [0009](docs/adr/0009-query-embedding-cpu-mps.md) — Query-Embedding im CPU-Container: Latenz und Threadzahl gemessen
+- [0013](docs/adr/0013-laya-kalibrierung-segmentschwellen-manifest.md) — Laya-Kalibrierung, Segmentschwellen, Gate-Manifest und Eskalationsmetriken (Nutzen unbelegt)
 
 ## Gemessen
 

@@ -37,8 +37,9 @@ getrennte Splits und eine Version, auf die sich ein Schwellwert zurückführen l
   breit und die Schwellen nicht belastbar.
 - Conformal/Selective Prediction (im Issue optional) ist nicht umgesetzt. Die Falschantwortrate an den
   Beantworteten ist die passende Zielgröße dafür, sobald genug Labels vorliegen.
-- Die Schwellen werden nicht automatisch in die Laufzeit-Config geschrieben. Wer sie übernimmt,
-  trägt die `eval_version` aus dem Bericht in den Commit ein.
+- Die Schwellen des Retrieval-Score-Guards werden nicht automatisch in die Laufzeit-Config geschrieben. Wer sie übernimmt,
+  trägt die `eval_version` aus dem Bericht in den Commit ein. Für den Laya-Judge übernimmt das ein
+  versioniertes Manifest, das der Betreiber bewusst aktiviert: [0013](0013-laya-kalibrierung-segmentschwellen-manifest.md).
 - Das Seed-Set (14 Fälle, alle DORA-Fragen in einer Gruppe) lässt keinen Calibration-Split übrig:
   `eval_report` bricht dort mit Handlungshinweis ab. Das ist gewollt, statt Normfassungen über Splits
   zu verteilen; ein Test hält das fest.
