@@ -249,7 +249,7 @@ def schreibe(ergebnis, verzeichnis):
     name = f"bericht-{ergebnis['eval_version'].removeprefix('sha256:')[:12]}"
     identitaet = None
     if "laya" in ergebnis:
-        identitaet = (ergebnis["laya"]["checkpoint"]["modell"], ergebnis["laya"]["checkpoint"]["revision"])
+        identitaet = _bericht_identitaet(ergebnis)
         name += f"-laya-{checkpoint_kennung(*identitaet)}"
     datei = ziel / f"{name}.json"
     if identitaet:
