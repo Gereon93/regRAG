@@ -1,4 +1,5 @@
 import json
+import math
 from types import SimpleNamespace
 
 import pytest
@@ -285,3 +286,40 @@ def test_ausgeliefertes_seed_set_ist_noch_nicht_kalibrierbar():
     retriever = fester_retriever({f["frage"]: 0.5 for f in faelle})
     with pytest.raises(SystemExit, match="Mehr Fälle"):
         erzeuge_bericht(faelle, retriever, KOSTEN)
+
+
+def kal_zeile(segment, erwartet, kal):
+    return {"segment_laufzeit": segment, "erwartet": erwartet, "laya_kal": kal}
+
+
+def test_score_feld_none_zaehlt_als_eskalation_und_verschiebt_schwelle_nicht():
+    basis = [kal_zeile("verordnung", "answer", 0.9), kal_zeile("verordnung", "abstain", 0.4)]
+    mit_none = [*basis, kal_zeile("verordnung", "answer", None), kal_zeile("verordnung", "abstain", None)]
+    args = {"score_feld": "laya_kal", "segment_feld": "segment_laufzeit"}
+    assert schwellen_pro_segment(mit_none, KOSTEN, **args) == schwellen_pro_segment(basis, KOSTEN, **args)
+    b = bericht(mit_none, {"verordnung": 0.5}, KOSTEN, version="v", **args)
+    assert b["gesamt"]["beantwortet"] == 1 and b["gesamt"]["eskaliert"] == 3
+
+
+def test_unbekanntes_segment_bekommt_nie_eine_schwelle():
+    rows = [kal_zeile("verordnung", "answer", 0.9), kal_zeile("unbekannt", "answer", 0.8)]
+    schwellen = schwellen_pro_segment(rows, KOSTEN, score_feld="laya_kal", segment_feld="segment_laufzeit")
+    assert set(schwellen) == {"verordnung"}
+
+
+@pytest.mark.parametrize("wert", [1.5, math.inf, math.nan])
+def test_kalibrierter_score_ausserhalb_0_1_ist_programmierfehler(wert):
+    rows = [kal_zeile("verordnung", "answer", wert)]
+    with pytest.raises(ValueError):
+        schwellen_pro_segment(rows, KOSTEN, score_feld="laya_kal", segment_feld="segment_laufzeit")
+
+
+def test_bericht_fallback_bewertet_segment_ohne_schwelle():
+    rows = [kal_zeile("verordnung", "answer", 0.95), kal_zeile("unbekannt", "answer", 0.95)]
+    args = {"score_feld": "laya_kal", "segment_feld": "segment_laufzeit"}
+    with pytest.raises(KeyError):
+        bericht(rows, {"verordnung": 0.5}, KOSTEN, version="v", **args)
+    b = bericht(rows, {"verordnung": 0.5}, KOSTEN, version="v", fallback=0.99, **args)
+    assert b["segmente"]["unbekannt"]["beantwortet"] == 0
+    assert b["segmente"]["verordnung"]["beantwortet"] == 1
+    assert b["schwellen"] == {"verordnung": 0.5}
