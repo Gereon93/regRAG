@@ -9,13 +9,14 @@ T_MIN, T_MAX = 0.05, 20.0
 TOLERANZ_LOG_T = 1e-4
 MIN_GRUPPEN = 10
 _GOLDEN = (math.sqrt(5) - 1) / 2
+_Q_MIN = 1e-15
 _NICHT_SCHAETZBAR = "Temperatur nicht schätzbar"
 
 
 def _nll(p, y, T):
     summe = 0.0
     for pi, yi in zip(p, y, strict=True):
-        q = kalibriere(pi, T)
+        q = min(max(kalibriere(pi, T), _Q_MIN), 1 - _Q_MIN)  # Saettigung bei kleinem T abfangen
         summe -= math.log(q if yi else 1 - q)
     return summe / len(p)
 
