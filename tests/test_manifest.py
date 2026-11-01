@@ -143,3 +143,112 @@ def test_info_log_ohne_pfad(tmp_path, caplog):
     assert "multilingual" in text
     assert "m.json" in text
     assert str(tmp_path) not in text
+
+
+def _text_mit(ersetzung):
+    text = json.dumps(_roh())
+    for alt, neu in ersetzung.items():
+        assert alt in text
+        text = text.replace(alt, neu)
+    return text
+
+
+@pytest.mark.parametrize(
+    ("pfad", "feld"),
+    [
+        (("schema",), "schema"),
+        (("eval_version",), "eval_version"),
+        (("min_retrieval_score",), "min_retrieval_score"),
+        (("schwellen",), "schwellen"),
+        (("fallback_schwelle",), "fallback_schwelle"),
+        (("kosten",), "kosten"),
+        (("erzeugt",), "erzeugt"),
+        (("checkpoint", "modell"), "checkpoint.modell"),
+        (("checkpoint", "revision"), "checkpoint.revision"),
+    ],
+)
+def test_fehlendes_feld(tmp_path, pfad, feld):
+    daten = _roh()
+    ziel = daten
+    for schluessel in pfad[:-1]:
+        ziel = ziel[schluessel]
+    del ziel[pfad[-1]]
+    with pytest.raises(ValueError, match=feld):
+        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize(
+    ("daten", "feld"),
+    [
+        (_roh(schwellen=[]), "schwellen"),
+        (_roh(schwellen={"gesetz": "0.3"}), "schwellen"),
+        (_roh(schwellen={"gesetz": -0.1}), "schwellen"),
+        (_roh(schwellen={"gesetz": 1.0001}, fallback_schwelle=1.0), "schwellen"),
+        (_roh(fallback_schwelle=-0.1), "fallback_schwelle"),
+        (_roh(fallback_schwelle=1.0001), "fallback_schwelle"),
+        (_roh(schema=True), "schema"),
+        (_roh(kosten={"falschantwort": "10"}), "kosten"),
+        (_roh(kosten={"falschantwort": True}), "kosten"),
+        (_roh(temperatur=0.0499), "temperatur"),
+        (_roh(temperatur=20.0001), "temperatur"),
+    ],
+)
+def test_weitere_verletzungen(tmp_path, daten, feld):
+    with pytest.raises(ValueError, match=feld):
+        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize("wurzel", ['"text"', "42", "null"])
+def test_wurzel_nicht_objekt_andere(tmp_path, wurzel):
+    with pytest.raises(ValueError, match="Objekt"):
+        lade_manifest(_schreibe(tmp_path, None, wurzel), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize(
+    "ersetzung",
+    [
+        {'"temperatur": 1.0': '"temperatur": 1' + "0" * 400},
+        {'"fallback_schwelle": 0.41': '"fallback_schwelle": 1' + "0" * 400},
+        {'"gesetz": 0.3': '"gesetz": 1' + "0" * 400},
+        {'"eskalation": 1.0': '"eskalation": 1' + "0" * 400},
+        {'"gesetz": 0.3': '"gesetz": 1e999'},
+        {'"eskalation": 1.0': '"eskalation": 1e999'},
+    ],
+)
+def test_riesige_zahlen_sind_value_error(tmp_path, ersetzung):
+    with pytest.raises(ValueError):
+        lade_manifest(_schreibe(tmp_path, None, _text_mit(ersetzung)), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize("konstante", ["Infinity", "-Infinity", "NaN"])
+@pytest.mark.parametrize(
+    "alt",
+    ['"fallback_schwelle": 0.41', '"gesetz": 0.3', '"eskalation": 1.0'],
+)
+def test_nicht_endliche_konstanten_ueberall(tmp_path, alt, konstante):
+    neu = alt.split(":")[0] + f": {konstante}"
+    with pytest.raises(ValueError, match=konstante):
+        lade_manifest(_schreibe(tmp_path, None, _text_mit({alt: neu})), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize("temperatur", [0.05, 20, 20.0])
+def test_temperatur_grenzen_gueltig(tmp_path, temperatur):
+    assert (
+        lade_manifest(
+            _schreibe(tmp_path, _roh(temperatur=temperatur)), EINSTELLUNGEN
+        ).temperatur
+        == temperatur
+    )
+
+
+@pytest.mark.parametrize("wert", [0, 1, 0.0, 1.0])
+def test_schwellen_grenzen_gueltig(tmp_path, wert):
+    daten = _roh(schwellen={"gesetz": wert}, fallback_schwelle=1.0)
+    assert lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN).schwellen == {
+        "gesetz": wert
+    }
+    daten = _roh(schwellen={}, fallback_schwelle=wert)
+    assert (
+        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN).fallback_schwelle
+        == wert
+    )

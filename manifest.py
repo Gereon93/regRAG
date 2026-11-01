@@ -32,11 +32,15 @@ class Manifest:
 
 
 def _zahl(wert, feld: str) -> float:
-    if (
-        isinstance(wert, bool)
-        or not isinstance(wert, (int, float))
-        or not math.isfinite(wert)
-    ):
+    try:
+        endlich = (
+            not isinstance(wert, bool)
+            and isinstance(wert, (int, float))
+            and math.isfinite(wert)
+        )
+    except OverflowError:  # riesige int-Literale lassen sich nicht in float wandeln
+        endlich = False
+    if not endlich:
         raise ValueError(f"Manifest: {feld} muss eine endliche Zahl sein.")
     return float(wert)
 
@@ -60,9 +64,9 @@ def _objekt(wert, feld: str) -> dict:
     return wert
 
 
-def _feld(daten: dict, feld: str):
+def _feld(daten: dict, feld: str, name: str | None = None):
     if feld not in daten:
-        raise ValueError(f"Manifest: Feld {feld} fehlt.")
+        raise ValueError(f"Manifest: Feld {name or feld} fehlt.")
     return daten[feld]
 
 
@@ -92,12 +96,16 @@ def lade_manifest(pfad, einstellungen) -> Manifest:
         raise ValueError(f"Manifest: schema muss {SCHEMA} sein.")
 
     checkpoint = _objekt(_feld(daten, "checkpoint"), "checkpoint")
-    modell = _text(_feld(checkpoint, "modell"), "checkpoint.modell")
+    modell = _text(
+        _feld(checkpoint, "modell", "checkpoint.modell"), "checkpoint.modell"
+    )
     if modell != einstellungen.LAYA_MODELL:
         raise ValueError(
             f"Manifest: checkpoint.modell {modell!r} passt nicht zu LAYA_MODELL {einstellungen.LAYA_MODELL!r}."
         )
-    revision = _text(_feld(checkpoint, "revision"), "checkpoint.revision")
+    revision = _text(
+        _feld(checkpoint, "revision", "checkpoint.revision"), "checkpoint.revision"
+    )
 
     eval_version = _text(_feld(daten, "eval_version"), "eval_version")
     if not eval_version.startswith("sha256:"):
