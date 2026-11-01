@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -9,11 +10,53 @@ from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
+import metrics
+
 log = logging.getLogger(__name__)
 
 MAX_FRAGE_ZEICHEN = 2000
 MAX_EVIDENZ_ZEICHEN = 2000
 ESKALATIONS_DATEI_RECHTE = 0o600
+
+SEGMENTE = ("gesetz", "verordnung", "richtlinie", "leitlinie", "auslegung")
+UNBEKANNT = "unbekannt"
+EPS = 1e-6
+_GEWARNTE_SEGMENTE = set()
+
+
+def normalisiere_segment(wert, quelle=None):
+    """Bildet einen Metadatenwert auf SEGMENTE oder UNBEKANNT ab; unbekannte nicht leere Werte warnen einmalig."""
+    if not isinstance(wert, str):
+        return UNBEKANNT
+    segment = wert.strip().lower()
+    if segment in SEGMENTE:
+        return segment
+    if segment and (segment, quelle) not in _GEWARNTE_SEGMENTE:
+        _GEWARNTE_SEGMENTE.add((segment, quelle))
+        log.warning("Unbekanntes Segment %r in %s; behandelt als %s.", wert, quelle or "Metadaten", UNBEKANNT)
+    return UNBEKANNT
+
+
+def segment_von(nodes):
+    """Gemeinsames Segment aller Nodes, sonst UNBEKANNT (gemischte Evidenz bekommt die strengste Schwelle)."""
+    segmente = {normalisiere_segment(n.metadata.get("segment")) for n in nodes}
+    return segmente.pop() if len(segmente) == 1 else UNBEKANNT
+
+
+def logit(p):
+    """logit(clip(p, EPS, 1-EPS)); gemeinsame Eingabeklemmung fuer Gate und NLL-Fit."""
+    p = min(max(p, EPS), 1 - EPS)
+    return math.log(p / (1 - p))
+
+
+def skaliere(p, temperatur):
+    """sigmoid(logit(clip(p, EPS, 1-EPS)) / T) ohne Ausgabe-Clip."""
+    return 1 / (1 + math.exp(-logit(p) / temperatur))
+
+
+def kalibriere(p, temperatur):
+    """Temperature Scaling, Ausgabe auf [EPS, 1-EPS] geklemmt (kleines T saettigt sonst auf exakt 0/1)."""
+    return min(max(skaliere(p, temperatur), EPS), 1 - EPS)
 
 ABSTAIN_ANTWORT_VORGEMERKT = (
     "Keine belastbare Grundlage in den indexierten Dokumenten. "
@@ -76,7 +119,7 @@ class RetrievalScoreGate:
     def entscheide(self, frage, nodes):
         bester = max((n.score for n in nodes), default=None)
         scores = GateScores(relevance=bester)
-        if bester is None or bester < self.min_score:
+        if bester is None or not bester >= self.min_score:
             return GateDecision(Outcome.ABSTAIN, (AbstainReason.LOW_RELEVANCE,), scores)
         return GateDecision(Outcome.ANSWER, (), scores)
 
@@ -141,6 +184,7 @@ def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None):
             "answerable": entscheidung.scores.answerable,
         },
         "reasons": [r.value for r in entscheidung.reasons],
+        "segment": segment_von(nodes),
     }
 
 
@@ -171,6 +215,14 @@ class Pruefung:
         return self.entscheidung.verweigert
 
 
+def _zaehle(entscheidung, nodes):
+    """Metriken sind Beiwerk: ein Fehler beim Zaehlen darf die Entscheidung nie veraendern."""
+    try:
+        metrics.METRIKEN.zaehle(entscheidung, segment_von(nodes))
+    except Exception:  # Zaehlen darf die Gate-Entscheidung nie kippen (breit gefangen mit Absicht)
+        log.exception("Metriken konnten nicht gezaehlt werden")
+
+
 def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes):
     entscheidung = gate.entscheide(frage, nodes)
     log.info(
@@ -180,5 +232,6 @@ def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes):
         entscheidung.scores.relevance,
         entscheidung.scores.answerable,
     )
+    _zaehle(entscheidung, nodes)
     vorgemerkt = entscheidung.verweigert and schreibe_eskalation(eskalations_datei, frage, nodes, entscheidung)
     return Pruefung(entscheidung, vorgemerkt)

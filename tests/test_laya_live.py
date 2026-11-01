@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import config
 from gate import Outcome
 from laya import LayaGate, SystemOneClient
 
@@ -25,7 +26,7 @@ def node(text):
 @pytest.fixture(scope="module")
 def gate():
     client = SystemOneClient(URL, os.getenv("REGRAG_LAYA_API_KEY", ""), float(os.getenv("REGRAG_LAYA_TIMEOUT", "30")))
-    return LayaGate(client, SCHWELLE)
+    return LayaGate(client, lambda segment: SCHWELLE, modell=config.LAYA_MODELL)
 
 
 def test_antwort_haengt_von_der_evidenz_ab(gate):

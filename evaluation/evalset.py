@@ -11,10 +11,13 @@ from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
 
+from gate import SEGMENTE, UNBEKANNT
+
 STANDARD_FAELLE = Path(__file__).parent / "evalset" / "v1.jsonl"
 
 PFLICHTFELDER = ("id", "frage", "erwartet", "segment", "kategorie")
 ERWARTET = ("answer", "abstain")
+AUSSERHALB = "ausserhalb"
 SPLIT_ANTEILE = (("train", 60), ("calibration", 20), ("test", 20))
 SPLIT_BUCKETS = sum(anteil for _, anteil in SPLIT_ANTEILE)
 SPLIT_GRENZEN = tuple(
@@ -59,6 +62,12 @@ def _pruefe(fall, nummer, gesehen):
             raise ValueError(f"Zeile {nummer}: Feld '{feld}' fehlt oder ist leer.")
     if fall["erwartet"] not in ERWARTET:
         raise ValueError(f"Zeile {nummer}: erwartet muss {ERWARTET} sein, nicht {fall['erwartet']!r}.")
+    ausserhalb = fall["segment"] == AUSSERHALB and fall["erwartet"] == "abstain"
+    if fall["segment"] not in SEGMENTE and not ausserhalb:
+        raise ValueError(
+            f"Zeile {nummer}: segment muss {SEGMENTE} sein oder '{AUSSERHALB}' mit erwartet abstain, "
+            f"nicht {fall['segment']!r} bei erwartet {fall['erwartet']!r}."
+        )
     if fall["id"] in gesehen:
         raise ValueError(f"Zeile {nummer}: doppelte id {fall['id']!r}.")
     gesehen.add(fall["id"])
@@ -82,15 +91,15 @@ def _split_von(gruppe):
     return next(name for name, grenze in SPLIT_GRENZEN if bucket < grenze)
 
 
-def _beantwortet(zeile, schwelle):
-    """Ohne Retrieval-Treffer (top=None) verweigert das Gate immer, wie RetrievalScoreGate."""
-    return zeile["top"] is not None and zeile["top"] >= schwelle
+def _beantwortet(zeile, schwelle, score_feld="top"):
+    """Ohne Score (None) verweigert das Gate immer, wie RetrievalScoreGate."""
+    return zeile[score_feld] is not None and zeile[score_feld] >= schwelle
 
 
-def _kosten(zeilen, schwelle, kosten):
+def _kosten(zeilen, schwelle, kosten, score_feld="top"):
     summe = 0.0
     for z in zeilen:
-        beantwortet = _beantwortet(z, schwelle)
+        beantwortet = _beantwortet(z, schwelle, score_feld)
         if beantwortet and z["erwartet"] == "abstain":
             summe += kosten.falschantwort
         elif not beantwortet and z["erwartet"] == "answer":
@@ -106,17 +115,20 @@ def _kandidaten(scores):
     return [werte[0], *mitten, math.nextafter(werte[-1], math.inf)]
 
 
-def schwellen_pro_segment(zeilen, kosten):
+def _waehle_schwelle(gruppe, kosten, score_feld):
+    kandidaten = _kandidaten(z[score_feld] for z in gruppe)
+    if score_feld != "top" and not all(math.isfinite(k) and k <= 1 for k in kandidaten):
+        raise ValueError(f"Schwellenkandidaten für {score_feld!r} müssen endlich und <= 1 sein: {kandidaten}")
+    return min(kandidaten, key=lambda schwelle: (_kosten(gruppe, schwelle, kosten, score_feld), -schwelle))
+
+
+def schwellen_pro_segment(zeilen, kosten, score_feld="top", segment_feld="segment"):
+    """Schwelle je Segment; UNBEKANNT bekommt nie eine eigene Schwelle (es gilt der Fallback)."""
     nach_segment = defaultdict(list)
     for z in zeilen:
-        nach_segment[z["segment"]].append(z)
-    return {
-        segment: min(
-            _kandidaten(z["top"] for z in gruppe),
-            key=lambda schwelle: (_kosten(gruppe, schwelle, kosten), -schwelle),
-        )
-        for segment, gruppe in nach_segment.items()
-    }
+        if z[segment_feld] != UNBEKANNT:
+            nach_segment[z[segment_feld]].append(z)
+    return {segment: _waehle_schwelle(gruppe, kosten, score_feld) for segment, gruppe in nach_segment.items()}
 
 
 def wilson(erfolge, n, z=Z_95):
@@ -135,8 +147,8 @@ def _rate(zaehler, nenner):
     return {"wert": zaehler / nenner, "ci95": wilson(zaehler, nenner)}
 
 
-def _kennzahlen(zeilen, schwelle_von):
-    beantwortet = [z for z in zeilen if _beantwortet(z, schwelle_von(z))]
+def _kennzahlen(zeilen, schwelle_von, score_feld="top"):
+    beantwortet = [z for z in zeilen if _beantwortet(z, schwelle_von(z), score_feld)]
     n = len(zeilen)
     falsch = sum(z["erwartet"] == "abstain" for z in beantwortet)
     return {
@@ -150,21 +162,24 @@ def _kennzahlen(zeilen, schwelle_von):
     }
 
 
-def bericht(zeilen, schwellen, kosten, version):
+def bericht(zeilen, schwellen, kosten, version, score_feld="top", segment_feld="segment", fallback=None):
     nach_segment = defaultdict(list)
     for z in zeilen:
-        nach_segment[z["segment"]].append(z)
+        nach_segment[z[segment_feld]].append(z)
     fehlend = sorted(set(nach_segment) - set(schwellen))
-    if fehlend:
+    if fehlend and fallback is None:
         raise KeyError(f"Keine Schwelle für Segment(e): {', '.join(fehlend)}")
+
+    def schwelle_von(z):
+        return schwellen.get(z[segment_feld], fallback)
+
     return {
         "eval_version": version,
         "definition": FALSCHANTWORT_DEFINITION,
         "kosten": {"falschantwort": kosten.falschantwort, "eskalation": kosten.eskalation},
         "schwellen": schwellen,
         "segmente": {
-            segment: _kennzahlen(gruppe, lambda z: schwellen[z["segment"]])
-            for segment, gruppe in sorted(nach_segment.items())
+            segment: _kennzahlen(gruppe, schwelle_von, score_feld) for segment, gruppe in sorted(nach_segment.items())
         },
-        "gesamt": _kennzahlen(zeilen, lambda z: schwellen[z["segment"]]),
+        "gesamt": _kennzahlen(zeilen, schwelle_von, score_feld),
     }

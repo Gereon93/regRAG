@@ -1,4 +1,5 @@
 import json
+import math
 from types import SimpleNamespace
 
 import pytest
@@ -74,6 +75,25 @@ def test_standard_set_ist_valide_und_splittbar():
     assert len(faelle) >= 14
     assert {f["erwartet"] for f in faelle} == {"answer", "abstain"}
     assert eval_version(faelle).startswith("sha256:")
+
+
+def test_standard_set_eval_version_ist_unveraendert():
+    faelle = lade_faelle(STANDARD_FAELLE)
+    assert eval_version(faelle) == "sha256:f671a47c676c5e912f565dc8191116d665d04a39cdeba6360646b7053173b375"
+
+
+def test_ausserhalb_mit_answer_ist_ein_fehler(tmp_path):
+    with pytest.raises(ValueError, match="Zeile 1"):
+        lade_faelle(schreibe_set(tmp_path, [fall("a", erwartet="answer", segment="ausserhalb")]))
+
+
+def test_ausserhalb_mit_abstain_ist_gueltig(tmp_path):
+    assert lade_faelle(schreibe_set(tmp_path, [fall("a", erwartet="abstain", segment="ausserhalb")]))
+
+
+def test_unbekanntes_segment_ist_ein_fehler(tmp_path):
+    with pytest.raises(ValueError, match="Zeile 1"):
+        lade_faelle(schreibe_set(tmp_path, [fall("a", segment="foo")]))
 
 
 def test_eval_version_aendert_sich_mit_inhalt_nicht_mit_reihenfolge():
@@ -266,3 +286,40 @@ def test_ausgeliefertes_seed_set_ist_noch_nicht_kalibrierbar():
     retriever = fester_retriever({f["frage"]: 0.5 for f in faelle})
     with pytest.raises(SystemExit, match="Mehr Fälle"):
         erzeuge_bericht(faelle, retriever, KOSTEN)
+
+
+def kal_zeile(segment, erwartet, kal):
+    return {"segment_laufzeit": segment, "erwartet": erwartet, "laya_kal": kal}
+
+
+def test_score_feld_none_zaehlt_als_eskalation_und_verschiebt_schwelle_nicht():
+    basis = [kal_zeile("verordnung", "answer", 0.9), kal_zeile("verordnung", "abstain", 0.4)]
+    mit_none = [*basis, kal_zeile("verordnung", "answer", None), kal_zeile("verordnung", "abstain", None)]
+    args = {"score_feld": "laya_kal", "segment_feld": "segment_laufzeit"}
+    assert schwellen_pro_segment(mit_none, KOSTEN, **args) == schwellen_pro_segment(basis, KOSTEN, **args)
+    b = bericht(mit_none, {"verordnung": 0.5}, KOSTEN, version="v", **args)
+    assert b["gesamt"]["beantwortet"] == 1 and b["gesamt"]["eskaliert"] == 3
+
+
+def test_unbekanntes_segment_bekommt_nie_eine_schwelle():
+    rows = [kal_zeile("verordnung", "answer", 0.9), kal_zeile("unbekannt", "answer", 0.8)]
+    schwellen = schwellen_pro_segment(rows, KOSTEN, score_feld="laya_kal", segment_feld="segment_laufzeit")
+    assert set(schwellen) == {"verordnung"}
+
+
+@pytest.mark.parametrize("wert", [1.5, math.inf, math.nan])
+def test_kalibrierter_score_ausserhalb_0_1_ist_programmierfehler(wert):
+    rows = [kal_zeile("verordnung", "answer", wert)]
+    with pytest.raises(ValueError):
+        schwellen_pro_segment(rows, KOSTEN, score_feld="laya_kal", segment_feld="segment_laufzeit")
+
+
+def test_bericht_fallback_bewertet_segment_ohne_schwelle():
+    rows = [kal_zeile("verordnung", "answer", 0.95), kal_zeile("unbekannt", "answer", 0.95)]
+    args = {"score_feld": "laya_kal", "segment_feld": "segment_laufzeit"}
+    with pytest.raises(KeyError):
+        bericht(rows, {"verordnung": 0.5}, KOSTEN, version="v", **args)
+    b = bericht(rows, {"verordnung": 0.5}, KOSTEN, version="v", fallback=0.99, **args)
+    assert b["segmente"]["unbekannt"]["beantwortet"] == 0
+    assert b["segmente"]["verordnung"]["beantwortet"] == 1
+    assert b["schwellen"] == {"verordnung": 0.5}

@@ -15,6 +15,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 import config
 import dokumente
 import embedding
+from gate import normalisiere_segment
 
 DISTANZMETRIK_WIE_IN_MEMORY = {"hnsw:space": "cosine"}  # docs/adr/0003
 METRIK = DISTANZMETRIK_WIE_IN_MEMORY["hnsw:space"]
@@ -42,6 +43,7 @@ def _quelle_metadata(pfad):
         "file_name": p.name,
         "quelle": daten.get("titel", p.name),
         "pdf": daten.get("pdf"),
+        "segment": normalisiere_segment(daten.get("segment"), p.name),
     }
 
 
@@ -83,6 +85,10 @@ def indexiere(md_pfad):
     for dok in SimpleDirectoryReader(
         input_files=[str(md_pfad)], file_metadata=_quelle_metadata
     ).load_data():
+        # segment ist Gate-Metadatum, kein Inhalt: nicht in den Embedding-Text (verschiebt Cosine-Scores) und nicht ins LLM-Prompt
+        for schluessel in (dok.excluded_embed_metadata_keys, dok.excluded_llm_metadata_keys):
+            if "segment" not in schluessel:
+                schluessel.append("segment")
         index.insert(dok)
 
     fp = _fingerprint_lesen() or dokumente.leerer_fingerprint(config.EMBEDDING_MODELL, METRIK)

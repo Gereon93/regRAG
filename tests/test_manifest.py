@@ -1,0 +1,323 @@
+import json
+import logging
+import re
+from types import SimpleNamespace
+
+import pytest
+
+from manifest import Manifest, checkpoint_kennung, lade_manifest, schreibe_manifest
+
+EINSTELLUNGEN = SimpleNamespace(LAYA_MODELL="multilingual", MIN_RETRIEVAL_SCORE=0.62)
+
+
+def _roh(**ueberschreibungen):
+    daten = {
+        "schema": 1,
+        "checkpoint": {"modell": "multilingual", "revision": "abc123"},
+        "eval_version": "sha256:0123456789abcdef0123",
+        "min_retrieval_score": 0.62,
+        "temperatur": 1.0,
+        "schwellen": {"verordnung": 0.41, "gesetz": 0.3},
+        "fallback_schwelle": 0.41,
+        "kosten": {"falschantwort": 10.0, "eskalation": 1.0},
+        "erzeugt": "2026-10-31T12:00:00+00:00",
+    }
+    daten.update(ueberschreibungen)
+    return daten
+
+
+def _schreibe(tmp_path, daten, text=None):
+    datei = tmp_path / "m.json"
+    datei.write_text(text if text is not None else json.dumps(daten), encoding="utf-8")
+    return datei
+
+
+def _manifest():
+    return Manifest(
+        checkpoint_modell="multilingual",
+        checkpoint_revision="abc123",
+        eval_version="sha256:0123456789abcdef0123",
+        min_retrieval_score=0.62,
+        temperatur=1.0,
+        schwellen={"verordnung": 0.41},
+        fallback_schwelle=0.41,
+        kosten={"falschantwort": 10.0, "eskalation": 1.0},
+        erzeugt="2026-10-31T12:00:00+00:00",
+    )
+
+
+NAME_MANIFEST = r"gate-manifest-0123456789ab-[0-9a-f]{12}\.json"
+
+
+def _mit(**felder):
+    return Manifest(**{**_manifest().__dict__, **felder})
+
+
+def _identitaet(datei):
+    checkpoint = json.loads(datei.read_text(encoding="utf-8"))["checkpoint"]
+    return checkpoint["modell"], checkpoint["revision"]
+
+
+def test_round_trip(tmp_path):
+    datei = schreibe_manifest(_manifest(), tmp_path)
+    assert re.fullmatch(NAME_MANIFEST, datei.name)
+    assert datei.name == f"gate-manifest-0123456789ab-{checkpoint_kennung('multilingual', 'abc123')}.json"
+    assert lade_manifest(datei, EINSTELLUNGEN) == _manifest()
+
+
+@pytest.mark.parametrize(
+    ("erste", "zweite"),
+    [
+        (("multilingual", "abc123"), ("multilingual", "r/2")),
+        (("multilingual", "r/2"), ("multilingual", "r_2")),
+        (("multilingual", "org/modell@" + "a" * 60 + "1"), ("multilingual", "org/modell@" + "a" * 60 + "2")),
+        (("multilingual", "main"), ("fine-tuned", "main")),
+        (("a\x00b", "c"), ("a", "b\x00c")),
+    ],
+    ids=["andere_revision", "gleich_bereinigt", "langer_praefix", "gleiche_revision_anderes_modell", "nul_grenze"],
+)
+def test_verschiedene_checkpoints_ueberschreiben_sich_nie(tmp_path, erste, zweite):
+    """PR #43: der Dateiname kommt aus der Identitaet (modell, revision); Baseline und Kandidat bleiben beide erhalten."""
+    erstes = schreibe_manifest(_mit(checkpoint_modell=erste[0], checkpoint_revision=erste[1]), tmp_path)
+    zweites = schreibe_manifest(_mit(checkpoint_modell=zweite[0], checkpoint_revision=zweite[1]), tmp_path)
+    assert erstes != zweites
+    assert re.fullmatch(NAME_MANIFEST, zweites.name)
+    assert _identitaet(erstes) == erste
+    assert _identitaet(zweites) == zweite
+
+
+def test_gleicher_checkpoint_darf_neu_geschrieben_werden(tmp_path):
+    schreibe_manifest(_manifest(), tmp_path)
+    neu = schreibe_manifest(_mit(temperatur=2.0), tmp_path)
+    assert lade_manifest(neu, EINSTELLUNGEN).temperatur == 2.0
+
+
+def test_anderer_checkpoint_unter_gleichem_namen_bricht_vor_dem_schreiben_ab(tmp_path, monkeypatch):
+    erstes = schreibe_manifest(_manifest(), tmp_path)
+    vorher = erstes.read_text(encoding="utf-8")
+    monkeypatch.setattr("manifest.checkpoint_kennung", lambda modell, revision: "0" * 12)
+    erstes = erstes.rename(tmp_path / f"gate-manifest-0123456789ab-{'0' * 12}.json")
+    with pytest.raises(ValueError, match="r9"):
+        schreibe_manifest(_mit(checkpoint_revision="r9"), tmp_path)
+    assert erstes.read_text(encoding="utf-8") == vorher
+
+
+def test_unlesbare_bestehende_datei_wird_nicht_ueberschrieben(tmp_path):
+    ziel = tmp_path / f"gate-manifest-0123456789ab-{checkpoint_kennung('multilingual', 'abc123')}.json"
+    ziel.write_text("{kaputt", encoding="utf-8")
+    with pytest.raises(ValueError, match="abc123"):
+        schreibe_manifest(_manifest(), tmp_path)
+    assert ziel.read_text(encoding="utf-8") == "{kaputt"
+
+
+def test_report_und_manifest_nutzen_dieselbe_checkpoint_kennung(tmp_path):
+    from evaluation.eval_report import schreibe
+
+    kennung = checkpoint_kennung("multilingual", "abc123")
+    assert re.fullmatch("[0-9a-f]{12}", kennung)
+    bericht = {"eval_version": "sha256:" + "01234567" + "89ab" + "cd" * 26, "laya": {"checkpoint": {"modell": "multilingual", "revision": "abc123"}}}
+    assert schreibe(bericht, tmp_path / "r").name == f"bericht-0123456789ab-laya-{kennung}.json"
+    assert schreibe_manifest(_manifest(), tmp_path / "m").name == f"gate-manifest-0123456789ab-{kennung}.json"
+
+
+def test_leeres_schwellen_erlaubt(tmp_path):
+    m = lade_manifest(
+        _schreibe(tmp_path, _roh(schwellen={}, fallback_schwelle=0.0)), EINSTELLUNGEN
+    )
+    assert m.schwelle_fuer("gesetz") == 0.0
+
+
+def test_schwelle_fuer_fallback(tmp_path):
+    m = lade_manifest(_schreibe(tmp_path, _roh()), EINSTELLUNGEN)
+    assert m.schwelle_fuer("gesetz") == 0.3
+    assert m.schwelle_fuer("unbekannt") == 0.41
+    assert m.schwelle_fuer("richtlinie") == 0.41
+    assert m.schwelle_fuer("irgendwas") == 0.41
+
+
+def _ohne(feld):
+    daten = _roh()
+    del daten[feld]
+    return daten
+
+
+@pytest.mark.parametrize(
+    ("daten", "feld"),
+    [
+        (_roh(schema=2), "schema"),
+        (_ohne("temperatur"), "temperatur"),
+        (_ohne("checkpoint"), "checkpoint"),
+        (_roh(schwellen={"unbekannt": 0.4}), "schwellen"),
+        (_roh(schwellen={"verordnung": 1.2}, fallback_schwelle=1.0), "schwellen"),
+        (_roh(fallback_schwelle=1.2), "fallback_schwelle"),
+        (_roh(fallback_schwelle=0.2), "fallback_schwelle"),
+        (_roh(fallback_schwelle=True), "fallback_schwelle"),
+        (_roh(temperatur=0.01), "temperatur"),
+        (_roh(temperatur=21), "temperatur"),
+        (_roh(temperatur=True), "temperatur"),
+        (
+            _roh(checkpoint={"modell": "anderes", "revision": "abc"}),
+            "checkpoint.modell",
+        ),
+        (
+            _roh(checkpoint={"modell": "multilingual", "revision": ""}),
+            "checkpoint.revision",
+        ),
+        (_roh(min_retrieval_score=0.5), "min_retrieval_score"),
+        (_roh(eval_version="md5:abc"), "eval_version"),
+        (_roh(kosten=[1]), "kosten"),
+        (_roh(erzeugt=5), "erzeugt"),
+    ],
+)
+def test_verletzungen(tmp_path, daten, feld):
+    with pytest.raises(ValueError, match=feld):
+        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize("konstante", ["Infinity", "-Infinity", "NaN"])
+def test_nicht_endliche_json_konstanten(tmp_path, konstante):
+    text = json.dumps(_roh()).replace('"temperatur": 1.0', f'"temperatur": {konstante}')
+    with pytest.raises(ValueError, match=konstante):
+        lade_manifest(_schreibe(tmp_path, None, text), EINSTELLUNGEN)
+
+
+def test_fehlende_datei(tmp_path):
+    with pytest.raises(ValueError, match="gibt-es-nicht"):
+        lade_manifest(tmp_path / "gibt-es-nicht.json", EINSTELLUNGEN)
+
+
+def test_kaputtes_json(tmp_path):
+    with pytest.raises(ValueError, match="JSON"):
+        lade_manifest(_schreibe(tmp_path, None, "{nope"), EINSTELLUNGEN)
+
+
+def test_wurzel_kein_objekt(tmp_path):
+    with pytest.raises(ValueError, match="Objekt"):
+        lade_manifest(_schreibe(tmp_path, None, "[]"), EINSTELLUNGEN)
+
+
+def test_schreiben_lehnt_nan_ab(tmp_path):
+    m = _manifest()
+    kaputt = Manifest(**{**m.__dict__, "temperatur": float("nan")})
+    with pytest.raises(ValueError):
+        schreibe_manifest(kaputt, tmp_path)
+
+
+def test_info_log_ohne_pfad(tmp_path, caplog):
+    datei = _schreibe(tmp_path, _roh())
+    with caplog.at_level(logging.INFO, logger="manifest"):
+        lade_manifest(datei, EINSTELLUNGEN)
+    text = caplog.text
+    assert "sha256:0123456789abcdef0123" in text
+    assert "multilingual" in text
+    assert "m.json" in text
+    assert str(tmp_path) not in text
+
+
+def _text_mit(ersetzung):
+    text = json.dumps(_roh())
+    for alt, neu in ersetzung.items():
+        assert alt in text
+        text = text.replace(alt, neu)
+    return text
+
+
+@pytest.mark.parametrize(
+    ("pfad", "feld"),
+    [
+        (("schema",), "schema"),
+        (("eval_version",), "eval_version"),
+        (("min_retrieval_score",), "min_retrieval_score"),
+        (("schwellen",), "schwellen"),
+        (("fallback_schwelle",), "fallback_schwelle"),
+        (("kosten",), "kosten"),
+        (("erzeugt",), "erzeugt"),
+        (("checkpoint", "modell"), "checkpoint.modell"),
+        (("checkpoint", "revision"), "checkpoint.revision"),
+    ],
+)
+def test_fehlendes_feld(tmp_path, pfad, feld):
+    daten = _roh()
+    ziel = daten
+    for schluessel in pfad[:-1]:
+        ziel = ziel[schluessel]
+    del ziel[pfad[-1]]
+    with pytest.raises(ValueError, match=feld):
+        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize(
+    ("daten", "feld"),
+    [
+        (_roh(schwellen=[]), "schwellen"),
+        (_roh(schwellen={"gesetz": "0.3"}), "schwellen"),
+        (_roh(schwellen={"gesetz": -0.1}), "schwellen"),
+        (_roh(schwellen={"gesetz": 1.0001}, fallback_schwelle=1.0), "schwellen"),
+        (_roh(fallback_schwelle=-0.1), "fallback_schwelle"),
+        (_roh(fallback_schwelle=1.0001), "fallback_schwelle"),
+        (_roh(schema=True), "schema"),
+        (_roh(kosten={"falschantwort": "10"}), "kosten"),
+        (_roh(kosten={"falschantwort": True}), "kosten"),
+        (_roh(temperatur=0.0499), "temperatur"),
+        (_roh(temperatur=20.0001), "temperatur"),
+    ],
+)
+def test_weitere_verletzungen(tmp_path, daten, feld):
+    with pytest.raises(ValueError, match=feld):
+        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize("wurzel", ['"text"', "42", "null"])
+def test_wurzel_nicht_objekt_andere(tmp_path, wurzel):
+    with pytest.raises(ValueError, match="Objekt"):
+        lade_manifest(_schreibe(tmp_path, None, wurzel), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize(
+    "ersetzung",
+    [
+        {'"temperatur": 1.0': '"temperatur": 1' + "0" * 400},
+        {'"fallback_schwelle": 0.41': '"fallback_schwelle": 1' + "0" * 400},
+        {'"gesetz": 0.3': '"gesetz": 1' + "0" * 400},
+        {'"eskalation": 1.0': '"eskalation": 1' + "0" * 400},
+        {'"gesetz": 0.3': '"gesetz": 1e999'},
+        {'"eskalation": 1.0': '"eskalation": 1e999'},
+    ],
+)
+def test_riesige_zahlen_sind_value_error(tmp_path, ersetzung):
+    with pytest.raises(ValueError):
+        lade_manifest(_schreibe(tmp_path, None, _text_mit(ersetzung)), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize("konstante", ["Infinity", "-Infinity", "NaN"])
+@pytest.mark.parametrize(
+    "alt",
+    ['"fallback_schwelle": 0.41', '"gesetz": 0.3', '"eskalation": 1.0'],
+)
+def test_nicht_endliche_konstanten_ueberall(tmp_path, alt, konstante):
+    neu = alt.split(":")[0] + f": {konstante}"
+    with pytest.raises(ValueError, match=konstante):
+        lade_manifest(_schreibe(tmp_path, None, _text_mit({alt: neu})), EINSTELLUNGEN)
+
+
+@pytest.mark.parametrize("temperatur", [0.05, 20, 20.0])
+def test_temperatur_grenzen_gueltig(tmp_path, temperatur):
+    assert (
+        lade_manifest(
+            _schreibe(tmp_path, _roh(temperatur=temperatur)), EINSTELLUNGEN
+        ).temperatur
+        == temperatur
+    )
+
+
+@pytest.mark.parametrize("wert", [0, 1, 0.0, 1.0])
+def test_schwellen_grenzen_gueltig(tmp_path, wert):
+    daten = _roh(schwellen={"gesetz": wert}, fallback_schwelle=1.0)
+    assert lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN).schwellen == {
+        "gesetz": wert
+    }
+    daten = _roh(schwellen={}, fallback_schwelle=wert)
+    assert (
+        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN).fallback_schwelle
+        == wert
+    )

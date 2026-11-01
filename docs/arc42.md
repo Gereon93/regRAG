@@ -113,6 +113,7 @@ graph TD
 | `rag.py` | Embedding-Modell, Index laden, Dokumente inkrementell mergen | Den Ablauf, das LLM |
 | `agent.py` | Ablaufsteuerung, Schwellwert als bedingte Kante, Prompt, LLM-Aufruf | Wie retrievt wird |
 | `web/main.py` | HTTP: Chat mit SSE-Streaming, Upload, Job-Status, Dokumentliste | Wie indexiert oder retrievt wird |
+| `gate.py`, `laya.py`, `manifest.py`, `metrics.py` | Gate-Port, Score-Guard, Laya-Adapter mit Segmentschwellen und Manifest, prozesslokale Eskalationszähler für `GET /metrics` ([ADR 0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md)) | Retrieval, LLM |
 | `evaluation/` | Versioniertes Eval-Set (`evalset/v1.jsonl`), Splits, Kostenfunktion und Segment-Report ([ADR 0012](adr/0012-eval-set-splits-kostenfunktion-report.md)), Guard-Trennschärfe messen, Faithfulness bewerten | Den Produktionspfad — liest nur mit |
 
 Die Trennung ist der Punkt: `rag.py` weiß nichts vom LLM, `agent.py` nichts vom Vektor-Store,
@@ -287,6 +288,7 @@ Pfade würden garantiert auseinanderlaufen — einer davon still.
 | [0005](adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md) | Guard kalibriert (0.62), Abstain als bedingte Kante, Judge getrennt | akzeptiert; 14/14 gemessen |
 | [0006](adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md) | Inkrementeller Merge statt Voll-Rebuild | akzeptiert |
 | [0007](adr/0007-sprachgrenze-im-code.md) | Sprachgrenze: Domäne deutsch, Technik englisch | akzeptiert |
+| [0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md) | Laya-Kalibrierung, Segmentschwellen, Gate-Manifest, `/metrics` | akzeptiert als Mechanik; Nutzen **nicht gemessen** |
 
 ---
 
@@ -341,6 +343,7 @@ Korpora — ob der Guard-Schwellwert dann noch trennt, ist offen.
 | 6 | **Kein Löschen über die UI** | Ein falsch hochgeladenes Dokument lässt sich nur entfernen, indem man die `.md` aus dem Volume löscht — der nächste Start räumt den Index dann selbst auf | offen |
 | 7 | **Chunking ungetunt** | LlamaIndex-Defaults. Für Gesetzestexte mit Artikelstruktur vermutlich nicht optimal | offen |
 | 8 | **LangGraph bleibt unterfordert** | Mit der bedingten Kante (ADR 0005) verdient der Graph seinen Platz knapp. Ein zweiter Retrieval-Versuch oder ein Reranking-Knoten wären die ehrliche Rechtfertigung | ADR 0004 |
+| 9 | **Laya-Kalibrierung ohne Messung** | Mechanik für Temperatur, Segmentschwellen, Manifest und Vergleich steht, aber es gibt keine Labels (>= 200) und keinen trainierten Checkpoint; die Revision im Manifest ist deklariert, ein fehlendes `routing.model` wird akzeptiert; `/metrics` ist prozesslokal und unauthentifiziert | ADR 0013, offen |
 
 Schuld 1 ist die interessante: Der Upload macht das System nützlicher und sein zentrales
 Versprechen zugleich fragiler. Die Kalibrierung war eine Momentaufnahme über einen Korpus —

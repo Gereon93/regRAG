@@ -31,6 +31,8 @@ und ohne externe API. Gewählt ist Laya (`convaiinnovations/laya-multilingual`, 
   Vor dem gelabelten Eval-Set (#31) und Fine-Tuning samt Kalibrierung (#32) kann das Einschalten
   viele Anfragen unnötig eskalieren oder fälschlich durchlassen; es ist ein Experiment, kein Schutz.
   Die Zahl darf nicht als gemessenes Ergebnis auftreten.
+  Kalibrierte Segmentschwellen und ein Gate-Manifest, das `REGRAG_LAYA_MIN_ANSWERABLE` ersetzt,
+  beschreibt [0013](0013-laya-kalibrierung-segmentschwellen-manifest.md).
 - **Keine Sicherheitsgrenze.** Chunk-Text stammt auch aus Nutzer-Uploads. Ein Satz im Dokument kann
   ein Klassifikationsmodell Richtung "ja" schieben; Laya trennt Anweisung und Daten nicht.
 - **Datenschutz:** Frage und Evidenz gehen an `REGRAG_LAYA_URL`. "Lokal" gilt nur für einen
@@ -44,5 +46,8 @@ und ohne externe API. Gewählt ist Laya (`convaiinnovations/laya-multilingual`, 
   State wird geloggt; fehlt `usage` (z. B. `LAYA_JEV_STRICT=1`), gilt das als unbekannt.
 - Pro Entscheidung wird das Score-Paar geloggt (auch bei ANSWER), weil die Eskalationsdatei nur
   Verweigerungen kennt und #32 die Verteilungen zum Kalibrieren braucht.
+- **Routing-Check:** weicht `routing.model` vom konfigurierten Modell ab, gibt es zunächst nur eine WARNING.
+  Unter einem Gate-Manifest führt das zu ABSTAIN `JUDGE_UNAVAILABLE`; ein fehlendes `routing.model` bleibt
+  akzeptiert ([0013](0013-laya-kalibrierung-segmentschwellen-manifest.md)).
 - Offen: Nützlichkeit auf deutschen Rechtstexten (Live-Tests in `tests/test_laya_live.py`, nur mit
   laufendem `laya-serve`), `labels` für `noul`, falls die Antwort den State ignoriert.

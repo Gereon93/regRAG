@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-01
+### Neu
+- **Laya-Kalibrierung:** Temperature Scaling auf dem Calibration-Split, ECE auf dem Test-Split; `python -m evaluation.eval_report` erzeugt einen Laya-Teil, wenn `REGRAG_LAYA_URL` gesetzt ist (#32).
+- **Segmentschwellen für Laya:** Segment im `.source.json`-Sidecar (`gesetz`, `verordnung`, `richtlinie`, `leitlinie`, `auslegung`), sonst `unbekannt` mit strengstem Fallback (#32).
+- **Gate-Manifest:** `--checkpoint-revision` schreibt Schwellen, Temperatur, Checkpoint und `eval_version` nach `evaluation/manifest/`; `REGRAG_GATE_MANIFEST` aktiviert es, `REGRAG_LAYA_MODELL` wählt den Checkpoint (#32).
+- **Vergleich:** `python -m evaluation.vergleich` vergleicht zwei Reports per Cluster-Bootstrap über die Gruppen (#32).
+- **Eskalationsmetriken:** `GET /metrics` mit Raten pro Reason und Segment sowie Score-Histogrammen; der Eskalationsdatensatz trägt `segment` (#32).
+### Geändert
+- Ein gesetztes, aber fehlendes oder ungültiges Manifest lässt den Start fehlschlagen; unter Manifest führt ein abweichendes oder malformtes `routing` bzw. `routing.model` zu ABSTAIN `JUDGE_UNAVAILABLE`; explizites `null` zählt dabei als malformt; fehlt der Schlüssel `routing.model` ganz, warnt das Gate einmalig "Checkpoint nicht verifizierbar".
+- Der Temperatur-Fit rechnet die NLL aus dem skalierten Logit statt aus einer geklemmten Wahrscheinlichkeit; ein sicher falsches Calibration-Sample zieht T nicht mehr an den unteren Rand (#32).
+- Manifest und Laya-Report heißen nach einem Hash der Checkpoint-Identität (Modell, Revision); ein anderer Checkpoint auf demselben Eval-Set überschreibt die Baseline nicht mehr, überschrieben wird nur beim Neulauf desselben Checkpoints (#32).
+- Der Retrieval-Guard behandelt einen NaN-Score als zu niedrig (ABSTAIN `LOW_RELEVANCE`); `evaluation.vergleich` lehnt Reports mit abweichendem `laya.index_fingerprint` ab (#32).
+### Hinweis
+- Bestandsindizes kennen kein `segment` und gelten als `unbekannt`; ein ergänztes Segment im Sidecar indexiert das Dokument automatisch neu, `REGRAG_INDEX_NEU_BAUEN=1` wendet Segmente auf alle Dokumente auf einmal an. `segment` fließt nicht in den Embedding-Text.
+- **Offen:** "Fine-getuntes Laya schlägt Zero-Shot signifikant" ist nicht gemessen; es fehlen Labels und ein trainierter Checkpoint. Nicht umgesetzt: Fine-Tuning, `relevance`-Judge, Raten-Warnung, Trainingsexport (ADR 0013).
+
 ## 2026-10-31
 ### Neu
 - **Eval-Set versioniert:** `evaluation/evalset/v1.jsonl` mit Segment, Kategorie und Gruppe; Version als SHA-256 über den Inhalt (#31).

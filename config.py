@@ -22,7 +22,11 @@ LAYA_TIMEOUT = float(os.getenv("REGRAG_LAYA_TIMEOUT", "30"))
 LAYA_MAX_LEN = int(os.getenv("REGRAG_LAYA_MAX_LEN", "4096"))
 LAYA_LANG = os.getenv("REGRAG_LAYA_LANG", "de")
 LAYA_MIN_ANSWERABLE = float(os.getenv("REGRAG_LAYA_MIN_ANSWERABLE", "0.5"))
+LAYA_MODELL = os.getenv("REGRAG_LAYA_MODELL", "multilingual").strip()
+GATE_MANIFEST = os.getenv("REGRAG_GATE_MANIFEST", "").strip()
 
+if not LAYA_MODELL:
+    raise ValueError("REGRAG_LAYA_MODELL darf nicht leer sein.")
 if not 0 <= LAYA_MIN_ANSWERABLE <= 1:
     raise ValueError("REGRAG_LAYA_MIN_ANSWERABLE muss zwischen 0 und 1 liegen.")
 if urlsplit(LAYA_URL).username or urlsplit(LAYA_URL).password:
