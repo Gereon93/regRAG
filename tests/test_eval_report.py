@@ -218,6 +218,21 @@ def test_manifest_wird_nur_mit_revision_erzeugt_und_ist_ladbar(chroma, tmp_path)
     assert geladen.temperatur == b["laya"]["temperatur"]
 
 
+@pytest.mark.parametrize("revision", ["", "   ", "\t\n"])
+def test_leere_oder_blanke_revision_erzeugt_kein_manifest(chroma, revision):
+    s = Szenario()
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, revision)
+    assert manifest is None
+    assert b["laya"]["checkpoint"]["revision"] is None
+
+
+def test_revision_wird_getrimmt(chroma):
+    s = Szenario()
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "  r1 ")
+    assert manifest.checkpoint_revision == "r1"
+    assert b["laya"]["checkpoint"]["revision"] == "r1"
+
+
 def test_index_fingerprint_ist_sha256_der_datei(chroma):
     chroma.mkdir()
     (chroma / "fingerprint.json").write_bytes(b'{"a": 1}')

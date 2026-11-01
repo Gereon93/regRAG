@@ -80,6 +80,11 @@ def erzeuge_bericht(faelle, retriever, kosten):
     return ergebnis
 
 
+def normalisiere_revision(revision):
+    """Getrimmte Revision oder None; eine blanke Revision schreibt kein Manifest, das der Loader ablehnt."""
+    return (revision or "").strip() or None
+
+
 def hole_laya_zeilen(faelle, retriever, laya_gate, min_retrieval_score):
     """Wie hole_zeilen, plus Laufzeitsegment und Laya-Rohscore (nur bei bestandenem Guard, wie die Kaskade)."""
     zeilen = []
@@ -151,6 +156,7 @@ class _Zwischenspeicher:
 
 
 def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revision):
+    checkpoint_revision = normalisiere_revision(checkpoint_revision)
     retriever = _Zwischenspeicher(retriever)
     ergebnis = erzeuge_bericht(faelle, retriever, kosten)
     splits = teile(faelle)
@@ -268,7 +274,7 @@ def main(argv=None):
     if config.LAYA_URL:
         ergebnis, manifest = erzeuge_laya_bericht(faelle, retriever, baue_laya_gate(), kosten, args.checkpoint_revision)
         laya = ergebnis["laya"]
-        if not args.checkpoint_revision:
+        if not normalisiere_revision(args.checkpoint_revision):
             print("Hinweis: ohne --checkpoint-revision wird kein Gate-Manifest geschrieben.", file=sys.stderr)
         if manifest:
             print(

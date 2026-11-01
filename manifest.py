@@ -3,6 +3,7 @@
 import json
 import logging
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,8 +16,11 @@ TEMPERATUR_MIN = 0.05
 TEMPERATUR_MAX = 20.0
 
 
+# noinspection PyClassHasNoInit
 @dataclass(frozen=True)
 class Manifest:
+    """Gate-Manifest (docs/adr/0013); __init__ erzeugt @dataclass."""
+
     checkpoint_modell: str
     checkpoint_revision: str
     eval_version: str
@@ -64,7 +68,7 @@ def _objekt(wert, feld: str) -> dict:
     return wert
 
 
-def _feld(daten: dict, feld: str, name: str | None = None):
+def _feld(daten: dict, feld: str, name: str = ""):
     if feld not in daten:
         raise ValueError(f"Manifest: Feld {name or feld} fehlt.")
     return daten[feld]
@@ -164,6 +168,7 @@ def lade_manifest(pfad, einstellungen) -> Manifest:
 
 
 def schreibe_manifest(manifest: Manifest, verzeichnis) -> Path:
+    """Schreibt gate-manifest-<eval_version[7:19]>-<revision>.json; ein zweiter Checkpoint ersetzt den ersten nicht."""
     inhalt = {
         "schema": SCHEMA,
         "checkpoint": {
@@ -181,6 +186,7 @@ def schreibe_manifest(manifest: Manifest, verzeichnis) -> Path:
     text = json.dumps(inhalt, indent=2, ensure_ascii=False, allow_nan=False)
     verzeichnis = Path(verzeichnis)
     verzeichnis.mkdir(parents=True, exist_ok=True)
-    datei = verzeichnis / f"gate-manifest-{manifest.eval_version[7:19]}.json"
+    revision = re.sub(r"[^A-Za-z0-9._-]", "_", manifest.checkpoint_revision)[:40]
+    datei = verzeichnis / f"gate-manifest-{manifest.eval_version[7:19]}-{revision}.json"
     datei.write_text(text + "\n", encoding="utf-8")
     return datei

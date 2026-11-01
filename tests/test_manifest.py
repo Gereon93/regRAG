@@ -47,8 +47,18 @@ def _manifest():
 
 def test_round_trip(tmp_path):
     datei = schreibe_manifest(_manifest(), tmp_path)
-    assert datei.name == "gate-manifest-0123456789ab.json"
+    assert datei.name == "gate-manifest-0123456789ab-abc123.json"
     assert lade_manifest(datei, EINSTELLUNGEN) == _manifest()
+
+
+def test_zweite_revision_ueberschreibt_das_erste_manifest_nicht(tmp_path):
+    """PR #43: Baseline und Kandidat auf demselben Eval-Set ersetzen sich nicht still."""
+    erstes = schreibe_manifest(_manifest(), tmp_path)
+    zweites = schreibe_manifest(Manifest(**{**_manifest().__dict__, "checkpoint_revision": "r/2"}), tmp_path)
+    assert zweites.name == "gate-manifest-0123456789ab-r_2.json"
+    assert erstes != zweites
+    assert lade_manifest(erstes, EINSTELLUNGEN).checkpoint_revision == "abc123"
+    assert lade_manifest(zweites, EINSTELLUNGEN).checkpoint_revision == "r/2"
 
 
 def test_leeres_schwellen_erlaubt(tmp_path):
