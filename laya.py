@@ -116,22 +116,28 @@ class LayaGate:
         usage = antwort.get("usage")
         if isinstance(usage, dict) and usage.get("truncated") is True:
             log.warning("Laya hat den State gekürzt — Antwort beruht auf unvollständiger Evidenz")
-        routing = antwort.get("routing")
-        if routing is not None and not isinstance(routing, dict):
+        if "routing" not in antwort:
+            return self._modell_nicht_gemeldet()
+        routing = antwort["routing"]
+        if not isinstance(routing, dict):
             log.warning("Laya-Antwort mit unlesbarem routing (%s)", type(routing).__name__)
             return not self.modell_streng
-        modell = routing.get("model") if routing else None
-        if modell is not None and not isinstance(modell, str):
+        if "model" not in routing:
+            return self._modell_nicht_gemeldet()
+        modell = routing["model"]
+        if not isinstance(modell, str):
             log.warning("Laya-Antwort mit unlesbarem routing.model (%s)", type(modell).__name__)
             return not self.modell_streng
-        if modell is None:
-            if self.modell_streng and not self._warnte_kein_modell:
-                self._warnte_kein_modell = True
-                log.warning("Checkpoint nicht verifizierbar; Schwellen gelten nur deklariert")
-            return True
         if modell != self.modell:
             log.warning("Laya hat mit Checkpoint %s statt %s geantwortet", modell, self.modell)
             return False
+        return True
+
+    def _modell_nicht_gemeldet(self):
+        """Nur ein fehlender Schluessel ist "nicht gemeldet"; ein vorhandenes null ist unlesbar (docs/adr/0013)."""
+        if self.modell_streng and not self._warnte_kein_modell:
+            self._warnte_kein_modell = True
+            log.warning("Checkpoint nicht verifizierbar; Schwellen gelten nur deklariert")
         return True
 
 

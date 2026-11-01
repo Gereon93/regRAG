@@ -220,14 +220,37 @@ def test_routing_ohne_modellangabe_ist_auch_streng_kein_fehler():
 
 @pytest.mark.parametrize(
     "routing",
-    [["multilingual"], "multilingual", 3, {"model": 3}, {"model": ["multilingual"]}, {"model": {"name": "multilingual"}}],
-    ids=["liste", "string", "zahl", "model_zahl", "model_liste", "model_dict"],
+    [
+        ["multilingual"],
+        "multilingual",
+        3,
+        None,
+        {"model": 3},
+        {"model": ["multilingual"]},
+        {"model": {"name": "multilingual"}},
+        {"model": None},
+    ],
+    ids=["liste", "string", "zahl", "null", "model_zahl", "model_liste", "model_dict", "model_null"],
 )
 def test_malformtes_routing_ist_mit_modell_streng_ein_mismatch(routing):
     d = gate_mit(lambda r: antwort(0.99, routing=routing), modell_streng=True).entscheide("f", [node()])
 
     assert d.outcome is Outcome.ABSTAIN
     assert d.reasons == (AbstainReason.JUDGE_UNAVAILABLE,)
+
+
+def test_routing_ohne_model_schluessel_ist_auch_streng_kein_fehler():
+    """Nur ein fehlender Schluessel ist "nicht gemeldet"; explizites null ist ein Mismatch (siehe oben)."""
+    d = gate_mit(lambda r: antwort(0.9, routing={}), modell_streng=True).entscheide("f", [node()])
+
+    assert d.outcome is Outcome.ANSWER
+
+
+@pytest.mark.parametrize("routing", [None, {"model": None}], ids=["null", "model_null"])
+def test_null_routing_ohne_modell_streng_kippt_den_score_nicht(routing):
+    d = gate_mit(lambda r: antwort(0.9, routing=routing)).entscheide("f", [node()])
+
+    assert d.outcome is Outcome.ANSWER
 
 
 def test_routing_ohne_modellangabe_warnt_streng_genau_einmal_pro_gate(caplog):
