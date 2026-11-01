@@ -193,17 +193,20 @@ def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None):
     }
 
 
-@dataclass(frozen=True)
 class EskalationsGrenzen:
     """Obergrenzen des Eskalationsdatensatzes: aktive Datei, Zahl der Archive, Alter (ADR 0010)."""
 
-    max_bytes: int = STANDARD_MAX_BYTES
-    max_archive: int = STANDARD_MAX_ARCHIVE
-    aufbewahrung_tage: int = STANDARD_AUFBEWAHRUNG_TAGE
-
-    def __post_init__(self):
-        if self.max_bytes < 1 or self.aufbewahrung_tage < 1 or self.max_archive < 0:
+    def __init__(
+        self,
+        max_bytes=STANDARD_MAX_BYTES,
+        max_archive=STANDARD_MAX_ARCHIVE,
+        aufbewahrung_tage=STANDARD_AUFBEWAHRUNG_TAGE,
+    ):
+        if max_bytes < 1 or aufbewahrung_tage < 1 or max_archive < 0:
             raise ValueError("Grenzen: max_bytes und aufbewahrung_tage >= 1, max_archive >= 0.")
+        self.max_bytes = max_bytes
+        self.max_archive = max_archive
+        self.aufbewahrung_tage = aufbewahrung_tage
 
 
 def grenzen_aus(einstellungen):
@@ -235,8 +238,10 @@ def _aeltester_zeitpunkt(datei):
 
 def _archive(ziel):
     """Archive heißen `<name>.<UTC-Zeitstempel>.<pid>`; fremde Dateien (`.bak`, `.lock`) zählen nicht."""
+    if not ziel.parent.is_dir():
+        return []
     muster = re.compile(re.escape(ziel.name) + r"\.\d{8}T\d{12}Z\.\d+")
-    return sorted(p for p in ziel.parent.glob(f"{ziel.name}.*") if muster.fullmatch(p.name))
+    return sorted(p for p in ziel.parent.iterdir() if muster.fullmatch(p.name) and p.is_file())
 
 
 def _ist_aelter(datei, grenze):

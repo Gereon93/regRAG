@@ -66,8 +66,8 @@ Fragen können personenbezogen sein; die Datei ist deshalb in Größe und Alter 
   Ein `flock` wäre nur auf POSIX verfügbar und brächte eine zusätzliche Datei im Volume.
 - **Rotations- und Bereinigungsfehler** (`OSError`) werden geloggt und kippen weder Append noch Verweigerung.
 - **Längenlimit:** `Frage.frage` ist auf 2000 Zeichen (Unicode-Zeichen, nicht Bytes) und mindestens ein
-  Zeichen begrenzt; Verstöße liefern 422 statt stillem Abschneiden. Die UI setzt `maxlength="2000"`.
-- **Manueller Löschweg:** Server stoppen, dann `rm chroma/eskalationen.jsonl chroma/eskalationen.jsonl.*`.
+  Zeichen begrenzt; Verstöße liefern 422 statt stillem Abschneiden. Die UI prüft vor dem Senden mit `[...text].length` (Zeichen, nicht UTF-16-Einheiten wie `maxlength`).
+- **Manueller Löschweg:** Server stoppen, dann `rm chroma/eskalationen.jsonl chroma/eskalationen.jsonl.[0-9]*Z.[0-9]*` (das Muster trifft nur Archive, keine `.bak`-Kopien).
   Einzelne Personen entfernt man bei gestopptem Server mit einem `jq`-Filter auf die Zeilen in der aktiven Datei
   und in jedem Archiv.
 - **Nicht umgesetzt (Issue #44):** Rate-Limit und Begrenzung der Body-Größe vor dem Parsen. Das Längenlimit

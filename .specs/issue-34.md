@@ -16,7 +16,7 @@
 
 ## 2. Funktionsweise
 1. `Frage.frage`: `min_length=1`, `max_length=MAX_FRAGE_ZEICHEN` (2000 Zeichen, Unicode-Codepoints, nicht Bytes) → 422, kein stilles Abschneiden. `min_length=1` deckt sich mit der UI (sendet nie leer); reine Leerzeichen bleiben erlaubt (wie bisher).
-   - UI: `<input id="frage">` bekommt `maxlength="2000"`, damit die UI keinen 422 erzeugt (der Stream-Reader in `fragen()` prüft `res.ok` nicht und bliebe sonst ohne Meldung hängen).
+   - UI: Submit-Handler prüft `[...text].length > 2000` (Zeichen, nicht UTF-16-Einheiten wie `maxlength`) und zeigt eine Meldung, damit die UI keinen 422 erzeugt (der Stream-Reader in `fragen()` prüft `res.ok` nicht und bliebe sonst ohne Meldung hängen).
 2. `EskalationsGrenzen(max_bytes, max_archive, aufbewahrung_tage)`, Defaults 5 MiB / 5 / 90, per `REGRAG_ESKALATION_MAX_BYTES|_MAX_ARCHIVE|_AUFBEWAHRUNG_TAGE` überschreibbar.
    - Wird **einmal beim Import** von `agent.py` gebaut (Fail-fast bei ungültigen Werten), nicht pro Anfrage. Sonst wirft jede `/chat`-Anfrage `ValueError` → 500.
 3. Ist `ziel` vorhanden, aber **keine reguläre Datei** (`os.devnull`, FIFO, Gerät): keine Rotation, kein Archiv-Scan, keine Löschung; nur Append. Grund: `evaluation/run.py` schreibt nach `/dev/null`; dessen mtime kann älter als die Frist sein → `os.replace("/dev/null", …)`, im Container als root ausführbar.
@@ -57,7 +57,7 @@
 - [ ] `tests/test_config.py`: drei Env-Variablen, Defaults, Override.
 - [ ] ADR 0010: Abschnitt Aufbewahrung/Löschweg (automatisch: Rotation, Frist, Start-Bereinigung; manuell: Server stoppen, `rm chroma/eskalationen.jsonl chroma/eskalationen.jsonl.*`, Einzellöschung per `jq`-Filter bei gestopptem Server). Satz "fehlen noch (Issue #34)" ersetzen. Rate-Limit- und Body-Limit-Folge-Issue verlinken, Mehrprozess-Race und Flut-Verdrängung benennen. Frist 90 Tage als **technischer Startwert, keine Rechtsfestlegung** kennzeichnen.
 - [ ] README/env.example: Variablen + Verweis ADR.
-- [ ] UI `maxlength="2000"`. Screenshot am PR laut globaler Regel nur, wenn sichtbar. Das Attribut ist unsichtbar, also nicht nötig.
+- [ ] UI-Prüfung `[...text].length > 2000`. Screenshot am PR laut globaler Regel nur, wenn sichtbar. Das Attribut ist unsichtbar, also nicht nötig.
 - [ ] `ruff check .` (ruff==0.16.3) und `pytest` lokal grün (aktuell rot: F821, siehe Grill).
 
 ## 6. Adversarial Grill-Protokoll

@@ -609,3 +609,25 @@ def test_bereinigung_ohne_append_loescht_ueberfaelliges_archiv(tmp_path):
 
     assert not alt.exists()
     assert jung.exists()
+
+
+def test_dateiname_mit_glob_zeichen_wird_woertlich_behandelt(tmp_path):
+    ziel = tmp_path / "eskalationen[prod].jsonl"
+    grenzen = EskalationsGrenzen(max_bytes=1, max_archive=1, aufbewahrung_tage=30)
+
+    for i in range(5):
+        schreibe_eskalation(ziel, f"f{i}", [], _abstain(), grenzen=grenzen)
+
+    archive = [p for p in tmp_path.iterdir() if p != ziel]
+    assert len(archive) == 1
+
+
+def test_verzeichnis_mit_archivnamen_bricht_die_bereinigung_nicht_ab(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    (_archivname(ziel, tage_alt=1)).mkdir()
+    alt = _archivname(ziel, tage_alt=40, pid=2)
+    alt.write_text(_zeile(40), encoding="utf-8")
+
+    bereinige_eskalationen(ziel, EskalationsGrenzen(max_bytes=10_000, max_archive=5, aufbewahrung_tage=30))
+
+    assert not alt.exists()

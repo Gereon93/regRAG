@@ -157,3 +157,12 @@ def test_eskalationsgrenzen_sind_per_env_ueberschreibbar(geladen):
     )
 
     assert (c.ESKALATION_MAX_BYTES, c.ESKALATION_MAX_ARCHIVE, c.ESKALATION_AUFBEWAHRUNG_TAGE) == (1000, 2, 7)
+
+
+def test_config_defaults_decken_sich_mit_den_gate_defaults(geladen):
+    from gate import EskalationsGrenzen, grenzen_aus
+
+    standard = EskalationsGrenzen()
+    aus_config = grenzen_aus(geladen())
+
+    assert vars(aus_config) == vars(standard)
