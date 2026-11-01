@@ -104,6 +104,7 @@ def test_eskalationsdatensatz_enthaelt_frage_evidenz_scores_reasons_utc():
         "evidenz": [{"quelle": "q.md", "score": 0.5, "text": "Text"}],
         "scores": {"relevance": 0.5, "answerable": None},
         "reasons": ["LOW_RELEVANCE"],
+        "segment": UNBEKANNT,
     }
 
 
@@ -383,3 +384,10 @@ def test_kalibriere_identitaet_bei_t1_und_clip():
     assert 0 < kalibriere(0.0, 1.0) < 1
     assert 0 < kalibriere(1.0, 1.0) < 1
     assert kalibriere(0.8, 2.0) < 0.8
+
+
+def test_eskalationsdatensatz_enthaelt_segment():
+    d = GateDecision(Outcome.ABSTAIN, (AbstainReason.LOW_RELEVANCE,), GateScores(relevance=0.5))
+
+    assert eskalationsdatensatz("F?", [segment_node("gesetz")], d)["segment"] == "gesetz"
+    assert eskalationsdatensatz("F?", [segment_node(None)], d)["segment"] == UNBEKANNT

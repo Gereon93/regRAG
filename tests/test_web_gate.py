@@ -173,6 +173,39 @@ def test_laya_ausfall_verweigert_mit_judge_unavailable(laya_strom):
         assert satz["reasons"] == ["JUDGE_UNAVAILABLE"]
 
 
+def test_metrics_zaehlt_chat_entscheidungen_ohne_inhalte(laya_strom, monkeypatch):
+    import metrics
+
+    monkeypatch.setattr(metrics, "METRIKEN", metrics.Metriken())
+
+    def antwort(request):
+        return httpx.Response(200, json={"answers": {"answerable": {"noul": 0.9}}})
+
+    with laya_strom(antwort) as strom:
+        strom.lauf("Geheime Frage ueber Kuchen?", [node(0.8)])
+        strom.lauf("Geheime Frage ueber Kuchen?", [node(0.3)])
+        main = sys.modules["web.main"]
+
+        async def hole():
+            transport = httpx.ASGITransport(app=main.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+                return await c.get("/metrics")
+
+        antwort_http = asyncio.run(hole())
+
+    daten = antwort_http.json()
+    assert antwort_http.status_code == 200
+    assert daten["entscheidungen_gesamt"] == 2
+    assert daten["eskalationen_nach_reason"] == {"LOW_RELEVANCE": 1}
+    assert daten["histogramme"]["answerable"]["none"] == 1
+    assert daten["histogramme"]["answerable"]["0.9-1.0"] == 1
+    assert daten["histogramme"]["relevance"]["0.3-0.4"] == 1
+    assert daten["nach_segment"]["unbekannt"]["entscheidungen"] == 2
+    text = antwort_http.text
+    for verboten in ("Geheime", "Kuchen", str(MIN_SCORE), "manifest", "dora.md", "Art. 5"):
+        assert verboten not in text
+
+
 def test_laya_bejaht_antwortet_normal(laya_strom):
     with laya_strom(lambda r: httpx.Response(200, json={"answers": {"answerable": {"noul": 0.9}}})) as strom:
         events = strom.lauf("Was regelt DORA?", [node(0.8)])

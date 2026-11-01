@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 import config
 import dokumente
+import metrics
 import rag
 from agent import llm, prompt, pruefe, retriever
 from convert import pdf_nach_markdown
@@ -178,6 +179,11 @@ def dokument_loeschen(datei: str):
             raise HTTPException(status_code=404, detail="Dokument nicht gefunden.")
 
         rag.loesche_dokument(name)
+
+
+@app.get("/metrics")
+def metriken():
+    return metrics.METRIKEN.schnappschuss()
 
 
 @app.get("/")

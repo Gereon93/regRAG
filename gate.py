@@ -10,6 +10,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
+import metrics
+
 log = logging.getLogger(__name__)
 
 MAX_FRAGE_ZEICHEN = 2000
@@ -172,6 +174,7 @@ def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None):
             "answerable": entscheidung.scores.answerable,
         },
         "reasons": [r.value for r in entscheidung.reasons],
+        "segment": segment_von(nodes),
     }
 
 
@@ -202,6 +205,14 @@ class Pruefung:
         return self.entscheidung.verweigert
 
 
+def _zaehle(entscheidung, nodes):
+    """Metriken sind Beiwerk: ein Fehler beim Zaehlen darf die Entscheidung nie veraendern."""
+    try:
+        metrics.METRIKEN.zaehle(entscheidung, segment_von(nodes))
+    except Exception:  # noqa: BLE001 - Zaehlen darf die Gate-Entscheidung nie kippen
+        log.exception("Metriken konnten nicht gezaehlt werden")
+
+
 def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes):
     entscheidung = gate.entscheide(frage, nodes)
     log.info(
@@ -211,5 +222,6 @@ def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes):
         entscheidung.scores.relevance,
         entscheidung.scores.answerable,
     )
+    _zaehle(entscheidung, nodes)
     vorgemerkt = entscheidung.verweigert and schreibe_eskalation(eskalations_datei, frage, nodes, entscheidung)
     return Pruefung(entscheidung, vorgemerkt)
