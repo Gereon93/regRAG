@@ -384,6 +384,11 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = feld.value.trim();
   if (!text) return;
+  if ([...text].length > 2000) {
+    document.getElementById('leer')?.remove();
+    log.appendChild(el('div', 'fehler', 'Die Frage darf höchstens 2000 Zeichen lang sein.'));
+    return;
+  }
   feld.value = '';
   knopf.disabled = true;
   feld.disabled = true;

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 from gate import (
     ABSTAIN_ANTWORT_NICHT_VORGEMERKT,
@@ -73,7 +74,7 @@ def _strom(gate, eskalationen):
         events = asyncio.run(sammle())
         return [json.loads(e.removeprefix("data: ")) for e in events]
 
-    yield SimpleNamespace(lauf=lauf, llm=llm, eskalationen=eskalationen)
+    yield SimpleNamespace(lauf=lauf, llm=llm, eskalationen=eskalationen, main=main)
 
     for name, vorher in alt.items():
         if vorher is None:
@@ -212,3 +213,30 @@ def test_laya_bejaht_antwortet_normal(laya_strom):
 
         assert [e["type"] for e in events] == ["token", "sources", "done"]
         assert not strom.eskalationen.exists()
+
+
+@pytest.mark.parametrize("frage", ["x" * 2001, ""])
+def test_chat_lehnt_unzulaessige_frage_mit_422_ab(strom, frage):
+    antwort = TestClient(strom.main.app).post("/chat", json={"frage": frage})
+
+    assert antwort.status_code == 422
+    assert strom.llm.aufrufe == 0
+    assert not strom.eskalationen.exists()
+
+
+@pytest.mark.parametrize("frage", ["x" * 2000, "ä" * 2000])
+def test_chat_akzeptiert_frage_an_der_grenze_in_zeichen_nicht_bytes(strom, frage):
+    antwort = TestClient(strom.main.app).post("/chat", json={"frage": frage})
+
+    assert antwort.status_code == 200
+
+
+def test_serverstart_bereinigt_ueberfaelliges_archiv(strom, monkeypatch):
+    archiv = strom.eskalationen.with_name(strom.eskalationen.name + ".20200101T000000000000Z.1")
+    archiv.write_text('{"zeitpunkt": "2020-01-01T00:00:00+00:00"}\n', encoding="utf-8")
+    monkeypatch.setattr(strom.main.config, "ESKALATION_DATEI", str(strom.eskalationen))
+
+    with TestClient(strom.main.app):
+        pass
+
+    assert not archiv.exists()

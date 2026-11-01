@@ -2,12 +2,14 @@
 
 ## 2026-11-01
 ### Neu
+- **Eskalationsdatei begrenzt:** Rotation ab `REGRAG_ESKALATION_MAX_BYTES` (5 MiB) oder halber Frist, Löschung nach `REGRAG_ESKALATION_AUFBEWAHRUNG_TAGE` (90) und über `REGRAG_ESKALATION_MAX_ARCHIVE` (5), Bereinigung auch beim Serverstart; Löschweg in ADR 0010 (#34).
 - **Laya-Kalibrierung:** Temperature Scaling auf dem Calibration-Split, ECE auf dem Test-Split; `python -m evaluation.eval_report` erzeugt einen Laya-Teil, wenn `REGRAG_LAYA_URL` gesetzt ist (#32).
 - **Segmentschwellen für Laya:** Segment im `.source.json`-Sidecar (`gesetz`, `verordnung`, `richtlinie`, `leitlinie`, `auslegung`), sonst `unbekannt` mit strengstem Fallback (#32).
 - **Gate-Manifest:** `--checkpoint-revision` schreibt Schwellen, Temperatur, Checkpoint und `eval_version` nach `evaluation/manifest/`; `REGRAG_GATE_MANIFEST` aktiviert es, `REGRAG_LAYA_MODELL` wählt den Checkpoint (#32).
 - **Vergleich:** `python -m evaluation.vergleich` vergleicht zwei Reports per Cluster-Bootstrap über die Gruppen (#32).
 - **Eskalationsmetriken:** `GET /metrics` mit Raten pro Reason und Segment sowie Score-Histogrammen; der Eskalationsdatensatz trägt `segment` (#32).
 ### Geändert
+- `/chat` lehnt leere und mehr als 2000 Zeichen lange Fragen mit 422 ab; die UI prüft vorher und zeigt eine Meldung (#34).
 - Ein gesetztes, aber fehlendes oder ungültiges Manifest lässt den Start fehlschlagen; unter Manifest führt ein abweichendes oder malformtes `routing` bzw. `routing.model` zu ABSTAIN `JUDGE_UNAVAILABLE`; explizites `null` zählt dabei als malformt; fehlt der Schlüssel `routing.model` ganz, warnt das Gate einmalig "Checkpoint nicht verifizierbar".
 - Der Temperatur-Fit rechnet die NLL aus dem skalierten Logit statt aus einer geklemmten Wahrscheinlichkeit; ein sicher falsches Calibration-Sample zieht T nicht mehr an den unteren Rand (#32).
 - Manifest und Laya-Report heißen nach einem Hash der Checkpoint-Identität (Modell, Revision); ein anderer Checkpoint auf demselben Eval-Set überschreibt die Baseline nicht mehr, überschrieben wird nur beim Neulauf desselben Checkpoints (#32).
