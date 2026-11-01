@@ -1,5 +1,6 @@
 """Gate-Manifest: Schwellen, Temperatur und Checkpoint-Herkunft laden, validieren, schreiben (stdlib only)."""
 
+import hashlib
 import json
 import logging
 import math
@@ -15,6 +16,7 @@ SCHEMA = 1
 TEMPERATUR_MIN = 0.05
 TEMPERATUR_MAX = 20.0
 MAX_REVISION_ZEICHEN = 40
+REVISION_HASH_ZEICHEN = 8
 
 
 # noinspection PyClassHasNoInit
@@ -169,8 +171,13 @@ def lade_manifest(pfad, einstellungen) -> Manifest:
 
 
 def dateiname_revision(revision: str) -> str:
-    """Revision als Dateinamen-Teil; gemeinsam fuer Report- und Manifest-Namen (docs/adr/0013)."""
-    return re.sub(r"[^A-Za-z0-9._-]", "_", revision)[:MAX_REVISION_ZEICHEN]
+    """Revision als Dateinamen-Teil fuer Report und Manifest (docs/adr/0013): lesbar bereinigt plus Hash des Originals.
+
+    Der Hash haelt Revisionen getrennt, die gleich bereinigen (r/2 und r_2) oder denselben Praefix teilen.
+    """
+    lesbar = re.sub(r"[^A-Za-z0-9._-]", "_", revision)[:MAX_REVISION_ZEICHEN]
+    kennung = hashlib.sha256(revision.encode("utf-8")).hexdigest()[:REVISION_HASH_ZEICHEN]
+    return f"{lesbar}-{kennung}"
 
 
 def _gespeicherte_revision(datei: Path):
@@ -181,9 +188,9 @@ def _gespeicherte_revision(datei: Path):
 
 
 def schreibe_manifest(manifest: Manifest, verzeichnis) -> Path:
-    """Schreibt gate-manifest-<eval_version[7:19]>-<revision>.json; ein zweiter Checkpoint ersetzt den ersten nie.
+    """Schreibt gate-manifest-<eval_version[7:19]>-<dateiname_revision>.json; ein zweiter Checkpoint ersetzt den ersten nie.
 
-    Kollidiert die bereinigte Revision mit einer bestehenden Datei einer anderen Revision: ValueError.
+    Liegt unter dem Namen bereits eine Datei einer anderen oder unlesbaren Revision: ValueError statt Ueberschreiben.
     """
     inhalt = {
         "schema": SCHEMA,

@@ -71,12 +71,13 @@ Das ist gewollt.
 ### Gate-Manifest
 
 `python -m evaluation.eval_report --checkpoint-revision REV` schreibt
-`evaluation/manifest/gate-manifest-<eval_version[7:19]>-<REV>.json` (REV getrimmt und wie im Report-Namen auf
-`[A-Za-z0-9._-]`, 40 Zeichen bereinigt; eine leere oder blanke Revision schreibt kein Manifest). Die Revision im
-Namen verhindert, dass ein zweiter Checkpoint auf demselben Eval-Set das Manifest des ersten still ersetzt; bilden
-zwei Revisionen denselben bereinigten Namen (`r/2` und `r_2`) oder ist die bestehende Datei unlesbar, bricht das
-Schreiben mit `ValueError` ab, statt zu überschreiben. Dieselbe Revision darf neu geschrieben werden. Der Loader
-hängt nicht vom Namen ab. (Eingecheckt; der Report bleibt gitignored unter `REGRAG_EVAL_BERICHT_DIR`.)
+`evaluation/manifest/gate-manifest-<eval_version[7:19]>-<REV>-<hash8>.json`. REV wird getrimmt (leer oder blank:
+kein Manifest), auf `[A-Za-z0-9._-]` und 40 Zeichen bereinigt; `<hash8>` sind die ersten 8 Hex-Zeichen von SHA-256
+der Originalrevision. Report (`bericht-<eval>-laya-<REV>-<hash8>.json`) und Manifest nutzen dieselbe Funktion
+`manifest.dateiname_revision`. So ersetzt ein zweiter Checkpoint auf demselben Eval-Set weder Manifest noch
+Baseline-Report des ersten, auch wenn die Revisionen gleich bereinigen (`r/2` und `r_2`) oder denselben Präfix
+teilen. Liegt unter dem Manifest-Namen trotzdem eine Datei einer anderen oder unlesbaren Revision, bricht das
+Schreiben mit `ValueError` ab. Dieselbe Revision darf neu geschrieben werden. Der Loader hängt nicht vom Namen ab. (Eingecheckt; der Report bleibt gitignored unter `REGRAG_EVAL_BERICHT_DIR`.)
 Format (UTF-8, JSON ohne `Infinity`/`NaN`):
 
 ```json

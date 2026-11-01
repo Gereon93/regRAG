@@ -1,6 +1,7 @@
 import hashlib
 import json
 import random
+import re
 import sys
 from types import SimpleNamespace
 
@@ -285,7 +286,17 @@ def test_main_mit_laya_ohne_revision_schreibt_kein_manifest_und_hinweis(tmp_path
 
 def test_schreibe_unterscheidet_laya_reports_nach_revision(tmp_path):
     b = {"eval_version": "sha256:" + "ab" * 32, "laya": {"checkpoint": {"revision": "r/1"}}}
-    assert schreibe(b, tmp_path).name == "bericht-abababababab-laya-r_1.json"
+    assert re.fullmatch(r"bericht-abababababab-laya-r_1-[0-9a-f]{8}\.json", schreibe(b, tmp_path).name)
+
+
+def test_gleich_bereinigte_revisionen_ueberschreiben_den_baseline_report_nicht(tmp_path):
+    """PR #43 (Codex): r/2 und r_2 bereinigen gleich; der Baseline-Report fuer den Vergleich bleibt erhalten."""
+    basis = {"eval_version": "sha256:" + "ab" * 32}
+    erster = schreibe({**basis, "laya": {"checkpoint": {"revision": "r/2"}}}, tmp_path)
+    zweiter = schreibe({**basis, "laya": {"checkpoint": {"revision": "r_2"}}}, tmp_path)
+    assert erster != zweiter
+    assert json.loads(erster.read_text(encoding="utf-8"))["laya"]["checkpoint"]["revision"] == "r/2"
+    assert json.loads(zweiter.read_text(encoding="utf-8"))["laya"]["checkpoint"]["revision"] == "r_2"
 
 
 def test_vergleich_cli_vergleicht_zwei_laya_reports(chroma, tmp_path, capsys):
