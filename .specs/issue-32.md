@@ -1,7 +1,7 @@
 # Spec: Gate: Laya fine-tunen, kalibrieren, Thresholds und Metriken
 
 **Issue:** #32 (https://github.com/Gereon93/regRAG/issues/32), Teil von #26
-**Status:** Review eingearbeitet
+**Status:** approved
 **Datum:** 2026-10-31
 **Branch:** Gereon93/gate-laya-fine-tunen-kalibrieren-thresholds-und
 **Abhängigkeiten:** #28 (Laya-Adapter, gemergt), #31 (Eval-Set/Splits/Kosten, gemergt bis auf Labels)
@@ -54,7 +54,7 @@ Rückfrage entschieden; sie sind reversibel und im PR-Body aufzuführen.
 17. **ECE:** auf dem **Test-Split** (Zeilen mit `laya_roh is not None`), vor und nach Kalibrierung, 5 gleich breite Bins auf `[0, 1]`, pro Bin `n`, mittlere Konfidenz und Trefferquote im Report. Keine solche Zeile → `ece: null`.
 
 ### 2.4 Schwellen und Manifest
-18. **Schwelle pro Segment:** `schwellen_pro_segment(zeilen, kosten, score_feld="laya_kal", segment_feld="segment_laufzeit")` auf den Calibration-Zeilen aus 12. Kandidaten wie #31. Da `laya_kal` wegen des Clips strikt in `(0, 1)` liegt, sind alle Kandidaten endliche Werte in `[0, 1]`; ein Kandidat > 1 oder nicht endlich ist ein Programmierfehler (`ValueError`).
+18. **Schwelle pro Segment:** `schwellen_pro_segment(zeilen, kosten, score_feld="laya_kal", segment_feld="segment_laufzeit")` auf den Calibration-Zeilen aus 12. Kandidaten wie #31. Da `gate.kalibriere` seine Ausgabe auf `[EPS, 1-EPS]` klemmt (sonst sättigt kleines T auf exakt 1.0), sind alle Kandidaten endliche Werte in `[0, 1]`; ein Kandidat > 1 oder nicht endlich ist ein Programmierfehler (`ValueError`).
 19. **Fallback:** `fallback_schwelle = max(schwellen.values())`. Gilt für `unbekannt` und jedes Segment ohne Eintrag.
 20. **Entscheidung (Review): Manifest-Format** (`gate-manifest-<eval_version[7:19]>.json`, UTF-8, gültiges JSON ohne `Infinity`/`NaN`):
     ```json
