@@ -2,9 +2,8 @@
 
 import logging
 import re
-from dataclasses import dataclass
 from itertools import pairwise
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 import gate
 from gate import AbstainReason, GateDecision, Outcome, Pruefung
@@ -53,17 +52,15 @@ MAX_AUSSAGE_ZEICHEN = 200
 
 
 class StuetzungsJudge(Protocol):
-    def stuetzt(self, aussage: str, fundstellen: str) -> bool: ...
+    def __call__(self, aussage: str, fundstellen: str) -> bool: ...
 
 
-@dataclass(frozen=True)
-class Fehlstelle:
+class Fehlstelle(NamedTuple):
     text: str
     grund: str
 
 
-@dataclass(frozen=True)
-class Befund:
+class Befund(NamedTuple):
     aussagen_gesamt: int
     fehlstellen: tuple[Fehlstelle, ...]
 
@@ -101,14 +98,23 @@ def _hat_inhalt(zeile):
     return any(c.isalnum() for c in MARKER.sub("", zeile))
 
 
+def _ist_ueberschrift(zeile, rest):
+    """Eine fette Zeile mit Satzzeichen oder Zahl ist Aussage, keine Überschrift; `**Art. 5:**` bleibt Beschriftung."""
+    if len(rest) > MAX_UEBERSCHRIFT_ZEICHEN or not (zeile.startswith("#") or NUR_FETT.match(rest)):
+        return False
+    text = FORMATIERUNG.sub("", rest).rstrip()
+    if text.endswith((".", "!", "?")):
+        return False
+    return text.endswith(":") or not any(c.isdigit() for c in text)
+
+
 def _aussagen_der_zeile(zeile, folge, hat_nachfolger):
     if not _hat_inhalt(zeile) or QUELLENZEILE.match(zeile):
         return []
     if zeile.startswith("|"):
         return [] if TRENNZEILE.match(folge) else [FORMATIERUNG.sub("", zeile)]
     rest = LISTENPUNKT.sub("", zeile)
-    ist_ueberschrift = zeile.startswith("#") or NUR_FETT.match(rest)
-    if ist_ueberschrift and len(rest) <= MAX_UEBERSCHRIFT_ZEICHEN and hat_nachfolger:
+    if hat_nachfolger and _ist_ueberschrift(zeile, rest):
         return []
     saetze = _saetze(FORMATIERUNG.sub("", rest))
     if saetze and saetze[-1].endswith(":") and (LISTENPUNKT.match(folge) or folge.startswith("|")):
@@ -131,16 +137,11 @@ def _zahlen_und_mengen(text):
     return set(ZAHL.findall(text)), mengen
 
 
-class ZahlenJudge:
+def zahlen_judge(aussage, fundstellen):
     """Prüft nur Zahlen, Norm-Nummern und Zahl-Einheit-Paare; Aussagen ohne Zahl bleiben ungeprüft (ADR 0014)."""
-
-    def stuetzt(self, aussage, fundstellen):
-        zahlen, mengen = _zahlen_und_mengen(aussage)
-        belegte_zahlen, belegte_mengen = _zahlen_und_mengen(fundstellen)
-        return zahlen <= belegte_zahlen and mengen <= belegte_mengen
-
-
-ZAHLEN_JUDGE = ZahlenJudge()
+    zahlen, mengen = _zahlen_und_mengen(aussage)
+    belegte_zahlen, belegte_mengen = _zahlen_und_mengen(fundstellen)
+    return zahlen <= belegte_zahlen and mengen <= belegte_mengen
 
 
 def _pruefe_aussage(aussage, nodes, judge):
@@ -150,12 +151,12 @@ def _pruefe_aussage(aussage, nodes, judge):
     if not all(1 <= n <= len(nodes) for n in nummern):
         return Fehlstelle(aussage, UNGUELTIGER_MARKER)
     fundstellen = "\n\n".join(nodes[n - 1].text for n in nummern)
-    if not judge.stuetzt(MARKER_MIT_ABSTAND.sub("", aussage), fundstellen):
+    if not judge(MARKER_MIT_ABSTAND.sub("", aussage), fundstellen):
         return Fehlstelle(aussage, NICHT_GESTUETZT)
     return None
 
 
-def pruefe_antwort(antwort, nodes, judge=ZAHLEN_JUDGE):
+def pruefe_antwort(antwort, nodes, judge=zahlen_judge):
     aussagen = zerlege(antwort)
     fehlstellen = tuple(f for a in aussagen if (f := _pruefe_aussage(a, nodes, judge)))
     return Befund(len(aussagen), fehlstellen)
@@ -171,7 +172,7 @@ def _datensatz_zusatz(antwort, befund):
     }
 
 
-def pruefe_antwort_und_eskaliere(eskalations_datei, frage, nodes, antwort, vorherige, grenzen=None, judge=ZAHLEN_JUDGE):
+def pruefe_antwort_und_eskaliere(eskalations_datei, frage, nodes, antwort, vorherige, grenzen=None, judge=zahlen_judge):
     befund = pruefe_antwort(antwort, nodes, judge)
     if befund.bestanden:
         return Pruefung(vorherige, False)

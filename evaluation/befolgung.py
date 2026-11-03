@@ -4,20 +4,26 @@ import argparse
 import os
 
 import config
-from agent import app
 from evaluation.dataset import ANTWORTBAR
 
 
-def main():
+def _ergebnis(lauf):
+    if lauf.get("llm_fehler"):
+        return "LLM_FEHLER"
+    return ",".join(r.value for r in lauf["entscheidung"].reasons) or "bestanden"
+
+
+def main(argv=None):
+    from agent import app
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--datei", default=os.devnull, help="Eskalationsdatei mit den Gründen je Aussage")
-    config.ESKALATION_DATEI = parser.parse_args().datei
+    config.ESKALATION_DATEI = parser.parse_args(argv).datei
 
     bestanden = 0
     for frage in ANTWORTBAR:
-        entscheidung = app.invoke({"frage": frage})["entscheidung"]
-        bestanden += not entscheidung.verweigert
-        ergebnis = ",".join(r.value for r in entscheidung.reasons) or "bestanden"
+        ergebnis = _ergebnis(app.invoke({"frage": frage}))
+        bestanden += ergebnis == "bestanden"
         print(f"{ergebnis:20s} {frage[:60]}")
     print(f"\nBefolgung: {bestanden} von {len(ANTWORTBAR)}")
 

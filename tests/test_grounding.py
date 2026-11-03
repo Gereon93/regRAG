@@ -13,10 +13,10 @@ from grounding import (
     MAX_AUSSAGE_ZEICHEN,
     MAX_AUSSAGEN,
     SYSTEM_PROMPT,
-    ZAHLEN_JUDGE,
     baue_kontext,
     pruefe_antwort,
     pruefe_antwort_und_eskaliere,
+    zahlen_judge,
     zerlege,
 )
 
@@ -31,9 +31,8 @@ def nodes(k=3):
     return [node(f"Fundstelle {i}") for i in range(1, k + 1)]
 
 
-class AllesStimmt:
-    def stuetzt(self, aussage, fundstellen):
-        return True
+def alles_stimmt(_aussage, _fundstellen):
+    return True
 
 
 class FakeJudge:
@@ -41,13 +40,13 @@ class FakeJudge:
         self.ergebnisse = list(ergebnisse)
         self.aufrufe = []
 
-    def stuetzt(self, aussage, fundstellen):
+    def __call__(self, aussage, fundstellen):
         self.aufrufe.append((aussage, fundstellen))
         return self.ergebnisse.pop(0) if self.ergebnisse else True
 
 
 def fehlstellen(antwort, k=3):
-    return pruefe_antwort(antwort, nodes(k), AllesStimmt()).fehlstellen
+    return pruefe_antwort(antwort, nodes(k), alles_stimmt).fehlstellen
 
 
 @pytest.mark.parametrize(
@@ -70,7 +69,7 @@ def fehlstellen(antwort, k=3):
     ],
 )
 def test_konforme_antwort_wird_nicht_verworfen(antwort):
-    assert pruefe_antwort(antwort, nodes(), AllesStimmt()).bestanden
+    assert pruefe_antwort(antwort, nodes(), alles_stimmt).bestanden
 
 
 @pytest.mark.parametrize(
@@ -91,7 +90,7 @@ def test_konforme_antwort_wird_nicht_verworfen(antwort):
     ],
 )
 def test_struktur_wird_nicht_als_aussage_verworfen(antwort):
-    befund = pruefe_antwort(antwort, nodes(), AllesStimmt())
+    befund = pruefe_antwort(antwort, nodes(), alles_stimmt)
 
     assert befund.bestanden, befund.fehlstellen
 
@@ -111,7 +110,7 @@ def test_struktur_wird_nicht_als_aussage_verworfen(antwort):
     ],
 )
 def test_aussage_ohne_marker_scheitert_und_wird_benannt(antwort, fehlend):
-    befund = pruefe_antwort(antwort, nodes(), AllesStimmt())
+    befund = pruefe_antwort(antwort, nodes(), alles_stimmt)
 
     assert not befund.bestanden
     assert [(f.text, f.grund) for f in befund.fehlstellen] == [(fehlend, "kein_marker")]
@@ -119,7 +118,7 @@ def test_aussage_ohne_marker_scheitert_und_wird_benannt(antwort, fehlend):
 
 @pytest.mark.parametrize("antwort", ["", "   \n", "# Titel", "---", "[1]."])
 def test_antwort_ohne_aussage_besteht_nie(antwort):
-    assert not pruefe_antwort(antwort, nodes(), AllesStimmt()).bestanden
+    assert not pruefe_antwort(antwort, nodes(), alles_stimmt).bestanden
 
 
 def test_doppelpunkt_ohne_folgende_liste_bleibt_aussage():
@@ -214,7 +213,7 @@ def test_judge_verneint_und_uebrige_aussagen_werden_weiter_geprueft():
     ],
 )
 def test_zahlen_judge_besteht(aussage, fundstelle):
-    assert ZAHLEN_JUDGE.stuetzt(aussage, fundstelle)
+    assert zahlen_judge(aussage, fundstelle)
 
 
 @pytest.mark.parametrize(
@@ -227,7 +226,7 @@ def test_zahlen_judge_besteht(aussage, fundstelle):
     ],
 )
 def test_zahlen_judge_scheitert(aussage, fundstelle):
-    assert not ZAHLEN_JUDGE.stuetzt(aussage, fundstelle)
+    assert not zahlen_judge(aussage, fundstelle)
 
 
 def test_standard_judge_prueft_nur_gegen_zitierte_chunks():
@@ -245,7 +244,7 @@ def test_baue_kontext_nummeriert_ab_eins_in_node_reihenfolge():
 def test_prompt_beispiel_besteht_die_eigene_pruefung():
     beispiel = next(z for z in SYSTEM_PROMPT.splitlines() if z.startswith("Beispiel: "))
 
-    assert pruefe_antwort(beispiel.removeprefix("Beispiel: "), nodes(), AllesStimmt()).bestanden
+    assert pruefe_antwort(beispiel.removeprefix("Beispiel: "), nodes(), alles_stimmt).bestanden
 
 
 def test_prompt_enthaelt_keine_template_klammern():
@@ -325,3 +324,17 @@ def test_schluss_ohne_leerzeichen_zaehlt_als_abkuerzung_mit_punkten():
 
 def test_zeile_mit_mehreren_fetten_stellen_ist_keine_ueberschrift():
     assert zerlege("**Frist** beträgt 72 **Stunden**\nSatz [1].") == ["Frist beträgt 72 Stunden", "Satz [1]."]
+
+
+@pytest.mark.parametrize(
+    "fett",
+    ["**Die Frist beträgt 72 Stunden.**", "**Die Frist beträgt 72 Stunden**", "# Die Frist beträgt 72 Stunden"],
+)
+def test_fette_aussage_vor_weiterer_aussage_wird_geprueft(fett):
+    gefunden = fehlstellen(f"{fett}\nVorfälle müssen gemeldet werden [1].")
+
+    assert [f.grund for f in gefunden] == ["kein_marker"]
+
+
+def test_fette_beschriftung_mit_zahl_bleibt_ueberschrift():
+    assert zerlege("**Art. 5:**\nSatz [1].") == ["Satz [1]."]
