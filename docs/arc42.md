@@ -23,7 +23,7 @@ indexiert und danach mitdurchsucht.
 | # | Ziel | Warum | Wie geprüft |
 |---|---|---|---|
 | Q1 | **Nachvollziehbarkeit** — jede Antwort nennt ihre Fundstellen | Eine Compliance-Aussage ohne Beleg ist wertlos | Quellen + Scores in UI und API; bei mehreren Korpora mit Dokumentnamen |
-| Q2 | **Keine erfundenen Antworten** — lieber schweigen | Eine falsche Aussage zu DORA ist teurer als keine | ✅ **gemessen**: Guard trennt 14/14 Fälle; Faithfulness Ø 0.93 über die beantworteten Fälle |
+| Q2 | **Keine erfundenen Antworten** — lieber schweigen | Eine falsche Aussage zu DORA ist teurer als keine | ✅ **gemessen**: Guard trennt 14/14 Fälle; Faithfulness Ø 0.93 über die beantworteten Fälle (alter Prompt vor #29) |
 | Q3 | **Datenhoheit** — Dokumente verlassen den Rechner nicht | Reguliertes Umfeld | Embeddings im Prozess, Generierung gegen einen frei wählbaren Endpunkt (Default: LM Studio auf `localhost`) |
 | Q4 | **Nachvollziehbare Kosten und Latenz** | Grundlage für die Wahl lokal vs. gehostet | Kapitel 10, ausschließlich gemessene Werte |
 
@@ -81,7 +81,7 @@ Regelbetrieb nicht beteiligt.
 | Qualitätsziel | Ansatz | Entscheidung |
 |---|---|---|
 | Q1 Nachvollziehbarkeit | Retrieval liefert Knoten mit Score, Dateiname und Dokumenttitel; das Prompt-Template verpflichtet auf Quellenangabe | — |
-| Q2 Keine Halluzination | Kalibrierter Schwellwert auf dem Retrieval-Score, als **bedingte Kante** im Graphen. Reißt er, sieht das LLM den Kontext gar nicht erst | [ADR 0002](adr/0002-abstain-statt-raten.md), [ADR 0005](adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md) |
+| Q2 Keine Halluzination | Kalibrierter Schwellwert auf dem Retrieval-Score, als **bedingte Kante** im Graphen. Reißt er, sieht das LLM den Kontext gar nicht erst. Nach der Generierung braucht jede Aussage einen Marker, ihre Zahlen müssen in den zitierten Chunks stehen, sonst wird die Antwort verworfen | [ADR 0002](adr/0002-abstain-statt-raten.md), [ADR 0005](adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md), [ADR 0014](adr/0014-claim-level-grounding.md) |
 | Q1 Chunk-Qualität | PDF → Markdown, damit Chunks entlang Artikeln fallen, nicht entlang Seitenspalten | [ADR 0001](adr/0001-pdf-nach-markdown-statt-pdf-direkt.md) |
 | Q4 Latenz | Vektor-Index persistieren; neue Dokumente **inkrementell** mergen statt neu zu bauen | [ADR 0003](adr/0003-persistenter-chroma-index-mit-cosine.md), [ADR 0006](adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md) |
 | Q3 Datenhoheit | Embeddings lokal, Generierung über austauschbares OpenAI-Interface | [ADR 0004](adr/0004-rollenteilung-llamaindex-langchain-langgraph.md) |
@@ -112,7 +112,8 @@ graph TD
 | `convert.py` | PDF nach Markdown wandeln (`pymupdf4llm`), Quellen-Sidecar schreiben | Embeddings, LLM |
 | `rag.py` | Embedding-Modell, Index laden, Dokumente inkrementell mergen | Den Ablauf, das LLM |
 | `agent.py` | Ablaufsteuerung, Schwellwert als bedingte Kante, Prompt, LLM-Aufruf | Wie retrievt wird |
-| `web/main.py` | HTTP: Chat mit SSE-Streaming, Upload, Job-Status, Dokumentliste | Wie indexiert oder retrievt wird |
+| `web/main.py` | HTTP: Chat mit SSE (Antwort gepuffert bis nach der Prüfung), Upload, Job-Status, Dokumentliste | Wie indexiert oder retrievt wird |
+| `grounding.py` | Marker-Prompt, Zerlegung in Aussagen, `ZahlenJudge`, Verwerfen nach der Generierung ([ADR 0014](adr/0014-claim-level-grounding.md)); im Graphen der Knoten `ground` | Retrieval, LLM-Aufruf |
 | `gate.py`, `laya.py`, `manifest.py`, `metrics.py` | Gate-Port, Score-Guard, Laya-Adapter mit Segmentschwellen und Manifest, prozesslokale Eskalationszähler für `GET /metrics` ([ADR 0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md)) | Retrieval, LLM |
 | `evaluation/` | Versioniertes Eval-Set (`evalset/v1.jsonl`), Splits, Kostenfunktion und Segment-Report ([ADR 0012](adr/0012-eval-set-splits-kostenfunktion-report.md)), Guard-Trennschärfe messen, Faithfulness bewerten | Den Produktionspfad — liest nur mit |
 
@@ -161,14 +162,20 @@ sequenceDiagram
     R-->>G: nodes
     G->>G: pruefe(frage, nodes) → ANSWER
     G->>L: Prompt mit Kontext
-    L-->>G: Antwort mit Quellenangabe
-    G-->>N: Antwort (SSE-Tokens) + Fundstellen
+    L-->>G: Antwort mit Markern [n]
+    G->>G: pruefe_grounding(...) → bestanden
+    G-->>N: Geprüfte Antwort (ein SSE-Token) + nummerierte Fundstellen
 ```
 
 ### Anfrage ohne Beleg
 
 `pruefe()` liefert ABSTAIN mit Reason, ein Eskalationsdatensatz wird geschrieben, die bedingte Kante führt nach `abstain`, das LLM wird
 nie aufgerufen und kann nicht halluzinieren, was es nicht sieht.
+
+### Antwort ohne Beleg
+
+Besteht die Antwort die Prüfung nicht, wird sie verworfen: gleiche Rückmeldung wie ABSTAIN, Reason `UNGROUNDED_CLAIM`,
+Datensatz mit Antwort und Fehlstellen. Der Text erreicht den Nutzer nie, weil `/chat` bis nach der Prüfung puffert.
 
 **Das ist gemessen, nicht behauptet:** Über 14 Fälle (8 beantwortbare DORA-Fragen, 6 themenfremde)
 trennt der Guard bei `MIN_RETRIEVAL_SCORE = 0.62` **14/14** korrekt (ADR 0005, `evaluation/run.py`).
@@ -289,6 +296,7 @@ Pfade würden garantiert auseinanderlaufen — einer davon still.
 | [0006](adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md) | Inkrementeller Merge statt Voll-Rebuild | akzeptiert |
 | [0007](adr/0007-sprachgrenze-im-code.md) | Sprachgrenze: Domäne deutsch, Technik englisch | akzeptiert |
 | [0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md) | Laya-Kalibrierung, Segmentschwellen, Gate-Manifest, `/metrics` | akzeptiert als Mechanik; Nutzen **nicht gemessen** |
+| [0014](adr/0014-claim-level-grounding.md) | Claim-Level-Grounding nach der Generierung, Puffern statt Streamen | akzeptiert; inhaltliche Stützung unbelegt |
 
 ---
 
@@ -299,7 +307,7 @@ Pfade würden garantiert auseinanderlaufen — einer davon still.
 | Größe | Wert | Woher |
 |---|---|---|
 | Guard-Trennschärfe (8 On-Topic, 6 Off-Topic, Seed-Set aus `evaluation/evalset/v1.jsonl`) | **14/14** bei `MIN_RETRIEVAL_SCORE = 0.62` | `evaluation/run.py`, ADR 0005 |
-| Faithfulness über die beantworteten Fälle | **Ø 0.93** (Spanne 0.71–1.00, fünfmal 1.00) | `evaluation/judge.py`, deepeval + gehosteter Judge |
+| Faithfulness über die beantworteten Fälle (alter Prompt vor #29) | **Ø 0.93** (Spanne 0.71–1.00, fünfmal 1.00) | `evaluation/judge.py`, deepeval + gehosteter Judge |
 | Kaltstart im Container (DORA, 351k Zeichen) | 360 s | `docker compose up` |
 | Neustart ohne Korpusänderung (DORA + NIS2) | 31 s | `docker compose restart` |
 | Upload NIS2 (1.3 MB PDF) bis `ready` | ~250 s | `POST /upload` → `GET /jobs/{id}` |
@@ -327,7 +335,8 @@ oder des Embedding-Modells neu zu kalibrieren.
 
 Trefferqualität gegenüber naivem PDF-Parsing (ADR 0001). Ob das Chunking für Artikelstruktur
 taugt. Latenz und Kosten eines gehosteten Generierungs-Backends. Verhalten bei vielen (>5)
-Korpora — ob der Guard-Schwellwert dann noch trennt, ist offen.
+Korpora — ob der Guard-Schwellwert dann noch trennt, ist offen. Befolgungsquote des Markerformats
+beim lokalen Modell (ADR 0014, `python -m evaluation.befolgung`).
 
 ---
 
@@ -344,6 +353,7 @@ Korpora — ob der Guard-Schwellwert dann noch trennt, ist offen.
 | 7 | **Chunking ungetunt** | LlamaIndex-Defaults. Für Gesetzestexte mit Artikelstruktur vermutlich nicht optimal | offen |
 | 8 | **LangGraph bleibt unterfordert** | Mit der bedingten Kante (ADR 0005) verdient der Graph seinen Platz knapp. Ein zweiter Retrieval-Versuch oder ein Reranking-Knoten wären die ehrliche Rechtfertigung | ADR 0004 |
 | 9 | **Laya-Kalibrierung ohne Messung** | Mechanik für Temperatur, Segmentschwellen, Manifest und Vergleich steht, aber es gibt keine Labels (>= 200) und keinen trainierten Checkpoint; die Revision im Manifest ist deklariert, ein fehlendes `routing.model` wird akzeptiert; `/metrics` ist prozesslokal und unauthentifiziert | ADR 0013, offen |
+| 10 | **Befolgungsquote des Markerformats nicht gemessen** | Befolgt das lokale Modell die Marker selten, verweigert das System fast alles. Aussagen ohne Zahl bleiben inhaltlich ungeprüft | ADR 0014, [#47](../../../issues/47) |
 
 Schuld 1 ist die interessante: Der Upload macht das System nützlicher und sein zentrales
 Versprechen zugleich fragiler. Die Kalibrierung war eine Momentaufnahme über einen Korpus —

@@ -121,7 +121,7 @@ Neuaufbau erzwingen: `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
 uvicorn web.main:app --reload      # http://localhost:8000
 ```
 
-Chat-Seite mit token-für-token-Streaming (SSE). Jede Antwort nennt ihre Fundstellen mit Score; bei zu dünner Beleglage erscheint der Abstain-Zustand sichtbar statt einer erfundenen Antwort. `POST /chat` ist auch ohne UI nutzbar.
+Chat-Seite mit SSE. Die Antwort erscheint erst nach Generierung und Prüfung (lokal 1 bis 3 Minuten ohne Text, ein vorgeschalteter Proxy braucht einen passenden Timeout). Jede Aussage trägt Marker wie `[2]`, die Nummern stehen im Block "Fundstellen" mit Score. Bei zu dünner Beleglage oder einer Antwort ohne Beleg je Aussage erscheint der Abstain-Zustand sichtbar statt einer erfundenen Antwort. Die Prüfung sieht Marker sowie Zahlen und Norm-Nummern; ob eine Aussage ohne Zahl inhaltlich gedeckt ist, prüft sie nicht ([ADR 0014](docs/adr/0014-claim-level-grounding.md)). `POST /chat` ist auch ohne UI nutzbar.
 
 ### Lokaler Accessibility-Pre-Commit-Check
 
@@ -178,10 +178,10 @@ Zwei Volumes: `chroma` trägt die Vektoren, `docs_md` den Korpus. Beide zusammen
 ## Stand
 
 - [x] **Step 1** — Mini-RAG über DORA, Antwort mit Belegstellen
-- [x] **Step 2** — LangGraph-Agent, Abstain als bedingte Kante, Schwellwert kalibriert (14/14), Faithfulness gemessen (Ø 0.93) ([#2](../../issues/2))
+- [x] **Step 2** — LangGraph-Agent, Abstain als bedingte Kante, Schwellwert kalibriert (14/14), Faithfulness gemessen (Ø 0.93, alter Prompt vor #29) ([#2](../../issues/2))
 - [x] **Persistenz** — Chroma-Index, Warmstart 12 s statt 5 min ([#1](../../issues/1))
 - [x] **Index-Integrität** — Fingerprint-Validierung, Neuaufbau bei geänderter Quelle ([#7](../../issues/7))
-- [x] **Web-UI + Docker** — FastAPI, SSE-Streaming, Container mit eingebackenem Embedding-Modell ([#3](../../issues/3))
+- [x] **Web-UI + Docker** — FastAPI, SSE, Container mit eingebackenem Embedding-Modell ([#3](../../issues/3))
 - [x] **Dokumenten-Upload** — PDF hochladen, inkrementeller Merge im Hintergrund, Job-Status ([#4](../../issues/4))
 
 ## Evaluation
@@ -189,10 +189,11 @@ Zwei Volumes: `chroma` trägt die Vektoren, `docs_md` den Korpus. Beide zusammen
 ```bash
 python -m evaluation.calibrate       # misst Score-Trennung, schlägt Schwellwert vor
 python -m evaluation.run             # Guard-Entscheidungen (14/14) + Faithfulness
+python -m evaluation.befolgung       # Wie oft das lokale Modell das Markerformat einhält (LM Studio + Index)
 python -m evaluation.baseline_pypdf  # zweiter Korpus: naive pypdf-Extraktion zum Vergleich
 ```
 
-Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Faithfulness (`deepeval`, Judge über `with_structured_output`) ist über die 8 beantworteten Fälle **gemessen: Ø 0.93** (Spanne 0.71–1.00, fünfmal 1.00). Die Einzelwerte je Fall, das verwendete Prüfmodell und die Herkunft des Laufs stehen in [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md#faithfulness-lokaler-judge-verworfen-gehosteter-judge-gemessen). Der schwächste Fall ist TLPT (0.71) — die Antwort trägt dort Aussagen, die die drei abgerufenen Chunks nicht vollständig decken.
+Das Eval-Set (`evaluation/dataset.py`) enthält 8 beantwortbare DORA-Fragen und 6 themenfremde. Der Guard trennt sie 14/14. Faithfulness (`deepeval`, Judge über `with_structured_output`) ist über die 8 beantworteten Fälle **gemessen: Ø 0.93** (Spanne 0.71–1.00, fünfmal 1.00; alter Prompt vor #29, kein Neulauf). Die Einzelwerte je Fall, das verwendete Prüfmodell und die Herkunft des Laufs stehen in [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md#faithfulness-lokaler-judge-verworfen-gehosteter-judge-gemessen). Der schwächste Fall ist TLPT (0.71) — die Antwort trägt dort Aussagen, die die drei abgerufenen Chunks nicht vollständig decken.
 
 Der Judge läuft getrennt vom Antwortmodell: Die App generiert lokal (LM Studio), nur die Bewertung geht an einen gehosteten OpenAI-kompatiblen Endpunkt. Ein lokaler Judge ist auf dem M4 nicht praktikabel — schema-gebundene Extraktion über dichte Rechtstexte reißt die Timeouts ([ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md)).
 
@@ -221,6 +222,7 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 - [0008](docs/adr/0008-korpus-agnostisch-dora-ist-nur-der-seed.md) — Korpus-agnostisch: DORA ist nur der Seed
 - [0009](docs/adr/0009-query-embedding-cpu-mps.md) — Query-Embedding im CPU-Container: Latenz und Threadzahl gemessen
 - [0013](docs/adr/0013-laya-kalibrierung-segmentschwellen-manifest.md) — Laya-Kalibrierung, Segmentschwellen, Gate-Manifest und Eskalationsmetriken (Nutzen unbelegt)
+- [0014](docs/adr/0014-claim-level-grounding.md) — Claim-Level-Grounding nach der Generierung
 
 ## Gemessen
 
@@ -238,7 +240,7 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 | `MIN_RETRIEVAL_SCORE` (Lückenmitte) | 0.62 |
 | Guard-Trennung über das Eval-Set | 14/14 |
 | Trennlücke Markdown vs. naive pypdf-Extraktion (min. beantwortbar − max. themenfremd) | 0.085 vs. 0.053 (1.6×, beide 14/14) |
-| Faithfulness der 8 beantworteten Fälle (Judge: `openai/gpt-5.4-mini`) | Ø 0.93 (0.71–1.00) |
+| Faithfulness der 8 beantworteten Fälle (Judge: `openai/gpt-5.4-mini`, alter Prompt vor #29) | Ø 0.93 (0.71–1.00) |
 | Antwortlatenz lokal (gemma-4-12b, ~5k Prompt-Tokens) | 1–3 min |
 
 ### Wo diese Zahlen herkommen
@@ -248,7 +250,7 @@ Jede Zahl oben ist mit einem Kommando reproduzierbar; die Rohwerte liegen im jew
 | Zahl | erzeugt durch | Einzelwerte / Messaufbau in |
 |---|---|---|
 | Scores, Trennlücke, Schwellwert, 14/14 | `python -m evaluation.calibrate` | [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md) |
-| Faithfulness Ø 0.93 | `python -m evaluation.run` (gehosteter Judge) | [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md#faithfulness-lokaler-judge-verworfen-gehosteter-judge-gemessen) — alle 8 Fälle einzeln, Judge `openai/gpt-5.4-mini`, Lauf aus [#13](../../pull/13) |
+| Faithfulness Ø 0.93 (alter Prompt vor #29) | `python -m evaluation.run` (gehosteter Judge) | [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md#faithfulness-lokaler-judge-verworfen-gehosteter-judge-gemessen) — alle 8 Fälle einzeln, Judge `openai/gpt-5.4-mini`, Lauf aus [#13](../../pull/13) |
 | Markdown vs. pypdf | `python -m evaluation.baseline_pypdf` + zwei `calibrate`-Läufe | [ADR 0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md#gemessen) |
 | Warum `exp(-Distanz)` und nicht Cosine | — | [ADR 0003](docs/adr/0003-persistenter-chroma-index-mit-cosine.md) |
 | Kalt-/Warmstart, Upload-Dauer | Laufzeitmessung lokal und im Container | README (diese Tabelle) |

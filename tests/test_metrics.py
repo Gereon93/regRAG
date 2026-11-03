@@ -185,3 +185,20 @@ def test_fehler_beim_zaehlen_aendert_entscheidung_nicht(monkeypatch, tmp_path, c
     assert pruefung.verweigert
     assert pruefung.vorgemerkt
     assert "kaputt" in caplog.text
+
+
+def test_verworfen_zaehlt_eskalation_aber_keine_zweite_entscheidung():
+    m = Metriken()
+    m.zaehle(antwort(relevance=0.9), "gesetz")
+    leer = m.schnappschuss()
+
+    m.zaehle_verworfen(abstain(AbstainReason.UNGROUNDED_CLAIM, relevance=0.9), "gesetz")
+
+    s = m.schnappschuss()
+    assert s["entscheidungen_gesamt"] == 1
+    assert s["eskalationen_gesamt"] == 1
+    assert s["eskalationsrate"] == 1
+    assert s["eskalationen_nach_reason"] == {"UNGROUNDED_CLAIM": 1}
+    assert s["nach_segment"]["gesetz"] == {"entscheidungen": 1, "eskalationen": 1, "eskalationsrate": 1}
+    assert s["histogramme"] == leer["histogramme"]
+    assert set(s) == set(leer)
