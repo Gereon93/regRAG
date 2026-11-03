@@ -21,11 +21,14 @@ Belegt keine Fundstelle die Antwort, schreibe nur: Der Kontext reicht nicht aus.
 
 MARKER = re.compile(r"\[\s*\d+(?:\s*,\s*\d+)*\s*\]")
 ABKUERZUNGEN = frozenset(
-    "abl abs art bspw buchst bzw ca dr erwgr etc evtl gem ggf inkl insb kap lit mio mrd nr prof rn sog tz ua usw vgl "
-    "ziff zzgl".split()
+    {
+        "abl", "abs", "art", "bspw", "buchst", "bzw", "ca", "dr", "erwgr", "etc", "evtl", "gem", "ggf",
+        "inkl", "insb", "kap", "lit", "mio", "mrd", "nr", "prof", "rn", "sog", "tz", "ua", "usw", "vgl",
+        "ziff", "zzgl",
+    }
 )
 LISTENPUNKT = re.compile(r"^(?:[-*•]|\d+[.)]|[a-z]\)|\(\w{1,4}\))\s+")
-QUELLENZEILE = re.compile(r"^(?:quellen?|fundstellen?)\s*:", re.I)
+QUELLENZEILE = re.compile(r"^(?:quellen?|fundstellen?)\s*:", re.IGNORECASE)
 TRENNZEILE = re.compile(r"^[|:\-\s]+$")
 NUR_FETT = re.compile(r"^(\*\*|__)(?:(?!\*\*|__).)+(\*\*|__):?$")
 SATZENDE = re.compile(rf"[.!?][\"”“)]*(?P<nach>(?:\s*{MARKER.pattern})*)(?=\s|$)")
@@ -38,7 +41,7 @@ ZAHL = re.compile(r"\d+(?:/\d+)*")
 TAUSENDER = re.compile(r"\b\d{1,3}(?:[ . ]\d{3})+\b")
 MENGE = re.compile(
     r"(\d+(?:,\d+)?)[\s-]*(?:kalender|arbeits|werk|geschäfts)?(stunde|tag|woche|monat|jahr|prozent|%|eur|mio|mrd)",
-    re.I,
+    re.IGNORECASE,
 )
 
 KEIN_MARKER = "kein_marker"
