@@ -108,6 +108,11 @@ def _ist_ueberschrift(zeile, rest):
     return text.endswith(":") or not any(c.isdigit() for c in text)
 
 
+def _ist_einleitung(satz):
+    """`Folgende Pflichten bestehen:` trägt keine Aussage; mit Zahl oder Marker wird der Satz geprüft."""
+    return satz.endswith(":") and not any(c.isdigit() for c in satz)
+
+
 def _aussagen_der_zeile(zeile, folge, hat_nachfolger):
     if not _hat_inhalt(zeile) or QUELLENZEILE.match(zeile):
         return []
@@ -117,7 +122,7 @@ def _aussagen_der_zeile(zeile, folge, hat_nachfolger):
     if hat_nachfolger and _ist_ueberschrift(zeile, rest):
         return []
     saetze = _saetze(FORMATIERUNG.sub("", rest))
-    if saetze and saetze[-1].endswith(":") and (LISTENPUNKT.match(folge) or folge.startswith("|")):
+    if saetze and _ist_einleitung(saetze[-1]) and (LISTENPUNKT.match(folge) or folge.startswith("|")):
         saetze.pop()
     return saetze
 

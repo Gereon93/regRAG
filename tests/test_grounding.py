@@ -339,3 +339,17 @@ def test_fette_aussage_vor_weiterer_aussage_wird_geprueft(fett):
 
 def test_fette_beschriftung_mit_zahl_bleibt_ueberschrift():
     assert zerlege("**Art. 5:**\nSatz [1].") == ["Satz [1]."]
+
+
+def test_einleitung_mit_zahl_vor_liste_wird_geprueft():
+    gefunden = fehlstellen("Für die Meldung gilt eine Frist von 72 Stunden:\n- Vorfälle sind zu melden [1].")
+
+    assert [(f.text, f.grund) for f in gefunden] == [("Für die Meldung gilt eine Frist von 72 Stunden:", "kein_marker")]
+
+
+def test_einleitung_mit_marker_vor_liste_wird_gegen_die_fundstelle_geprueft():
+    quellen = [node("Vorfälle sind zu melden.")]
+
+    befund = pruefe_antwort("Es gilt eine Frist von 72 Stunden [1]:\n- Vorfälle sind zu melden [1].", quellen)
+
+    assert [f.grund for f in befund.fehlstellen] == ["nicht_gestuetzt"]

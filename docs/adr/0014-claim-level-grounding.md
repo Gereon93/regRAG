@@ -63,6 +63,9 @@ wichtigste Unbekannte. Befolgt es das Format selten, verweigert das System fast 
 - Überschriften sind keine Aussagen: `#`-Zeilen und vollständig fette Zeilen bis 80 Zeichen ohne Satzzeichen am Ende.
   Mit Zahl gelten sie nur als Überschrift, wenn sie auf `:` enden (`**Art. 5:**`). Eine fette Aussage ohne Zahl und
   ohne Satzzeichen vor weiterem Text bleibt ungeprüft.
+- Einleitungen auf `:` vor einer Liste oder Tabelle sind keine Aussagen, solange sie weder Zahl noch Marker tragen.
+- Ungeprüft bleiben außerdem Zeilen auf `Quelle:` (reales Schlussmuster des Modells, enthält fremde Fundstellenangaben) und
+  Tabellenköpfe. Eine dort versteckte Aussage passiert; das ist akzeptiert, weil beide Formen der Prompt nicht vorsieht.
 - Bekannte Grenzen der Zerlegung: Nach einer höchstens zweistelligen Zahl am Satzende verschmelzen zwei Sätze, ein
   Marker genügt dann für beide. Eine fremde Abkürzung vor einem Großbuchstaben trennt und führt zum Verwurf (fail
   closed); die Liste `ABKUERZUNGEN` wird mit Test erweitert. Ausgeschriebene Zahlen (`vier Stunden`) sieht der
