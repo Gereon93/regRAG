@@ -167,7 +167,7 @@ def abstain_antwort(vorgemerkt, reasons=()):
     return ABSTAIN_ANTWORT_VORGEMERKT if vorgemerkt else ABSTAIN_ANTWORT_NICHT_VORGEMERKT
 
 
-def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None):
+def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None, zusatz=None):
     if not entscheidung.verweigert:
         raise ValueError("Eskalationsdatensatz gibt es nur bei ABSTAIN.")
     jetzt = jetzt or datetime.now(timezone.utc)
@@ -190,6 +190,7 @@ def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None):
         },
         "reasons": [r.value for r in entscheidung.reasons],
         "segment": segment_von(nodes),
+        **(zusatz or {}),
     }
 
 
@@ -296,11 +297,11 @@ def bereinige_eskalationen(ziel, grenzen):
             log.exception("Bereinigung des Eskalationsdatensatzes %s fehlgeschlagen", ziel)
 
 
-def schreibe_eskalation(ziel, frage, nodes, entscheidung, grenzen=None):
+def schreibe_eskalation(ziel, frage, nodes, entscheidung, grenzen=None, zusatz=None):
     """Hängt den Datensatz als JSONL-Zeile an und meldet, ob das gelang. Ein Fehler kippt die Verweigerung nicht."""
     grenzen = grenzen or EskalationsGrenzen()
     try:
-        zeile = json.dumps(eskalationsdatensatz(frage, nodes, entscheidung), ensure_ascii=False) + "\n"
+        zeile = json.dumps(eskalationsdatensatz(frage, nodes, entscheidung, zusatz=zusatz), ensure_ascii=False) + "\n"
         ziel = Path(ziel)
         ziel.parent.mkdir(parents=True, exist_ok=True)
         with _ESKALATIONS_SPERRE:
@@ -334,6 +335,14 @@ def _zaehle(entscheidung, nodes):
     try:
         metrics.METRIKEN.zaehle(entscheidung, segment_von(nodes))
     except Exception:  # Zaehlen darf die Gate-Entscheidung nie kippen (breit gefangen mit Absicht)
+        log.exception("Metriken konnten nicht gezaehlt werden")
+
+
+def zaehle_verwurf(entscheidung, nodes):
+    """Wie _zaehle, für nachträglich verworfene Antworten: die Anfrage ist als Entscheidung schon gezählt."""
+    try:
+        metrics.METRIKEN.zaehle_verworfen(entscheidung, segment_von(nodes))
+    except Exception:  # Zaehlen darf den Verwurf nie kippen (breit gefangen mit Absicht)
         log.exception("Metriken konnten nicht gezaehlt werden")
 
 

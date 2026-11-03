@@ -38,6 +38,7 @@ def main():
         },
         "agent": {
             "pruefe": lambda *a, **k: types.SimpleNamespace(verweigert=True, vorgemerkt=True),
+            "pruefe_grounding": lambda *a, **k: None,
             "llm": None,
             "prompt": None,
             "retriever": None,

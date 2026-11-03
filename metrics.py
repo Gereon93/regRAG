@@ -52,6 +52,14 @@ class Metriken:
             for feld, bucket in buckets.items():
                 self._histogramme[feld][bucket] += 1
 
+    def zaehle_verworfen(self, entscheidung, segment):
+        """Antwort nach ANSWER verworfen: Eskalation zaehlt, die Entscheidung ist schon gezaehlt."""
+        reasons = {r.value for r in entscheidung.reasons}
+        with self._lock:
+            self._eskalationen += 1
+            self._segment_eskalationen[segment] += 1
+            self._reasons.update(reasons)
+
     def schnappschuss(self):
         with self._lock:
             schnappschuss = {

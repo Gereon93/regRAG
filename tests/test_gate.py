@@ -631,3 +631,45 @@ def test_verzeichnis_mit_archivnamen_bricht_die_bereinigung_nicht_ab(tmp_path):
     bereinige_eskalationen(ziel, EskalationsGrenzen(max_bytes=10_000, max_archive=5, aufbewahrung_tage=30))
 
     assert not alt.exists()
+
+
+JETZT = datetime(2026, 11, 4, tzinfo=timezone.utc)
+
+
+def test_zusatz_wird_additiv_in_den_datensatz_gemischt():
+    entscheidung = GateDecision(Outcome.ABSTAIN, (AbstainReason.UNGROUNDED_CLAIM,), GateScores())
+    ohne = eskalationsdatensatz("F", [], entscheidung, JETZT)
+
+    mit = eskalationsdatensatz("F", [], entscheidung, JETZT, zusatz={"antwort": "A"})
+
+    assert mit == {**ohne, "antwort": "A"}
+
+
+def test_ohne_zusatz_hat_der_datensatz_keine_grounding_felder():
+    entscheidung = GateDecision(Outcome.ABSTAIN, (AbstainReason.LOW_RELEVANCE,), GateScores())
+
+    satz = eskalationsdatensatz("F", [], entscheidung, JETZT)
+
+    assert set(satz) == {"zeitpunkt", "frage", "evidenz", "scores", "reasons", "segment"}
+
+
+def test_schreibe_eskalation_reicht_zusatz_durch(tmp_path):
+    ziel = tmp_path / "e.jsonl"
+    entscheidung = GateDecision(Outcome.ABSTAIN, (AbstainReason.UNGROUNDED_CLAIM,), GateScores())
+
+    assert schreibe_eskalation(ziel, "F", [], entscheidung, zusatz={"antwort": "A"})
+
+    assert json.loads(ziel.read_text(encoding="utf-8"))["antwort"] == "A"
+
+
+def test_zaehle_verwurf_kippt_bei_zaehlfehler_nichts(monkeypatch):
+    import gate as gate_modul
+    import metrics
+
+    def kaputt(*a):
+        raise RuntimeError("kaputt")
+
+    monkeypatch.setattr(metrics.METRIKEN, "zaehle_verworfen", kaputt)
+    entscheidung = GateDecision(Outcome.ABSTAIN, (AbstainReason.UNGROUNDED_CLAIM,), GateScores())
+
+    gate_modul.zaehle_verwurf(entscheidung, [])

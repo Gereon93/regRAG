@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import tempfile
 import threading
 import uuid
@@ -16,7 +17,7 @@ import config
 import dokumente
 import metrics
 import rag
-from agent import llm, prompt, pruefe, retriever
+from agent import llm, prompt, pruefe, pruefe_grounding, retriever
 from convert import pdf_nach_markdown
 from gate import (
     MAX_FRAGE_ZEICHEN,
@@ -25,8 +26,10 @@ from gate import (
     bereinige_eskalationen,
     grenzen_aus,
 )
+from grounding import baue_kontext
 
 aktiviere_score_log()
+log = logging.getLogger(__name__)
 
 
 
@@ -56,10 +59,11 @@ class Frage(BaseModel):
 def _quellen(nodes):
     return [
         {
+            "nr": i,
             "quelle": n.metadata.get("quelle") or n.metadata.get("file_name"),
             "score": round(n.score, 3),
         }
-        for n in nodes
+        for i, n in enumerate(nodes, start=1)
     ]
 
 
@@ -78,15 +82,19 @@ async def _antwort_strom(frage):
         yield _sse({"type": "done"})
         return
 
-    kontext = "\n\n".join(n.text for n in nodes)
+    yield _sse({"type": "status", "text": "Antwort wird erzeugt und geprüft …"})
     try:
-        async for chunk in llm.astream(
-            prompt.format_messages(kontext=kontext, frage=frage)
-        ):
-            if chunk.content:
-                yield _sse({"type": "token", "text": chunk.content})
-    except Exception as e:  # noqa: BLE001 - jeder LLM-Fehler wird als SSE-Event gemeldet, der Stream bricht nie hart ab
-        yield _sse({"type": "error", "text": f"LLM-Fehler ({type(e).__name__}) — bitte erneut versuchen."})
+        nachrichten = prompt.format_messages(kontext=baue_kontext(nodes), frage=frage)
+        antwort = "".join([c.content async for c in llm.astream(nachrichten) if c.content])
+        geprueft = await asyncio.to_thread(pruefe_grounding, frage, nodes, antwort, pruefung.entscheidung)
+    except Exception as e:
+        log.exception("Antwort konnte nicht erzeugt oder geprüft werden")
+        yield _sse({"type": "error", "text": f"Antwort konnte nicht erzeugt werden ({type(e).__name__}) — bitte erneut versuchen."})
+    else:
+        if geprueft.verweigert:
+            yield _sse({"type": "abstain", "text": abstain_antwort(geprueft.vorgemerkt, geprueft.entscheidung.reasons)})
+        else:
+            yield _sse({"type": "token", "text": antwort})
 
     yield _sse({"type": "sources", "quellen": quellen})
     yield _sse({"type": "done"})

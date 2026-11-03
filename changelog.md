@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-04
+### Neu
+- **Claim-Level-Grounding:** Der Prompt verlangt Marker `[n]` je Aussage. Fehlt ein Marker, ist er ungültig oder steht eine Zahl, Norm-Nummer oder Zahl-Einheit-Angabe nicht in den zitierten Chunks, wird die Antwort verworfen (`UNGROUNDED_CLAIM`, Eskalationsdatensatz mit `antwort`, `aussagen_gesamt`, `aussagen_ohne_beleg`). Aussagen ohne Zahl bleiben inhaltlich ungeprüft (#29, ADR 0014).
+- `python -m evaluation.befolgung` misst, wie oft das lokale Modell das Markerformat einhält (#29).
+- SSE-Event `status`, Feld `nr` in `sources`; die UI zeigt den Wartetext und die Nummern der Fundstellen (#29).
+### Geändert
+- `/chat` streamt keine Tokens mehr: Die Antwort wird gepuffert und erst nach bestandener Prüfung als ein `token`-Event ausgeliefert; ein LLM-Fehler zeigt keinen Teiltext (#29).
+- Der Systemprompt ist neu; der Satz "Reicht der Kontext nicht, sag das ehrlich" entfällt zugunsten von "lass alles andere weg" (#29).
+### Hinweis
+- Faithfulness Ø 0.93 gilt für den alten Prompt, kein Neulauf.
+- **Offen:** Die Befolgungsquote des Modells ist nicht gemessen; befolgt es das Format selten, verweigert das System fast alles.
+
 ## 2026-11-01
 ### Neu
 - **Eskalationsdatei begrenzt:** Rotation ab `REGRAG_ESKALATION_MAX_BYTES` (5 MiB) oder halber Frist, Löschung nach `REGRAG_ESKALATION_AUFBEWAHRUNG_TAGE` (90) und über `REGRAG_ESKALATION_MAX_ARCHIVE` (5), Bereinigung auch beim Serverstart; Löschweg in ADR 0010 (#34).
