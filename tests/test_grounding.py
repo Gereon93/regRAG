@@ -210,6 +210,12 @@ def test_judge_verneint_und_uebrige_aussagen_werden_weiter_geprueft():
         ("Eine 72-Stunden-Frist gilt.", "binnen 72 Stunden"),
         ("Das sind 50 %.", "mindestens 50 Prozent"),
         ("Das Leitungsorgan haftet.", "irgendein Text"),
+        ("Die Frist beträgt 4 h.", "binnen 4 Stunden"),
+        ("Die Frist beträgt 4 Std.", "binnen 4 Stunden"),
+        ("Die Frist beträgt 4 Stunden.", "binnen 4 Std."),
+        ("Bis zu 500 €.", "bis zu 500 EUR"),
+        ("Der Anteil beträgt 3,5 %.", "mindestens 3,5 Prozent"),
+        ("Der Wert beträgt 1,5.", "Der Wert beträgt 1.5."),
     ],
 )
 def test_zahlen_judge_besteht(aussage, fundstelle):
@@ -224,6 +230,11 @@ def test_zahlen_judge_besteht(aussage, fundstelle):
         ("Die Richtlinie 2022/2555 gilt.", "Die Verordnung 2022/2554 gilt."),
         ("Die Frist beträgt 4 Stunden.", "Absatz 4 sieht eine Meldung binnen 72 Stunden vor."),
         ("Binnen 30 Arbeitstagen.", "innerhalb von 30 Kalendertagen"),
+        ("Die Frist beträgt 4 h.", "binnen 4 Tagen"),
+        ("Bis zu 500 €.", "bis zu 500 Stück"),
+        ("Der Schwellenwert beträgt 5,1.", "Der Schwellenwert beträgt 1,5."),
+        ("Die Frist beträgt 1.5 Monate.", "Artikel 1: Die Frist beträgt 5 Monate."),
+        ("Der Wert beträgt 3,5.", "Absatz 3 nennt Absatz 5."),
     ],
 )
 def test_zahlen_judge_scheitert(aussage, fundstelle):
@@ -324,7 +335,7 @@ def test_schluss_ohne_leerzeichen_zaehlt_als_abkuerzung_mit_punkten():
 
 
 def test_zeile_mit_mehreren_fetten_stellen_ist_keine_ueberschrift():
-    assert zerlege("**Frist** beträgt 72 **Stunden**\nSatz [1].") == ["Frist beträgt 72 Stunden", "Satz [1]."]
+    assert zerlege("**Frist** beträgt 72 **Stunden**\n\nSatz [1].") == ["Frist beträgt 72 Stunden", "Satz [1]."]
 
 
 @pytest.mark.parametrize(
@@ -353,3 +364,41 @@ def test_einleitung_mit_marker_vor_liste_wird_gegen_die_fundstelle_geprueft():
     befund = pruefe_antwort("Es gilt eine Frist von 72 Stunden [1]:\n- Vorfälle sind zu melden [1].", quellen)
 
     assert [f.grund for f in befund.fehlstellen] == ["nicht_gestuetzt"]
+
+
+@pytest.mark.parametrize(
+    ("antwort", "fehlend"),
+    [
+        ("Satz ohne Marker. danach folgt Text [1].", "Satz ohne Marker."),
+        ("Satz ohne Marker. 72 Stunden gelten [1].", "Satz ohne Marker."),
+    ],
+)
+def test_satzgrenze_gilt_auch_vor_kleinbuchstabe_und_ziffer(antwort, fehlend):
+    assert [f.text for f in fehlstellen(antwort)] == [fehlend]
+
+
+@pytest.mark.parametrize("abkuerzung", ["bzgl.", "ff.", "max.", "mind.", "vs."])
+def test_abkuerzung_vor_kleinbuchstabe_trennt_nicht(abkuerzung):
+    antwort = f"Das gilt {abkuerzung} der Frist [1]."
+
+    assert zerlege(antwort) == [antwort]
+
+
+def test_umbruch_im_satz_bleibt_eine_aussage():
+    assert zerlege("Finanzunternehmen müssen\nVorfälle melden [1].") == ["Finanzunternehmen müssen Vorfälle melden [1]."]
+
+
+def test_umbruch_im_listenpunkt_bleibt_eine_aussage():
+    assert zerlege("- Vorfälle sind\n  zu melden [1].\n- Nächster Punkt [2].") == [
+        "Vorfälle sind zu melden [1].",
+        "Nächster Punkt [2].",
+    ]
+
+
+@pytest.mark.parametrize(
+    "antwort",
+    ["Eins [1].\nZwei [2].", "Eins [1]\nZwei [2].", "**Fett**\nZwei [2].", "| a [1] |\nZwei [2]."],
+)
+def test_neue_zeile_nach_abgeschlossener_zeile_bleibt_getrennt(antwort):
+    assert len(zerlege(antwort)) >= 1
+    assert zerlege(antwort)[-1] == "Zwei [2]."

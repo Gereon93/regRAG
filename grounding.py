@@ -21,9 +21,9 @@ Belegt keine Fundstelle die Antwort, schreibe nur: Der Kontext reicht nicht aus.
 MARKER = re.compile(r"\[\s*\d+(?:\s*,\s*\d+)*\s*\]")
 ABKUERZUNGEN = frozenset(
     {
-        "abl", "abs", "art", "bspw", "buchst", "bzw", "ca", "dr", "erwgr", "etc", "evtl", "gem", "ggf",
-        "inkl", "insb", "kap", "lit", "mio", "mrd", "nr", "prof", "rn", "sog", "tz", "ua", "usw", "vgl",
-        "ziff", "zzgl",
+        "abl", "abs", "anh", "art", "bspw", "buchst", "bzgl", "bzw", "ca", "dr", "einschl", "entspr", "erwgr",
+        "etc", "evtl", "ff", "gem", "ggf", "inkl", "insb", "kap", "lit", "max", "min", "mind", "mio", "mrd",
+        "nr", "prof", "rn", "sog", "tz", "ua", "usw", "vgl", "vs", "ziff", "zzgl",
     }
 )
 LISTENPUNKT = re.compile(r"^(?:[-*•]|\d+[.)]|[a-z]\)|\(\w{1,4}\))\s+")
@@ -31,15 +31,17 @@ QUELLENZEILE = re.compile(r"^(?:quellen?|fundstellen?)\s*:", re.IGNORECASE)
 TRENNZEILE = re.compile(r"^[|:\-\s]+$")
 NUR_FETT = re.compile(r"^(\*\*|__)(?:(?!\*\*|__).)+(\*\*|__):?$")
 SATZENDE = re.compile(rf"[.!?][\"”“)]*(?P<nach>(?:\s*{MARKER.pattern})*)(?=\s|$)")
+EINHEITEN = {"%": "prozent", "€": "eur", "h": "stunde", "std": "stunde"}
 MARKER_AM_ENDE = re.compile(rf"{MARKER.pattern}\s*$")
 MARKER_MIT_ABSTAND = re.compile(rf"\s*{MARKER.pattern}")
 FORMATIERUNG = re.compile(r"\*\*|__|`")
 MAX_UEBERSCHRIFT_ZEICHEN = 80
 
-ZAHL = re.compile(r"\d+(?:/\d+)*")
+ZAHL = re.compile(r"(?<![\d.,])\d+[.,]\d+(?![.,]?\d)|\d+(?:/\d+)*")
 TAUSENDER = re.compile(r"\b\d{1,3}(?:[ . ]\d{3})+\b")
 MENGE = re.compile(
-    r"(\d+(?:,\d+)?)[\s-]*(kalender|arbeits|werk|geschäfts)?(stunde|tag|woche|monat|jahr|prozent|%|eur|mio|mrd)",
+    r"(?<![\d.,])(\d+(?:[.,]\d+)?)[\s-]*(kalender|arbeits|werk|geschäfts)?"
+    r"(stunde|std\b|h\b|tag|woche|monat|jahr|prozent|%|eur|€|mio|mrd)",
     re.IGNORECASE,
 )
 
@@ -73,21 +75,18 @@ def baue_kontext(nodes):
     return "\n\n".join(f"[{i}] {n.text}" for i, n in enumerate(nodes, start=1))
 
 
-def _ist_satzgrenze(vor, nach, rest):
+def _ist_satzgrenze(vor, nach):
     if nach or MARKER_AM_ENDE.search(vor):
         return True
     woerter = vor.split()
     wort = woerter[-1].strip("()").rsplit(".", 1)[-1] if woerter else ""
-    if len(wort) == 1 or wort.lower() in ABKUERZUNGEN or (wort.isdigit() and len(wort) <= 2):
-        return False
-    return rest.lstrip("„\"('*")[:1].isupper()
+    return not (len(wort) == 1 or wort.lower() in ABKUERZUNGEN or (wort.isdigit() and len(wort) <= 2))
 
 
 def _saetze(text):
     saetze, start = [], 0
     for treffer in SATZENDE.finditer(text):
-        rest = text[treffer.end() :].lstrip()
-        if rest and _ist_satzgrenze(text[start : treffer.start()], treffer["nach"], rest):
+        if text[treffer.end() :].strip() and _ist_satzgrenze(text[start : treffer.start()], treffer["nach"]):
             saetze.append(text[start : treffer.end()].strip())
             start = treffer.end()
     letzter = text[start:].strip()
@@ -127,11 +126,38 @@ def _aussagen_der_zeile(zeile, folge, hat_nachfolger):
     return saetze
 
 
+def _ist_struktur(zeile):
+    return bool(
+        zeile.startswith(("|", "#"))
+        or QUELLENZEILE.match(zeile)
+        or NUR_FETT.match(LISTENPUNKT.sub("", zeile))
+    )
+
+
+def _laeuft_weiter(zeile):
+    return not (_ist_struktur(zeile) or zeile.endswith((".", "!", "?", ":")) or MARKER_AM_ENDE.search(zeile))
+
+
+def _zeilen(antwort):
+    """Physische Zeilen ohne Leerzeilen; ein Umbruch mitten im Satz wird zusammengefügt."""
+    zeilen, offen = [], False
+    for roh in antwort.splitlines():
+        zeile = roh.strip().removeprefix("> ").strip()
+        if not zeile:
+            offen = False
+            continue
+        if offen and not _ist_struktur(zeile) and not LISTENPUNKT.match(zeile):
+            zeilen[-1] += f" {zeile}"
+        else:
+            zeilen.append(zeile)
+        offen = _laeuft_weiter(zeilen[-1])
+    return zeilen
+
+
 def zerlege(antwort):
-    """Aussage = Satz, Listenpunkt oder Tabellenzeile; Regeln und Belege in .specs/issue-29.md."""
-    zeilen = [z for z in (roh.strip().removeprefix("> ").strip() for roh in antwort.splitlines()) if z]
+    """Aussage = Satz, Listenpunkt oder Tabellenzeile; Grenzen in ADR 0014."""
     aussagen = []
-    for zeile, folge in reversed(list(pairwise([*zeilen, ""]))):
+    for zeile, folge in reversed(list(pairwise([*_zeilen(antwort), ""]))):
         aussagen[:0] = _aussagen_der_zeile(zeile, folge, hat_nachfolger=bool(aussagen))
     return aussagen
 
@@ -139,10 +165,10 @@ def zerlege(antwort):
 def _zahlen_und_mengen(text):
     text = TAUSENDER.sub(lambda t: re.sub(r"\D", "", t[0]), text)
     mengen = {
-        (zahl, praefix.lower(), "prozent" if stamm == "%" else stamm.lower())
+        (zahl.replace(",", "."), praefix.lower(), EINHEITEN.get(stamm.lower(), stamm.lower()))
         for zahl, praefix, stamm in MENGE.findall(text)
     }
-    return set(ZAHL.findall(text)), mengen
+    return {zahl.replace(",", ".") for zahl in ZAHL.findall(text)}, mengen
 
 
 def zahlen_judge(aussage, fundstellen):

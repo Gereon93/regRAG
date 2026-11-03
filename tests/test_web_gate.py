@@ -349,7 +349,7 @@ def test_llm_fehler_nach_einem_chunk_zeigt_keinen_teiltext_und_eskaliert_nicht(s
     assert not strom.eskalationen.exists()
 
 
-def test_fehler_in_der_pruefung_liefert_nie_die_antwort(strom, monkeypatch):
+def test_fehler_in_der_pruefung_liefert_nie_die_antwort(strom, monkeypatch, caplog):
     def kaputt(*a):
         raise RuntimeError("kaputt")
 
@@ -360,6 +360,7 @@ def test_fehler_in_der_pruefung_liefert_nie_die_antwort(strom, monkeypatch):
 
     assert _typen(events) == ["status", "error", "sources", "done"]
     assert "Leitungsorgan" not in _dump(events)
+    assert "RuntimeError: kaputt" in caplog.text
 
 
 def test_metrics_zaehlt_verwurf_als_eine_entscheidung(strom, monkeypatch):

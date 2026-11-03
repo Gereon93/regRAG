@@ -29,7 +29,8 @@ Aussage werden verworfen.
 
 ## Was die Prüfung beweist und was nicht
 
-Bewiesen: Jede Aussage trägt einen gültigen Marker, und ihre Zahlen stehen in den zitierten Chunks.
+Bewiesen: Jede von `zerlege` gebildete Aussage trägt einen gültigen Marker, und ihre Zahlen stehen in den zitierten Chunks.
+Eine Aussage ist nicht immer ein Satz (siehe "Bekannte Grenzen der Zerlegung").
 
 **Nicht bewiesen: dass eine Aussage ohne Zahl inhaltlich gedeckt ist.** "Das Leitungsorgan haftet persönlich [1]."
 besteht, sobald `[1]` existiert. Das ist kein Faktencheck; niemand darf daraus "belegt" oder "faktengeprüft" machen.
@@ -66,9 +67,10 @@ wichtigste Unbekannte. Befolgt es das Format selten, verweigert das System fast 
 - Einleitungen auf `:` vor einer Liste oder Tabelle sind keine Aussagen, solange sie weder Zahl noch Marker tragen.
 - Ungeprüft bleiben außerdem Zeilen auf `Quelle:` (reales Schlussmuster des Modells, enthält fremde Fundstellenangaben) und
   Tabellenköpfe. Eine dort versteckte Aussage passiert; das ist akzeptiert, weil beide Formen der Prompt nicht vorsieht.
-- Bekannte Grenzen der Zerlegung: Nach einer höchstens zweistelligen Zahl am Satzende verschmelzen zwei Sätze, ein
-  Marker genügt dann für beide. Eine fremde Abkürzung vor einem Großbuchstaben trennt und führt zum Verwurf (fail
-  closed); die Liste `ABKUERZUNGEN` wird mit Test erweitert. Ausgeschriebene Zahlen (`vier Stunden`) sieht der
+- Bekannte Grenzen der Zerlegung: Nach einer höchstens zweistelligen Zahl, einem Einzelzeichen oder einer Abkürzung am
+  Satzende verschmelzen zwei Sätze, ein Marker genügt dann für beide. Eine fremde Abkürzung trennt und führt zum Verwurf
+  (fail closed); die Liste `ABKUERZUNGEN` wird mit Test erweitert. Am DORA-Volltext trennt die Regel vor Kleinbuchstaben
+  und Ziffern nichts zusätzlich. Ein Umbruch wird zusammengefügt, wenn die Zeile nicht auf Satzzeichen oder Marker endet. Ausgeschriebene Zahlen (`vier Stunden`) sieht der
   `zahlen_judge` nicht.
 - Verworfener Text steht nie in SSE, Log oder `/metrics`, nur im Eskalationsdatensatz. Der enthält damit auch
   Antworttext, der die Frage wiederholen kann; Aufbewahrung und Löschweg siehe ADR 0010.

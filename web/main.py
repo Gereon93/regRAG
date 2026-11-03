@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import tempfile
 import threading
 import uuid
@@ -28,6 +29,7 @@ from gate import (
 from grounding import baue_kontext
 
 aktiviere_score_log()
+log = logging.getLogger(__name__)
 
 
 
@@ -85,7 +87,8 @@ async def _antwort_strom(frage):
         nachrichten = prompt.format_messages(kontext=baue_kontext(nodes), frage=frage)
         antwort = "".join([c.content async for c in llm.astream(nachrichten) if c.content])
         geprueft = await asyncio.to_thread(pruefe_grounding, frage, nodes, antwort, pruefung.entscheidung)
-    except Exception as e:  # noqa: BLE001 - jeder Fehler wird als SSE-Event gemeldet, nie ungeprüfter Text
+    except Exception as e:
+        log.exception("Antwort konnte nicht erzeugt oder geprüft werden")
         yield _sse({"type": "error", "text": f"Antwort konnte nicht erzeugt werden ({type(e).__name__}) — bitte erneut versuchen."})
     else:
         if geprueft.verweigert:
