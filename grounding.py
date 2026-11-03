@@ -23,7 +23,7 @@ ABKUERZUNGEN = frozenset(
     {
         "abl", "abs", "anh", "art", "bspw", "buchst", "bzgl", "bzw", "ca", "dr", "einschl", "entspr", "erwgr",
         "etc", "evtl", "ff", "gem", "ggf", "inkl", "insb", "kap", "lit", "max", "min", "mind", "mio", "mrd",
-        "nr", "prof", "rn", "sog", "tz", "ua", "usw", "vgl", "vs", "ziff", "zzgl",
+        "nr", "prof", "rn", "sog", "std", "tsd", "tz", "ua", "usw", "vgl", "vs", "ziff", "zzgl",
     }
 )
 LISTENPUNKT = re.compile(r"^(?:[-*•]|\d+[.)]|[a-z]\)|\(\w{1,4}\))\s+")
@@ -162,13 +162,18 @@ def zerlege(antwort):
     return aussagen
 
 
+def _normiere_zahl(zahl):
+    wert = zahl.replace(",", ".")
+    return wert.rstrip("0").rstrip(".") if "." in wert else wert
+
+
 def _zahlen_und_mengen(text):
     text = TAUSENDER.sub(lambda t: re.sub(r"\D", "", t[0]), text)
     mengen = {
-        (zahl.replace(",", "."), praefix.lower(), EINHEITEN.get(stamm.lower(), stamm.lower()))
+        (_normiere_zahl(zahl), praefix.lower(), EINHEITEN.get(stamm.lower(), stamm.lower()))
         for zahl, praefix, stamm in MENGE.findall(text)
     }
-    return {zahl.replace(",", ".") for zahl in ZAHL.findall(text)}, mengen
+    return {_normiere_zahl(zahl) for zahl in ZAHL.findall(text)}, mengen
 
 
 def zahlen_judge(aussage, fundstellen):
