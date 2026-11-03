@@ -223,6 +223,7 @@ def test_zahlen_judge_besteht(aussage, fundstelle):
         ("Es gilt ISO 27001.", "Es gelten anerkannte Standards."),
         ("Die Richtlinie 2022/2555 gilt.", "Die Verordnung 2022/2554 gilt."),
         ("Die Frist beträgt 4 Stunden.", "Absatz 4 sieht eine Meldung binnen 72 Stunden vor."),
+        ("Binnen 30 Arbeitstagen.", "innerhalb von 30 Kalendertagen"),
     ],
 )
 def test_zahlen_judge_scheitert(aussage, fundstelle):

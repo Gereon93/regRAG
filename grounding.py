@@ -39,7 +39,7 @@ MAX_UEBERSCHRIFT_ZEICHEN = 80
 ZAHL = re.compile(r"\d+(?:/\d+)*")
 TAUSENDER = re.compile(r"\b\d{1,3}(?:[ . ]\d{3})+\b")
 MENGE = re.compile(
-    r"(\d+(?:,\d+)?)[\s-]*(?:kalender|arbeits|werk|geschäfts)?(stunde|tag|woche|monat|jahr|prozent|%|eur|mio|mrd)",
+    r"(\d+(?:,\d+)?)[\s-]*(kalender|arbeits|werk|geschäfts)?(stunde|tag|woche|monat|jahr|prozent|%|eur|mio|mrd)",
     re.IGNORECASE,
 )
 
@@ -133,7 +133,10 @@ def zerlege(antwort):
 
 def _zahlen_und_mengen(text):
     text = TAUSENDER.sub(lambda t: re.sub(r"\D", "", t[0]), text)
-    mengen = {(zahl, "prozent" if stamm == "%" else stamm.lower()) for zahl, stamm in MENGE.findall(text)}
+    mengen = {
+        (zahl, praefix.lower(), "prozent" if stamm == "%" else stamm.lower())
+        for zahl, praefix, stamm in MENGE.findall(text)
+    }
     return set(ZAHL.findall(text)), mengen
 
 
@@ -141,7 +144,11 @@ def zahlen_judge(aussage, fundstellen):
     """Prüft nur Zahlen, Norm-Nummern und Zahl-Einheit-Paare; Aussagen ohne Zahl bleiben ungeprüft (ADR 0014)."""
     zahlen, mengen = _zahlen_und_mengen(aussage)
     belegte_zahlen, belegte_mengen = _zahlen_und_mengen(fundstellen)
-    return zahlen <= belegte_zahlen and mengen <= belegte_mengen
+    ohne_praefix = {(zahl, stamm) for zahl, _, stamm in belegte_mengen}
+    return zahlen <= belegte_zahlen and all(
+        (zahl, praefix, stamm) in belegte_mengen if praefix else (zahl, stamm) in ohne_praefix
+        for zahl, praefix, stamm in mengen
+    )
 
 
 def _pruefe_aussage(aussage, nodes, judge):
