@@ -218,6 +218,9 @@ def test_judge_verneint_und_uebrige_aussagen_werden_weiter_geprueft():
         ("Der Wert beträgt 1,5.", "Der Wert beträgt 1.5."),
         ("Die Frist beträgt 5,0 Tage.", "Die Frist beträgt 5 Tage."),
         ("Der Wert beträgt 1,50.", "Der Wert beträgt 1,5."),
+        ("Der Anteil beträgt 0,0 %.", "Der Anteil beträgt 0 %."),
+        ("Die Frist beträgt 30 Min.", "binnen 30 Minuten"),
+        ("Die Frist beträgt 30 Sek.", "binnen 30 Sekunden"),
     ],
 )
 def test_zahlen_judge_besteht(aussage, fundstelle):
@@ -236,6 +239,9 @@ def test_zahlen_judge_besteht(aussage, fundstelle):
         ("Bis zu 500 €.", "bis zu 500 Stück"),
         ("Der Schwellenwert beträgt 5,1.", "Der Schwellenwert beträgt 1,5."),
         ("Der Wert beträgt 10,5.", "Der Wert beträgt 10."),
+        ("Gemäß Tz. 2.10.", "Gemäß Tz. 2.1."),
+        ("Die Frist beträgt 30 Minuten.", "Die Frist beträgt 30 Tage."),
+        ("Die Frist beträgt 30 Sekunden.", "Die Frist beträgt 30 Minuten."),
         ("Die Frist beträgt 1.5 Monate.", "Artikel 1: Die Frist beträgt 5 Monate."),
         ("Der Wert beträgt 3,5.", "Absatz 3 nennt Absatz 5."),
     ],
@@ -380,7 +386,7 @@ def test_satzgrenze_gilt_auch_vor_kleinbuchstabe_und_ziffer(antwort, fehlend):
     assert [f.text for f in fehlstellen(antwort)] == [fehlend]
 
 
-@pytest.mark.parametrize("abkuerzung", ["bzgl.", "ff.", "max.", "mind.", "vs.", "Std.", "Tsd."])
+@pytest.mark.parametrize("abkuerzung", ["bzgl.", "ff.", "max.", "mind.", "vs.", "Std.", "Tsd.", "Sek."])
 def test_abkuerzung_vor_kleinbuchstabe_trennt_nicht(abkuerzung):
     antwort = f"Das gilt {abkuerzung} der Frist [1]."
 

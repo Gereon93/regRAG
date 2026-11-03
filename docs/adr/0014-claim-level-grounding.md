@@ -70,7 +70,7 @@ wichtigste Unbekannte. Befolgt es das Format selten, verweigert das System fast 
 - Bekannte Grenzen der Zerlegung: Nach einer höchstens zweistelligen Zahl, einem Einzelzeichen oder einer Abkürzung am
   Satzende verschmelzen zwei Sätze, ein Marker genügt dann für beide. Eine fremde Abkürzung trennt und führt zum Verwurf
   (fail closed); die Liste `ABKUERZUNGEN` wird mit Test erweitert. Am DORA-Volltext trennt die Regel vor Kleinbuchstaben
-  und Ziffern nichts zusätzlich. Ein Umbruch wird zusammengefügt, wenn die Zeile nicht auf Satzzeichen oder Marker endet. Ausgeschriebene Zahlen (`vier Stunden`) sieht der
-  `zahlen_judge` nicht.
+  und Ziffern nichts zusätzlich. Ein Umbruch wird zusammengefügt, wenn die Zeile nicht auf Satzzeichen oder Marker endet. Ausgeschriebene Zahlen (`vier Stunden`) und Vorzeichen
+  (`-5 %`) sieht der `zahlen_judge` nicht ([#49](../../../../issues/49)).
 - Verworfener Text steht nie in SSE, Log oder `/metrics`, nur im Eskalationsdatensatz. Der enthält damit auch
   Antworttext, der die Frage wiederholen kann; Aufbewahrung und Löschweg siehe ADR 0010.

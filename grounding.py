@@ -23,7 +23,7 @@ ABKUERZUNGEN = frozenset(
     {
         "abl", "abs", "anh", "art", "bspw", "buchst", "bzgl", "bzw", "ca", "dr", "einschl", "entspr", "erwgr",
         "etc", "evtl", "ff", "gem", "ggf", "inkl", "insb", "kap", "lit", "max", "min", "mind", "mio", "mrd",
-        "nr", "prof", "rn", "sog", "std", "tsd", "tz", "ua", "usw", "vgl", "vs", "ziff", "zzgl",
+        "nr", "prof", "rn", "sek", "sog", "std", "tsd", "tz", "ua", "usw", "vgl", "vs", "ziff", "zzgl",
     }
 )
 LISTENPUNKT = re.compile(r"^(?:[-*•]|\d+[.)]|[a-z]\)|\(\w{1,4}\))\s+")
@@ -31,7 +31,7 @@ QUELLENZEILE = re.compile(r"^(?:quellen?|fundstellen?)\s*:", re.IGNORECASE)
 TRENNZEILE = re.compile(r"^[|:\-\s]+$")
 NUR_FETT = re.compile(r"^(\*\*|__)(?:(?!\*\*|__).)+(\*\*|__):?$")
 SATZENDE = re.compile(rf"[.!?][\"”“)]*(?P<nach>(?:\s*{MARKER.pattern})*)(?=\s|$)")
-EINHEITEN = {"%": "prozent", "€": "eur", "h": "stunde", "std": "stunde"}
+EINHEITEN = {"%": "prozent", "€": "eur", "h": "stunde", "std": "stunde", "min": "minute", "sek": "sekunde"}
 MARKER_AM_ENDE = re.compile(rf"{MARKER.pattern}\s*$")
 MARKER_MIT_ABSTAND = re.compile(rf"\s*{MARKER.pattern}")
 FORMATIERUNG = re.compile(r"\*\*|__|`")
@@ -41,7 +41,7 @@ ZAHL = re.compile(r"(?<![\d.,])\d+[.,]\d+(?![.,]?\d)|\d+(?:/\d+)*")
 TAUSENDER = re.compile(r"\b\d{1,3}(?:[ . ]\d{3})+\b")
 MENGE = re.compile(
     r"(?<![\d.,])(\d+(?:[.,]\d+)?)[\s-]*(kalender|arbeits|werk|geschäfts)?"
-    r"(stunde|std\b|h\b|tag|woche|monat|jahr|prozent|%|eur|€|mio|mrd)",
+    r"(sekunde|sek\b|minute|min\b|stunde|std\b|h\b|tag|woche|monat|jahr|prozent|%|eur|€|mio|mrd)",
     re.IGNORECASE,
 )
 
@@ -163,8 +163,10 @@ def zerlege(antwort):
 
 
 def _normiere_zahl(zahl):
-    wert = zahl.replace(",", ".")
-    return wert.rstrip("0").rstrip(".") if "." in wert else wert
+    """Nur das Komma ist eindeutig dezimal; `2.10` kann eine Gliederungsnummer sein und bleibt unverändert."""
+    ganz, komma, nachkomma = zahl.partition(",")
+    nachkomma = nachkomma.rstrip("0")
+    return f"{ganz}.{nachkomma}" if komma and nachkomma else ganz
 
 
 def _zahlen_und_mengen(text):
