@@ -2,14 +2,17 @@
 
 import logging
 import math
+from itertools import combinations
 from urllib.parse import urlsplit
 
 import httpx
 
 from gate import (
     AbstainReason,
+    FassungsGate,
     GateDecision,
     GateScores,
+    GueltigkeitsGate,
     Kaskade,
     Outcome,
     RetrievalScoreGate,
@@ -24,6 +27,10 @@ PFAD = "/v1/systemone"
 CONNECT_TIMEOUT_SEKUNDEN = 2.0
 FRAGE_ID = "answerable"
 FRAGEN = {FRAGE_ID: {"type": "noul", "instructions": "Enthält die Evidenz die Antwort auf die Frage?"}}
+KONFLIKT_ID = "conflict"
+KONFLIKT_FRAGEN = {
+    KONFLIKT_ID: {"type": "noul", "instructions": "Widersprechen sich die beiden Textstellen in Bezug auf die Frage?"}
+}
 MAX_JUDGE_EVIDENZ_ZEICHEN = 20_000
 LOKALE_HOSTS = {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
 ERSTER_FEHLERSTATUS = 400
@@ -93,9 +100,12 @@ class LayaGate:
     def answerable_roh(self, frage, nodes):
         """Rohwahrscheinlichkeit von Laya; wirft JudgeFehler bei Ausfall oder (streng) fremdem Checkpoint."""
         evidenz = "\n\n".join(n.text for n in nodes)[: self.max_evidenz_zeichen]
-        state = {"frage": frage, "evidenz": evidenz}
-        antwort = self.client.entscheide(state, FRAGEN, model=self.modell, lang=self.lang, max_len=self.max_len)
-        wahrscheinlichkeit = _lies_wahrscheinlichkeit(antwort)
+        return self.beurteile({"frage": frage, "evidenz": evidenz}, FRAGEN, FRAGE_ID)
+
+    def beurteile(self, state, fragen, frage_id):
+        """Eine Protokollfrage an Laya; wirft JudgeFehler bei Ausfall oder (streng) fremdem Checkpoint."""
+        antwort = self.client.entscheide(state, fragen, model=self.modell, lang=self.lang, max_len=self.max_len)
+        wahrscheinlichkeit = _lies_wahrscheinlichkeit(antwort, frage_id)
         if not self._pruefe_auffaelligkeiten(antwort) and self.modell_streng:
             raise JudgeFehler
         return wahrscheinlichkeit
@@ -141,11 +151,39 @@ class LayaGate:
         return True
 
 
-def _lies_wahrscheinlichkeit(antwort):
+class LayaKonfliktGate:
+    """Fragt je Dokumentpaar, ob sich die Textstellen widersprechen; löst nichts auf (docs/adr/0015)."""
+
+    def __init__(self, laya, schwelle):
+        self.laya = laya
+        self.schwelle = schwelle
+
+    def entscheide(self, frage, nodes):
+        hoechster = None
+        for a, b in combinations(nodes, 2):
+            if a.metadata.get("file_name") == b.metadata.get("file_name"):
+                continue
+            try:
+                wert = self.laya.beurteile(self._state(frage, a, b), KONFLIKT_FRAGEN, KONFLIKT_ID)
+            except JudgeFehler:
+                return GateDecision(Outcome.ABSTAIN, (AbstainReason.JUDGE_UNAVAILABLE,), GateScores(konflikt=hoechster))
+            hoechster = wert if hoechster is None else max(hoechster, wert)
+            if wert >= self.schwelle:
+                return GateDecision(
+                    Outcome.ABSTAIN, (AbstainReason.CONFLICTING_PROVISIONS,), GateScores(konflikt=hoechster)
+                )
+        return GateDecision(Outcome.ANSWER, (), GateScores(konflikt=hoechster))
+
+    def _state(self, frage, a, b):
+        grenze = self.laya.max_evidenz_zeichen // 2
+        return {"frage": frage, "a": a.text[:grenze], "b": b.text[:grenze]}
+
+
+def _lies_wahrscheinlichkeit(antwort, frage_id=FRAGE_ID):
     try:
-        wert = antwort["answers"][FRAGE_ID]["noul"]
+        wert = antwort["answers"][frage_id]["noul"]
     except (KeyError, TypeError):
-        log.warning("Laya-Antwort ohne %s", FRAGE_ID)
+        log.warning("Laya-Antwort ohne %s", frage_id)
         raise JudgeFehler from None
     if isinstance(wert, bool) or not isinstance(wert, int | float) or not math.isfinite(wert) or not 0 <= wert <= 1:
         log.warning("Laya-Antwort mit ungültiger Wahrscheinlichkeit")
@@ -161,12 +199,16 @@ def warne_wenn_nicht_lokal(url):
 
 def baue_gate(einstellungen, transport=None):
     score_gate = RetrievalScoreGate(einstellungen.MIN_RETRIEVAL_SCORE)
+    vorpruefung = [score_gate, GueltigkeitsGate(), score_gate, FassungsGate()]
+    konflikt_schwelle = einstellungen.LAYA_KONFLIKT_SCHWELLE
     url = (einstellungen.LAYA_URL or "").strip()
     manifest_pfad = (einstellungen.GATE_MANIFEST or "").strip()
     if not url:
         if manifest_pfad:
             raise ValueError("REGRAG_GATE_MANIFEST ist gesetzt, aber REGRAG_LAYA_URL fehlt.")
-        return score_gate
+        if konflikt_schwelle is not None:
+            raise ValueError("REGRAG_LAYA_KONFLIKT_SCHWELLE ist gesetzt, aber REGRAG_LAYA_URL fehlt.")
+        return Kaskade(vorpruefung)
     warne_wenn_nicht_lokal(url)
     client = SystemOneClient(url, einstellungen.LAYA_API_KEY, einstellungen.LAYA_TIMEOUT, transport)
     optionen = {
@@ -185,4 +227,7 @@ def baue_gate(einstellungen, transport=None):
         )
     else:
         laya = LayaGate(client, lambda segment: einstellungen.LAYA_MIN_ANSWERABLE, **optionen)
-    return Kaskade([score_gate, laya])
+    if konflikt_schwelle is None:
+        return Kaskade([*vorpruefung, laya])
+    log.warning("Konflikt-Judge mit unkalibrierter Schwelle %s eingeschaltet", konflikt_schwelle)
+    return Kaskade([*vorpruefung, laya, LayaKonfliktGate(laya, konflikt_schwelle)])

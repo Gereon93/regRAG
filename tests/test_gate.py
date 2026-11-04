@@ -3,7 +3,7 @@ import logging
 import os
 import stat
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -17,8 +17,10 @@ from gate import (
     UNBEKANNT,
     AbstainReason,
     EskalationsGrenzen,
+    FassungsGate,
     GateDecision,
     GateScores,
+    GueltigkeitsGate,
     Kaskade,
     Outcome,
     RetrievalScoreGate,
@@ -55,6 +57,7 @@ def test_reasons_decken_alle_fachlichen_gruende_ab():
         "OUTDATED_SOURCE",
         "CONFLICTING_PROVISIONS",
         "UNGROUNDED_CLAIM",
+        "AMBIGUOUS_VERSION",
         "JUDGE_UNAVAILABLE",
     }
 
@@ -111,9 +114,10 @@ def test_eskalationsdatensatz_enthaelt_frage_evidenz_scores_reasons_utc():
 
     assert satz == {
         "zeitpunkt": "2026-10-27T12:00:00+00:00",
+        "stichtag": "2026-10-27",
         "frage": "Frage?",
-        "evidenz": [{"quelle": "q.md", "score": 0.5, "text": "Text"}],
-        "scores": {"relevance": 0.5, "answerable": None},
+        "evidenz": [{"quelle": "q.md", "score": 0.5, "text": "Text", "gueltigkeit": "unbekannt"}],
+        "scores": {"relevance": 0.5, "answerable": None, "konflikt": None},
         "reasons": ["LOW_RELEVANCE"],
         "segment": UNBEKANNT,
     }
@@ -650,7 +654,7 @@ def test_ohne_zusatz_hat_der_datensatz_keine_grounding_felder():
 
     satz = eskalationsdatensatz("F", [], entscheidung, JETZT)
 
-    assert set(satz) == {"zeitpunkt", "frage", "evidenz", "scores", "reasons", "segment"}
+    assert set(satz) == {"zeitpunkt", "stichtag", "frage", "evidenz", "scores", "reasons", "segment"}
 
 
 def test_schreibe_eskalation_reicht_zusatz_durch(tmp_path):
@@ -673,3 +677,220 @@ def test_zaehle_verwurf_kippt_bei_zaehlfehler_nichts(monkeypatch):
     entscheidung = GateDecision(Outcome.ABSTAIN, (AbstainReason.UNGROUNDED_CLAIM,), GateScores())
 
     gate_modul.zaehle_verwurf(entscheidung, [])
+
+
+STICHTAG = date(2026, 6, 15)
+
+
+def fassung(score=0.9, quelle="dora", file_name="a.md", segment=None, **metadaten):
+    metadata = {"quelle": quelle, "file_name": file_name, **metadaten}
+    if segment:
+        metadata["segment"] = segment
+    return SimpleNamespace(score=score, text=f"Text {file_name}", metadata=metadata)
+
+
+ABGELAUFEN = {"gueltig_bis": "2026-06-14"}
+GUELTIG = {"gueltig_ab": "2026-01-01"}
+
+
+def gueltigkeits_gate():
+    return GueltigkeitsGate(uhr=lambda: STICHTAG)
+
+
+def test_nur_nutzbare_treffer_engen_nicht_ein():
+    nodes = [fassung(**GUELTIG), fassung(file_name="b.md")]
+
+    entscheidung = gueltigkeits_gate().entscheide("f", nodes)
+
+    assert entscheidung.outcome is Outcome.ANSWER
+    assert entscheidung.evidenz is None
+
+
+def test_nur_abgelaufene_treffer_sind_outdated():
+    entscheidung = gueltigkeits_gate().entscheide("f", [fassung(**ABGELAUFEN)])
+
+    assert entscheidung.reasons == (AbstainReason.OUTDATED_SOURCE,)
+    assert entscheidung.evidenz is None
+
+
+def test_unbekannt_ersetzt_keine_gueltige_fassung():
+    entscheidung = gueltigkeits_gate().entscheide("f", [fassung(**ABGELAUFEN), fassung(file_name="b.md")])
+
+    assert entscheidung.reasons == (AbstainReason.OUTDATED_SOURCE,)
+
+
+def test_mischfall_engt_auf_gueltig_und_unbekannt_ein():
+    alt, neu, ohne = fassung(**ABGELAUFEN), fassung(file_name="b.md", **GUELTIG), fassung(file_name="c.md")
+
+    entscheidung = gueltigkeits_gate().entscheide("f", [alt, neu, ohne])
+
+    assert entscheidung.outcome is Outcome.ANSWER
+    assert entscheidung.evidenz == (neu, ohne)
+
+
+@pytest.mark.parametrize("metadaten", [{"gueltig_ab": "2026-06-16"}, {"gueltig_ab": "kaputt"}])
+def test_noch_nicht_gueltig_und_kaputte_metadaten_sind_outdated(metadaten):
+    entscheidung = gueltigkeits_gate().entscheide("f", [fassung(**metadaten)])
+
+    assert entscheidung.reasons == (AbstainReason.OUTDATED_SOURCE,)
+
+
+def test_uhr_wird_pro_entscheidung_genau_einmal_gefragt():
+    aufrufe = []
+
+    def uhr():
+        aufrufe.append(1)
+        return STICHTAG
+
+    GueltigkeitsGate(uhr=uhr).entscheide("f", [fassung(**GUELTIG), fassung(**ABGELAUFEN)])
+
+    assert len(aufrufe) == 1
+
+
+def test_dieselbe_instanz_sieht_den_tageswechsel():
+    tage = iter([date(2026, 6, 14), date(2026, 6, 15)])
+    gate = GueltigkeitsGate(uhr=lambda: next(tage))
+    nodes = [fassung(gueltig_bis="2026-06-14")]
+
+    assert gate.entscheide("f", nodes).outcome is Outcome.ANSWER
+    assert gate.entscheide("f", nodes).outcome is Outcome.ABSTAIN
+
+
+class SiehtNodes:
+    def __init__(self, entscheidung):
+        self.entscheidung = entscheidung
+        self.gesehen = None
+
+    def entscheide(self, frage, nodes):
+        self.gesehen = nodes
+        return self.entscheidung
+
+
+ANTWORT = GateDecision(Outcome.ANSWER, (), GateScores())
+
+
+def test_folgegate_sieht_die_eingeengten_nodes():
+    alt, neu = fassung(**ABGELAUFEN), fassung(file_name="b.md", **GUELTIG)
+    folge = SiehtNodes(ANTWORT)
+
+    entscheidung = Kaskade([gueltigkeits_gate(), folge]).entscheide("f", [alt, neu])
+
+    assert folge.gesehen == (neu,)
+    assert entscheidung.evidenz == (neu,)
+
+
+def test_evidenz_bleibt_bei_spaeterem_abstain_erhalten():
+    alt, neu = fassung(**ABGELAUFEN), fassung(file_name="b.md", **GUELTIG)
+    nein = GateDecision(Outcome.ABSTAIN, (AbstainReason.NOT_ANSWERABLE,), GateScores())
+
+    entscheidung = Kaskade([gueltigkeits_gate(), SiehtNodes(nein)]).entscheide("f", [alt, neu])
+
+    assert entscheidung.verweigert
+    assert entscheidung.evidenz == (neu,)
+
+
+def test_kaskade_ohne_einengung_hat_keine_evidenz():
+    assert Kaskade([SiehtNodes(ANTWORT)]).entscheide("f", [fassung()]).evidenz is None
+
+
+def test_konflikt_score_ueberlebt_die_kaskade():
+    mit = GateDecision(Outcome.ANSWER, (), GateScores(konflikt=0.3))
+
+    assert Kaskade([SiehtNodes(mit), SiehtNodes(ANTWORT)]).entscheide("f", []).scores.konflikt == 0.3
+
+
+def test_genutzte_nodes_folgt_der_evidenz():
+    nodes = [fassung()]
+
+    assert GateDecision(Outcome.ANSWER, (), GateScores()).genutzte_nodes(nodes) == nodes
+    assert GateDecision(Outcome.ANSWER, (), GateScores(), ()).genutzte_nodes(nodes) == []
+
+
+def echte_kaskade():
+    score = RetrievalScoreGate(0.62)
+    return Kaskade([score, gueltigkeits_gate(), score, FassungsGate()])
+
+
+def test_themenfremd_und_abgelaufen_meldet_low_relevance():
+    entscheidung = echte_kaskade().entscheide("f", [fassung(score=0.3, **ABGELAUFEN)])
+
+    assert entscheidung.reasons == (AbstainReason.LOW_RELEVANCE,)
+
+
+def test_hoher_score_nur_auf_abgelaufenem_winkt_schwache_gueltige_nicht_durch():
+    nodes = [fassung(score=0.9, **ABGELAUFEN), fassung(score=0.3, file_name="b.md", **GUELTIG)]
+
+    entscheidung = echte_kaskade().entscheide("f", nodes)
+
+    assert entscheidung.reasons == (AbstainReason.LOW_RELEVANCE,)
+    assert entscheidung.scores.relevance == 0.9
+
+
+@pytest.mark.parametrize(
+    "nodes",
+    [
+        [fassung(gueltig_ab="2026-01-01"), fassung(file_name="a.md", gueltig_ab="2026-01-01")],
+        [fassung(gueltig_ab="2026-01-01"), fassung(file_name="b.md", gueltig_ab="2026-01-01")],
+        [fassung(), fassung(file_name="b.md")],
+        [fassung(gueltig_ab="2026-01-01"), fassung(quelle="nis2", file_name="b.md", gueltig_ab="2025-01-01")],
+    ],
+    ids=["ein_dokument", "gleiche_angaben_zwei_dateien", "ohne_angaben", "verschiedene_quellen"],
+)
+def test_keine_mehrdeutige_fassung(nodes):
+    assert FassungsGate().entscheide("f", nodes).outcome is Outcome.ANSWER
+
+
+@pytest.mark.parametrize(
+    "nodes",
+    [
+        [fassung(gueltig_ab="2025-01-01"), fassung(file_name="b.md", gueltig_ab="2026-01-01")],
+        [fassung(gueltig_ab="2026-01-01"), fassung(file_name="b.md")],
+        [fassung(fassung="1"), fassung(file_name="b.md", fassung="2")],
+        [fassung(quelle="DORA ", fassung="1"), fassung(quelle="dora", file_name="b.md", fassung="2")],
+    ],
+    ids=["zwei_datierte", "datiert_und_ohne", "zwei_fassungen", "titel_nur_schreibweise"],
+)
+def test_mehrdeutige_fassung_ist_datenfehler_kein_normkonflikt(nodes):
+    assert FassungsGate().entscheide("f", nodes).reasons == (AbstainReason.AMBIGUOUS_VERSION,)
+
+
+def test_datensatz_fuehrt_alle_nodes_mit_status_und_stichtag():
+    alt = fassung(segment="auslegung", gueltig_bis="2026-06-14", fassung="1")
+    neu = fassung(file_name="b.md", segment="gesetz")
+    entscheidung = GateDecision(
+        Outcome.ABSTAIN, (AbstainReason.NOT_ANSWERABLE,), GateScores(konflikt=0.2), (neu,)
+    )
+
+    satz = eskalationsdatensatz("f", [alt, neu], entscheidung, datetime(2026, 6, 30, 22, 30, tzinfo=timezone.utc))
+
+    assert satz["stichtag"] == "2026-07-01"
+    assert satz["evidenz"][0]["gueltigkeit"] == "abgelaufen"
+    assert satz["evidenz"][0]["gueltig_bis"] == "2026-06-14"
+    assert satz["evidenz"][0]["fassung"] == "1"
+    assert satz["evidenz"][1]["gueltigkeit"] == "unbekannt"
+    assert "gueltig_ab" not in satz["evidenz"][1]
+    assert satz["scores"]["konflikt"] == 0.2
+    assert satz["segment"] == "gesetz"
+    json.dumps(satz)
+
+
+def test_metrik_segment_kommt_aus_den_genutzten_nodes(tmp_path, monkeypatch):
+    import metrics
+
+    monkeypatch.setattr(metrics, "METRIKEN", metrics.Metriken())
+    neu = fassung(file_name="b.md", segment="gesetz", **GUELTIG)
+    alt = fassung(segment="auslegung", **ABGELAUFEN)
+
+    entscheide_und_eskaliere(gueltigkeits_gate(), tmp_path / "e.jsonl", "f", [alt, neu])
+
+    assert set(metrics.METRIKEN.schnappschuss()["nach_segment"]) == {"gesetz"}
+
+
+def test_gemischte_reasons_erscheinen_generisch_in_den_metriken(tmp_path, monkeypatch):
+    import metrics
+
+    monkeypatch.setattr(metrics, "METRIKEN", metrics.Metriken())
+
+    entscheide_und_eskaliere(gueltigkeits_gate(), tmp_path / "e.jsonl", "f", [fassung(**ABGELAUFEN)])
+
+    assert metrics.METRIKEN.schnappschuss()["eskalationen_nach_reason"] == {"OUTDATED_SOURCE": 1}

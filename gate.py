@@ -1,5 +1,7 @@
 """Decision Gate zwischen Retrieval und Generierung — ohne schwere Imports, damit die CI ihn testen kann."""
 
+from __future__ import annotations
+
 import json
 import logging
 import math
@@ -12,6 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
+import gueltigkeit
 import metrics
 
 log = logging.getLogger(__name__)
@@ -86,12 +89,14 @@ class AbstainReason(Enum):
     CONFLICTING_PROVISIONS = "CONFLICTING_PROVISIONS"
     UNGROUNDED_CLAIM = "UNGROUNDED_CLAIM"
     JUDGE_UNAVAILABLE = "JUDGE_UNAVAILABLE"
+    AMBIGUOUS_VERSION = "AMBIGUOUS_VERSION"
 
 
 @dataclass(frozen=True)
 class GateScores:
     relevance: float | None = None
     answerable: float | None = None
+    konflikt: float | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,7 @@ class GateDecision:
     outcome: Outcome
     reasons: tuple[AbstainReason, ...]
     scores: GateScores
+    evidenz: tuple | None = None
 
     def __post_init__(self):
         if self.outcome is Outcome.ABSTAIN and not self.reasons:
@@ -109,6 +115,10 @@ class GateDecision:
     @property
     def verweigert(self):
         return self.outcome is Outcome.ABSTAIN
+
+    def genutzte_nodes(self, nodes):
+        """Die Nodes, auf denen die Entscheidung beruht; `evidenz=None` heißt nicht eingeengt."""
+        return nodes if self.evidenz is None else list(self.evidenz)
 
 
 class Gate(Protocol):
@@ -129,8 +139,44 @@ class RetrievalScoreGate:
         return GateDecision(Outcome.ANSWER, (), scores)
 
 
+class GueltigkeitsGate:
+    """Engt auf nutzbare Fassungen ein; ohne gültige Fassung verweigert es (docs/adr/0015)."""
+
+    def __init__(self, uhr=gueltigkeit.heute_berlin):
+        self.uhr = uhr
+
+    def entscheide(self, _frage, nodes):
+        stichtag = self.uhr()
+        status = [gueltigkeit.status_von(n.metadata, stichtag) for n in nodes]
+        nutzbar = tuple(n for n, s in zip(nodes, status, strict=True) if s in gueltigkeit.NUTZBAR)
+        if len(nutzbar) == len(status):
+            return GateDecision(Outcome.ANSWER, (), GateScores())
+        if gueltigkeit.GUELTIG not in status:
+            return GateDecision(Outcome.ABSTAIN, (AbstainReason.OUTDATED_SOURCE,), GateScores())
+        return GateDecision(Outcome.ANSWER, (), GateScores(), nutzbar)
+
+
+class FassungsGate:
+    """Zwei Fassungen derselben Quelle sind ein Datenfehler, kein Normkonflikt (docs/adr/0015)."""
+
+    def __init__(self, kennung=gueltigkeit.fassungs_kennung):
+        self.kennung = kennung
+
+    def entscheide(self, _frage, nodes):
+        kennungen = {}
+        for n in nodes:
+            quelle = (n.metadata.get("quelle") or "").strip().casefold()
+            kennungen.setdefault(quelle, set()).add(self.kennung(n.metadata))
+        if any(len(gefunden) > 1 for gefunden in kennungen.values()):
+            return GateDecision(Outcome.ABSTAIN, (AbstainReason.AMBIGUOUS_VERSION,), GateScores())
+        return GateDecision(Outcome.ANSWER, (), GateScores())
+
+
 class Kaskade:
-    """Führt Gates der Reihe nach aus; das erste ABSTAIN gewinnt, bei gleichem Score-Feld der frühere Gate."""
+    """Führt Gates der Reihe nach aus; das erste ABSTAIN gewinnt, bei gleichem Score-Feld der frühere Gate.
+
+    Liefert ein Gate `evidenz`, sehen die Folgegates nur noch diese Nodes.
+    """
 
     def __init__(self, gates):
         self.gates = tuple(gates)
@@ -139,18 +185,22 @@ class Kaskade:
 
     def entscheide(self, frage, nodes):
         scores = GateScores()
+        evidenz = None
         for gate in self.gates:
             entscheidung = gate.entscheide(frage, nodes)
             scores = _fuehre_zusammen(scores, entscheidung.scores)
             if entscheidung.verweigert:
-                return GateDecision(entscheidung.outcome, entscheidung.reasons, scores)
-        return GateDecision(Outcome.ANSWER, (), scores)
+                return GateDecision(entscheidung.outcome, entscheidung.reasons, scores, evidenz)
+            if entscheidung.evidenz is not None:
+                evidenz = nodes = entscheidung.evidenz
+        return GateDecision(Outcome.ANSWER, (), scores, evidenz)
 
 
 def _fuehre_zusammen(frueher, spaeter):
     return GateScores(
         relevance=frueher.relevance if frueher.relevance is not None else spaeter.relevance,
         answerable=frueher.answerable if frueher.answerable is not None else spaeter.answerable,
+        konflikt=frueher.konflikt if frueher.konflikt is not None else spaeter.konflikt,
     )
 
 
@@ -167,29 +217,35 @@ def abstain_antwort(vorgemerkt, reasons=()):
     return ABSTAIN_ANTWORT_VORGEMERKT if vorgemerkt else ABSTAIN_ANTWORT_NICHT_VORGEMERKT
 
 
+def _evidenz_eintrag(node, stichtag):
+    return {
+        "quelle": node.metadata.get("quelle") or node.metadata.get("file_name"),
+        "score": node.score,
+        "text": node.text[:MAX_EVIDENZ_ZEICHEN],
+        "gueltigkeit": gueltigkeit.status_von(node.metadata, stichtag),
+        **{feld: node.metadata[feld] for feld in gueltigkeit.FELDER if feld in node.metadata},
+    }
+
+
 def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None, zusatz=None):
     if not entscheidung.verweigert:
         raise ValueError("Eskalationsdatensatz gibt es nur bei ABSTAIN.")
     jetzt = jetzt or datetime.now(timezone.utc)
     if jetzt.utcoffset() != timedelta(0):
         raise ValueError("Zeitstempel muss tz-aware UTC sein.")
+    stichtag = gueltigkeit.heute_berlin(jetzt)
     return {
         "zeitpunkt": jetzt.isoformat(),
+        "stichtag": stichtag.isoformat(),
         "frage": frage[:MAX_FRAGE_ZEICHEN],
-        "evidenz": [
-            {
-                "quelle": n.metadata.get("quelle") or n.metadata.get("file_name"),
-                "score": n.score,
-                "text": n.text[:MAX_EVIDENZ_ZEICHEN],
-            }
-            for n in nodes
-        ],
+        "evidenz": [_evidenz_eintrag(n, stichtag) for n in nodes],
         "scores": {
             "relevance": entscheidung.scores.relevance,
             "answerable": entscheidung.scores.answerable,
+            "konflikt": entscheidung.scores.konflikt,
         },
         "reasons": [r.value for r in entscheidung.reasons],
-        "segment": segment_von(nodes),
+        "segment": segment_von(entscheidung.genutzte_nodes(nodes)),
         **(zusatz or {}),
     }
 
@@ -333,7 +389,7 @@ class Pruefung:
 def _zaehle(entscheidung, nodes):
     """Metriken sind Beiwerk: ein Fehler beim Zaehlen darf die Entscheidung nie veraendern."""
     try:
-        metrics.METRIKEN.zaehle(entscheidung, segment_von(nodes))
+        metrics.METRIKEN.zaehle(entscheidung, segment_von(entscheidung.genutzte_nodes(nodes)))
     except Exception:  # Zaehlen darf die Gate-Entscheidung nie kippen (breit gefangen mit Absicht)
         log.exception("Metriken konnten nicht gezaehlt werden")
 
@@ -349,11 +405,12 @@ def zaehle_verwurf(entscheidung, nodes):
 def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes, grenzen=None):
     entscheidung = gate.entscheide(frage, nodes)
     log.info(
-        "Gate: %s reasons=%s relevance=%s answerable=%s",
+        "Gate: %s reasons=%s relevance=%s answerable=%s konflikt=%s",
         entscheidung.outcome.value,
         [r.value for r in entscheidung.reasons],
         entscheidung.scores.relevance,
         entscheidung.scores.answerable,
+        entscheidung.scores.konflikt,
     )
     _zaehle(entscheidung, nodes)
     vorgemerkt = entscheidung.verweigert and schreibe_eskalation(

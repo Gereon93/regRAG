@@ -114,6 +114,7 @@ graph TD
 | `agent.py` | Ablaufsteuerung, Schwellwert als bedingte Kante, Prompt, LLM-Aufruf | Wie retrievt wird |
 | `web/main.py` | HTTP: Chat mit SSE (Antwort gepuffert bis nach der Prüfung), Upload, Job-Status, Dokumentliste | Wie indexiert oder retrievt wird |
 | `grounding.py` | Marker-Prompt, Zerlegung in Aussagen, `zahlen_judge`, Verwerfen nach der Generierung ([ADR 0014](adr/0014-claim-level-grounding.md)); im Graphen der Knoten `ground` | Retrieval, LLM-Aufruf |
+| `gueltigkeit.py` | Sidecar-Felder, Validierung, Status am Stichtag ([ADR 0015](adr/0015-gueltigkeit-fassungen-normkonflikte.md)) | Gate-Entscheidung, Retrieval |
 | `gate.py`, `laya.py`, `manifest.py`, `metrics.py` | Gate-Port, Score-Guard, Laya-Adapter mit Segmentschwellen und Manifest, prozesslokale Eskalationszähler für `GET /metrics` ([ADR 0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md)) | Retrieval, LLM |
 | `evaluation/` | Versioniertes Eval-Set (`evalset/v1.jsonl`), Splits, Kostenfunktion und Segment-Report ([ADR 0012](adr/0012-eval-set-splits-kostenfunktion-report.md)), Guard-Trennschärfe messen, Faithfulness bewerten | Den Produktionspfad — liest nur mit |
 
@@ -176,6 +177,12 @@ nie aufgerufen und kann nicht halluzinieren, was es nicht sieht.
 
 Besteht die Antwort die Prüfung nicht, wird sie verworfen: gleiche Rückmeldung wie ABSTAIN, Reason `UNGROUNDED_CLAIM`,
 Datensatz mit Antwort und Fehlstellen. Der Text erreicht den Nutzer nie, weil `/chat` bis nach der Prüfung puffert.
+
+### Abgelöste Fassung und Konflikt
+
+Die Kaskade prüft Score, Gültigkeit, erneut den Score, Fassung, Laya und optional den Konflikt-Judge. Ein abgelaufener Treffer
+neben einem gültigen wird für Kontext und Quellenliste aussortiert, ohne gültige Fassung folgt `OUTDATED_SOURCE`. Zwei nutzbare
+Fassungen desselben Titels ergeben `AMBIGUOUS_VERSION`. `CONFLICTING_PROVISIONS` entsteht nur mit eingeschaltetem Konflikt-Judge.
 
 **Das ist gemessen, nicht behauptet:** Über 14 Fälle (8 beantwortbare DORA-Fragen, 6 themenfremde)
 trennt der Guard bei `MIN_RETRIEVAL_SCORE = 0.62` **14/14** korrekt (ADR 0005, `evaluation/run.py`).
@@ -297,6 +304,7 @@ Pfade würden garantiert auseinanderlaufen — einer davon still.
 | [0007](adr/0007-sprachgrenze-im-code.md) | Sprachgrenze: Domäne deutsch, Technik englisch | akzeptiert |
 | [0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md) | Laya-Kalibrierung, Segmentschwellen, Gate-Manifest, `/metrics` | akzeptiert als Mechanik; Nutzen **nicht gemessen** |
 | [0014](adr/0014-claim-level-grounding.md) | Claim-Level-Grounding nach der Generierung, Puffern statt Streamen | akzeptiert; inhaltliche Stützung unbelegt |
+| [0015](adr/0015-gueltigkeit-fassungen-normkonflikte.md) | Gültigkeit, `AMBIGUOUS_VERSION`, Konflikt-Judge | akzeptiert; Konflikt-Judge experimentell, Nutzen **unbelegt** |
 
 ---
 
@@ -354,6 +362,7 @@ beim lokalen Modell (ADR 0014, `python -m evaluation.befolgung`).
 | 8 | **LangGraph bleibt unterfordert** | Mit der bedingten Kante (ADR 0005) verdient der Graph seinen Platz knapp. Ein zweiter Retrieval-Versuch oder ein Reranking-Knoten wären die ehrliche Rechtfertigung | ADR 0004 |
 | 9 | **Laya-Kalibrierung ohne Messung** | Mechanik für Temperatur, Segmentschwellen, Manifest und Vergleich steht, aber es gibt keine Labels (>= 200) und keinen trainierten Checkpoint; die Revision im Manifest ist deklariert, ein fehlendes `routing.model` wird akzeptiert; `/metrics` ist prozesslokal und unauthentifiziert | ADR 0013, offen |
 | 10 | **Befolgungsquote des Markerformats nicht gemessen** | Befolgt das lokale Modell die Marker selten, verweigert das System fast alles. Aussagen ohne Zahl bleiben inhaltlich ungeprüft | ADR 0014, [#47](../../../issues/47) |
+| 11 | **Gültigkeit hängt an gepflegten Metadaten, Normkonflikte am Judge** | Ohne `gueltig_ab`/`gueltig_bis` bleibt alles `unbekannt`. Eine Standardinstallation erkennt keine widersprechenden Normen; der Konflikt-Judge ist unkalibriert | ADR 0015, [#52](../../../issues/52) |
 
 Schuld 1 ist die interessante: Der Upload macht das System nützlicher und sein zentrales
 Versprechen zugleich fragiler. Die Kalibrierung war eine Momentaufnahme über einen Korpus —

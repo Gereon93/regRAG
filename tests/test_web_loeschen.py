@@ -203,3 +203,75 @@ def test_dokument_liste_liefert_datei_und_titel(client, dokumente_verzeichnis):
         {"datei": "a.md", "titel": "A-Titel"},
         {"datei": "b.md", "titel": "B-Titel"},
     ]
+
+
+class ZaehlenderPool:
+    def __init__(self):
+        self.jobs = []
+
+    def submit(self, *args):
+        self.jobs.append(args)
+
+
+PDF = {"datei": ("neu.pdf", b"%PDF-1.7 inhalt", "application/pdf")}
+
+
+@pytest.fixture
+def pool(main, monkeypatch, dokumente_verzeichnis):
+    zaehler = ZaehlenderPool()
+    monkeypatch.setattr(main, "POOL", zaehler)
+    return zaehler
+
+
+def test_upload_mit_kaputtem_datum_liefert_422_und_keinen_job(client, pool):
+    antwort = client.post("/upload", files=PDF, data={"gueltig_ab": "2026-02-30"})
+
+    assert antwort.status_code == 422
+    assert "gueltig_ab" in antwort.json()["detail"]
+    assert pool.jobs == []
+
+
+def test_upload_prueft_felder_vor_dem_pdf(client, pool):
+    kein_pdf = {"datei": ("neu.pdf", b"kein pdf", "application/pdf")}
+
+    antwort = client.post("/upload", files=kein_pdf, data={"gueltig_bis": "kaputt"})
+
+    assert antwort.status_code == 422
+
+
+def test_upload_reicht_gueltige_felder_an_den_job(client, pool):
+    daten = {"gueltig_ab": "2026-01-01", "gueltig_bis": "2026-12-31", "fassung": " 2. Fassung "}
+
+    antwort = client.post("/upload", files=PDF, data=daten)
+
+    assert antwort.status_code == 202
+    assert pool.jobs[0][-1] == {"gueltig_ab": "2026-01-01", "gueltig_bis": "2026-12-31", "fassung": "2. Fassung"}
+
+
+def test_upload_leere_formularfelder_sind_nicht_gesetzt(client, pool):
+    antwort = client.post("/upload", files=PDF, data={"gueltig_ab": "", "fassung": ""})
+
+    assert antwort.status_code == 202
+    assert pool.jobs[0][-1] == {}
+
+
+def test_upload_ignoriert_ein_segment_im_formular(client, pool):
+    client.post("/upload", files=PDF, data={"segment": "gesetz"})
+
+    assert "segment" not in pool.jobs[0][-1]
+
+
+def test_job_reicht_metadaten_an_die_konvertierung(main, monkeypatch, dokumente_verzeichnis):
+    gesehen = {}
+
+    def konvertiere(pdf, ausgabe, metadaten=None):
+        gesehen["metadaten"] = metadaten
+        return ausgabe / "neu.md"
+
+    monkeypatch.setattr(main, "pdf_nach_markdown", konvertiere)
+    main.JOBS["j"] = {"status": "pending", "dateiname": "neu.pdf", "fehler": None}
+
+    main._indexiere("j", b"%PDF", "neu.pdf", {"fassung": "2"})
+
+    assert gesehen["metadaten"] == {"fassung": "2"}
+    assert main.JOBS["j"]["status"] == "ready"

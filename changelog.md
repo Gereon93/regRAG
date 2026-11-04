@@ -5,12 +5,20 @@
 - **Claim-Level-Grounding:** Der Prompt verlangt Marker `[n]` je Aussage. Fehlt ein Marker, ist er ungültig oder steht eine Zahl, Norm-Nummer oder Zahl-Einheit-Angabe nicht in den zitierten Chunks, wird die Antwort verworfen (`UNGROUNDED_CLAIM`, Eskalationsdatensatz mit `antwort`, `aussagen_gesamt`, `aussagen_ohne_beleg`). Aussagen ohne Zahl bleiben inhaltlich ungeprüft (#29, ADR 0014).
 - `python -m evaluation.befolgung` misst, wie oft das lokale Modell das Markerformat einhält (#29).
 - SSE-Event `status`, Feld `nr` in `sources`; die UI zeigt den Wartetext und die Nummern der Fundstellen (#29).
+- **Gültigkeitsmetadaten:** `gueltig_ab`, `gueltig_bis`, `fassung` im Sidecar und am `POST /upload`; ein kaputter Sidecar nimmt nur dieses Dokument aus dem Index (#30, ADR 0015).
+- **`OUTDATED_SOURCE`:** Das Gate prüft gegen heute (Europe/Berlin). Abgelaufene Treffer verschwinden neben einer gültigen Fassung aus Kontext und Quellenliste; ohne gültige Fassung verweigert es (#30).
+- **`AMBIGUOUS_VERSION`:** Zwei nutzbare Fassungen desselben Titels verweigern; neue Reason, kein Normkonflikt (#30).
+- **Konflikt-Judge:** `REGRAG_LAYA_KONFLIKT_SCHWELLE` schaltet `CONFLICTING_PROVISIONS` über Laya ein. Default aus, kein gemessener Wert (#30).
 ### Geändert
 - `/chat` streamt keine Tokens mehr: Die Antwort wird gepuffert und erst nach bestandener Prüfung als ein `token`-Event ausgeliefert; ein LLM-Fehler zeigt keinen Teiltext (#29).
 - Der Systemprompt ist neu; der Satz "Reicht der Kontext nicht, sag das ehrlich" entfällt zugunsten von "lass alles andere weg" (#29).
+- `baue_gate` liefert immer eine Kaskade: Score, Gültigkeit, Score, Fassung, optional Laya und Konflikt-Judge (#30).
+- Der Eskalationsdatensatz trägt `stichtag`, je Evidenz `gueltigkeit` samt gesetzten Feldern und `scores.konflikt`; `segment` und Metriken beziehen sich auf die genutzten Treffer (#30).
+- `tzdata` ist feste Abhängigkeit (#30).
 ### Hinweis
 - Faithfulness Ø 0.93 gilt für den alten Prompt, kein Neulauf.
 - **Offen:** Die Befolgungsquote des Modells ist nicht gemessen; befolgt es das Format selten, verweigert das System fast alles.
+- **Offen:** Ohne gepflegte Daten bleibt alles `unbekannt` und der Filter wirkt nie. Ohne Konflikt-Judge erkennt eine Standardinstallation keine Normkonflikte; der Fake-Judge-Test belegt nur die Mechanik. Fragen zur früheren Rechtslage werden aus der heute gültigen Fassung beantwortet.
 
 ## 2026-11-01
 ### Neu

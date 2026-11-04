@@ -53,6 +53,7 @@ def pruefe_grounding(frage, nodes, antwort, vorherige):
 def retrieve(s):
     s["nodes"] = retriever.retrieve(s["frage"])
     pruefung = pruefe(s["frage"], s["nodes"])
+    s["nodes"] = pruefung.entscheidung.genutzte_nodes(s["nodes"])
     s["entscheidung"] = pruefung.entscheidung
     s["vorgemerkt"] = pruefung.vorgemerkt
     return s

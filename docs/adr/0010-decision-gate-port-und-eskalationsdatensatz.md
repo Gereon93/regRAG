@@ -35,9 +35,9 @@ eine Verweigerung hinterließ weder Begründung noch Spur.
 - Evaluationsläufe (`evaluation/run.py`) verwerfen Eskalationsdatensätze (`os.devnull`), damit sie
   die echte Datei nicht füllen.
 - Wohin eskaliert wird (Queue, Fachexperte) ist offen; bis dahin ist die Datei nur Export.
-- Erzeugt werden `LOW_RELEVANCE`, `NOT_ANSWERABLE`, `JUDGE_UNAVAILABLE` und nach der Generierung
-  `UNGROUNDED_CLAIM` ([0014](0014-claim-level-grounding.md), mit Zusatzfeldern `antwort`, `aussagen_gesamt`,
-  `aussagen_ohne_beleg`). Die übrigen Reasons sind Platzhalter für #30.
+- Erzeugt werden `LOW_RELEVANCE`, `NOT_ANSWERABLE`, `JUDGE_UNAVAILABLE`, `OUTDATED_SOURCE`, `AMBIGUOUS_VERSION` und
+  `CONFLICTING_PROVISIONS` ([0015](0015-gueltigkeit-fassungen-normkonflikte.md)), nach der Generierung `UNGROUNDED_CLAIM`
+  ([0014](0014-claim-level-grounding.md), mit Zusatzfeldern `antwort`, `aussagen_gesamt`, `aussagen_ohne_beleg`).
 
 ## Aufbewahrung und Löschung (Issue #34)
 
@@ -47,7 +47,7 @@ Fragen können personenbezogen sein; die Datei ist deshalb in Größe und Alter 
 
 - **Rotation:** Vor jedem Append wird die aktive Datei nach `<name>.<UTC-Zeitstempel>.<pid>` verschoben,
   wenn sie `max_bytes` (Default 5 MiB) erreicht oder ihr ältester Datensatz älter als die halbe Frist ist.
-  Eine Datei bleibt damit höchstens `max_bytes` − 1 plus eine Zeile (ca. 73 KB) groß.
+  Eine Datei bleibt damit höchstens `max_bytes` − 1 plus eine Zeile (ca. 75 KB) groß.
 - **Frist:** Archive, deren ältester Datensatz die Aufbewahrungsfrist (Default **90 Tage**) überschreitet,
   werden gelöscht. Gelöscht wird die ganze Datei; jüngere Datensätze darin gehen mit. Jeder Datensatz lebt
   dadurch mindestens die halbe und höchstens die volle Frist, sofern geschrieben oder gestartet wird.

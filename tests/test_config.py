@@ -166,3 +166,19 @@ def test_config_defaults_decken_sich_mit_den_gate_defaults(geladen):
     aus_config = grenzen_aus(geladen())
 
     assert vars(aus_config) == vars(standard)
+
+
+def test_konflikt_schwelle_ist_ohne_wert_aus(geladen):
+    assert geladen(REGRAG_LAYA_KONFLIKT_SCHWELLE="").LAYA_KONFLIKT_SCHWELLE is None
+    assert geladen().LAYA_KONFLIKT_SCHWELLE is None
+
+
+def test_konflikt_schwelle_wird_gelesen(geladen):
+    assert geladen(REGRAG_LAYA_KONFLIKT_SCHWELLE="0.9").LAYA_KONFLIKT_SCHWELLE == 0.9
+
+
+@pytest.mark.parametrize("wert", ["0", "1.5", "abc", "nan", "-0.1"])
+def test_ungueltige_konflikt_schwelle_faellt_beim_import_auf(geladen, monkeypatch, wert):
+    with pytest.raises(ValueError, match="KONFLIKT_SCHWELLE"):
+        geladen(REGRAG_LAYA_KONFLIKT_SCHWELLE=wert)
+    monkeypatch.delenv("REGRAG_LAYA_KONFLIKT_SCHWELLE")

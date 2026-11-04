@@ -14,6 +14,7 @@ import pytest
 
 import config
 from gate import UNBEKANNT, Outcome
+from gueltigkeit import MetadatenFehler
 from laya import LayaGate, SystemOneClient
 
 SCHWELLEN = {"verordnung": 0.4, "gesetz": 0.6}
@@ -139,8 +140,7 @@ def test_segment_fliesst_nicht_in_den_embedding_text_und_das_llm_prompt(rag, tmp
     assert set(ABGELEITETE_KEYS) <= set(dok.excluded_llm_metadata_keys)
 
 
-def test_upload_sidecar_schreibt_nie_ein_segment(tmp_path):
-    """Invariante: Uploads bekommen nie ein Segment ausser unbekannt (Feld fehlt -> UNBEKANNT)."""
+def _konvertiere(tmp_path, **kwargs):
     stubs = {
         "pymupdf": _stub("pymupdf", open=lambda p: [SimpleNamespace(get_text=lambda: "VERORDNUNG (EU) 2022/2554")]),
         "pymupdf4llm": _stub("pymupdf4llm", to_markdown=lambda p: "# md"),
@@ -150,13 +150,130 @@ def test_upload_sidecar_schreibt_nie_ein_segment(tmp_path):
     sys.modules.update(stubs)
     try:
         convert = importlib.import_module("convert")
-        md = convert.pdf_nach_markdown(tmp_path / "upload.pdf", tmp_path / "out")
+        md = convert.pdf_nach_markdown(tmp_path / "upload.pdf", tmp_path / "out", **kwargs)
     finally:
         for name, vorher in alt.items():
             if vorher is None:
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = vorher
+    return md.with_suffix(".source.json")
 
-    daten = json.loads(md.with_suffix(".source.json").read_text(encoding="utf-8"))
+
+def test_upload_sidecar_schreibt_nie_ein_segment(tmp_path):
+    """Invariante: Uploads bekommen nie ein Segment ausser unbekannt (Feld fehlt -> UNBEKANNT)."""
+    daten = json.loads(_konvertiere(tmp_path).read_text(encoding="utf-8"))
     assert "segment" not in daten
+
+
+def test_upload_sidecar_uebernimmt_gueltigkeit(tmp_path):
+    sidecar = _konvertiere(tmp_path, metadaten={"gueltig_ab": "2026-01-01", "fassung": "2"})
+
+    daten = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert daten["gueltig_ab"] == "2026-01-01"
+    assert daten["fassung"] == "2"
+    assert "titel" in daten
+
+
+def test_upload_sidecar_ohne_metadaten_bleibt_byte_identisch(tmp_path):
+    ohne = _konvertiere(tmp_path).read_bytes()
+
+    assert _konvertiere(tmp_path, metadaten={}).read_bytes() == ohne
+
+
+def test_gueltigkeit_landet_in_den_metadaten_und_fehlende_felder_fehlen(rag, tmp_path):
+    rag.indexiere(_dokument(tmp_path, {"gueltig_ab": "2026-01-01", "fassung": " 2 "}))
+
+    (dok,) = rag.index.eingefuegt
+    assert dok.metadata["gueltig_ab"] == "2026-01-01"
+    assert dok.metadata["fassung"] == "2"
+    assert "gueltig_bis" not in dok.metadata
+
+
+def test_ohne_sidecar_gibt_es_keine_gueltigkeitsschluessel(rag, tmp_path):
+    rag.indexiere(_dokument(tmp_path, None))
+
+    (dok,) = rag.index.eingefuegt
+    assert not {"gueltig_ab", "gueltig_bis", "fassung"} & set(dok.metadata)
+
+
+def test_gate_metadaten_fliessen_weder_in_embedding_noch_llm(rag, tmp_path):
+    rag.indexiere(_dokument(tmp_path, {"gueltig_ab": "2026-01-01"}))
+
+    (dok,) = rag.index.eingefuegt
+    assert set(rag.GATE_METADATEN) == {"segment", "gueltig_ab", "gueltig_bis", "fassung"}
+    assert set(rag.GATE_METADATEN) <= set(dok.excluded_embed_metadata_keys)
+    assert set(rag.GATE_METADATEN) <= set(dok.excluded_llm_metadata_keys)
+    assert set(ABGELEITETE_KEYS) <= set(dok.excluded_embed_metadata_keys)
+
+
+@pytest.mark.parametrize(
+    "inhalt",
+    ['{"gueltig_ab": "2026-02-30"}', "{kaputt", '["liste"]'],
+    ids=["datum", "json", "liste"],
+)
+def test_kaputter_sidecar_wirft_metadatenfehler_mit_dateiname(rag, tmp_path, inhalt):
+    md = _dokument(tmp_path, None)
+    md.with_suffix(".source.json").write_text(inhalt, encoding="utf-8")
+
+    with pytest.raises(MetadatenFehler, match="dok.md"):
+        rag._quelle_metadata(md)
+
+
+@pytest.fixture
+def start(rag, tmp_path, monkeypatch):
+    verzeichnis = tmp_path / "docs"
+    verzeichnis.mkdir()
+    monkeypatch.setattr(config, "DOKUMENTE_VERZEICHNIS", str(verzeichnis))
+    geloescht = []
+    collection = SimpleNamespace(count=lambda: 1, delete=lambda where: geloescht.append(where["file_name"]))
+    client = SimpleNamespace(
+        get_or_create_collection=lambda *a, **kw: collection, delete_collection=lambda *a, **kw: None
+    )
+    monkeypatch.setattr(sys.modules["chromadb"], "PersistentClient", lambda path: client)
+
+    def schreibe(name, sidecar):
+        md = verzeichnis / f"{name}.md"
+        md.write_text(f"# {name}\n", encoding="utf-8")
+        md.with_suffix(".source.json").write_text(sidecar, encoding="utf-8")
+
+    def lauf():
+        fake = FakeIndex()
+        monkeypatch.setattr(rag.VectorStoreIndex, "from_vector_store", lambda *a, **kw: fake)
+        rag.lade_oder_baue_index()
+        return [dok.metadata["file_name"] for dok in fake.eingefuegt]
+
+    return SimpleNamespace(schreibe=schreibe, lauf=lauf, geloescht=geloescht)
+
+
+GUT = '{"gueltig_ab": "2026-01-01"}'
+KAPUTT = '{"gueltig_ab": "2026-02-30"}'
+
+
+def test_start_ueberspringt_kaputtes_dokument_und_nimmt_den_altstand_heraus(rag, start, caplog):
+    start.schreibe("a", GUT)
+    start.schreibe("b", GUT)
+    assert sorted(start.lauf()) == ["a.md", "b.md"]
+    start.geloescht.clear()
+
+    start.schreibe("a", KAPUTT)
+    eingefuegt = start.lauf()
+
+    assert eingefuegt == []
+    assert "a.md" in start.geloescht
+    assert any(r.levelname == "ERROR" and "a.md" in r.getMessage() for r in caplog.records)
+    fingerprint = json.loads(rag.FINGERPRINT_DATEI.read_text(encoding="utf-8"))
+    assert set(fingerprint["dokumente"]) == {"b.md"}
+
+
+def test_kaputtes_dokument_kostet_beim_naechsten_start_nichts_und_repariert_sich(start):
+    start.schreibe("a", GUT)
+    start.schreibe("b", GUT)
+    start.lauf()
+    start.schreibe("a", KAPUTT)
+    start.lauf()
+
+    assert start.lauf() == []
+
+    start.schreibe("a", '{"gueltig_ab": "2026-02-28"}')
+    assert start.lauf() == ["a.md"]
