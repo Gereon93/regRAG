@@ -275,3 +275,16 @@ def test_job_reicht_metadaten_an_die_konvertierung(main, monkeypatch, dokumente_
 
     assert gesehen["metadaten"] == {"fassung": "2"}
     assert main.JOBS["j"]["status"] == "ready"
+
+
+@pytest.mark.parametrize("inhalt", ["{kaputt", "[1, 2]"])
+def test_dokument_liste_uebersteht_abgelehntes_sidecar(client, dokumente_verzeichnis, inhalt):
+    _lege_dokument_an(dokumente_verzeichnis, "heil", "Heiles Dokument")
+    (dokumente_verzeichnis / "kaputt.md").write_text("Text", encoding="utf-8")
+    (dokumente_verzeichnis / "kaputt.source.json").write_text(inhalt, encoding="utf-8")
+
+    antwort = client.get("/documents")
+
+    assert antwort.status_code == 200
+    assert {"datei": "kaputt.md", "titel": "kaputt"} in antwort.json()
+    assert {"datei": "heil.md", "titel": "Heiles Dokument"} in antwort.json()

@@ -179,13 +179,21 @@ def job_status(job_id: str):
     return job
 
 
+def _titel(md):
+    """Ein abgelehntes Sidecar (rag._quelle_metadata) darf die Liste nicht kippen; es bleibt der Dateiname."""
+    sidecar = md.with_suffix(".source.json")
+    try:
+        daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
+    except ValueError:
+        return md.stem
+    return daten.get("titel", md.stem) if isinstance(daten, dict) else md.stem
+
+
 @app.get("/documents")
 def dokument_liste():
     liste = []
     for md in sorted(DOKUMENTE.glob("*.md")) if DOKUMENTE.is_dir() else []:
-        sidecar = md.with_suffix(".source.json")
-        daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
-        liste.append({"datei": md.name, "titel": daten.get("titel", md.stem)})
+        liste.append({"datei": md.name, "titel": _titel(md)})
     return liste
 
 

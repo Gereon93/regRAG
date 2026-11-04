@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -92,13 +92,16 @@ def test_heute_berlin_rechnet_in_berliner_kalendertagen(jetzt, erwartet):
     assert heute_berlin(jetzt) == erwartet
 
 
-def test_heute_berlin_ist_prozessunabhaengig(monkeypatch):
-    monkeypatch.setenv("TZ", "Pacific/Auckland")
-
+def test_heute_berlin_wandelt_utc_nach_berlin():
     assert heute_berlin(datetime(2026, 6, 30, 22, 30, tzinfo=timezone.utc)) == date(2026, 7, 1)
 
 
-def test_heute_berlin_nimmt_ohne_eingabe_die_aktuelle_uhr():
-    grenze = datetime.now(timezone.utc).astimezone(gueltigkeit.BERLIN).date()
+def test_heute_berlin_nimmt_die_aktuelle_uhr_in_berliner_zeit(monkeypatch):
+    class FesteUhr(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 6, 30, 22, 30, tzinfo=timezone.utc)
 
-    assert heute_berlin() - grenze <= timedelta(days=1)
+    monkeypatch.setattr(gueltigkeit, "datetime", FesteUhr)
+
+    assert heute_berlin() == date(2026, 7, 1)
