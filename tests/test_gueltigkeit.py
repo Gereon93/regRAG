@@ -92,15 +92,12 @@ def test_heute_berlin_rechnet_in_berliner_kalendertagen(jetzt, erwartet):
     assert heute_berlin(jetzt) == erwartet
 
 
-def test_heute_berlin_wandelt_utc_nach_berlin():
-    assert heute_berlin(datetime(2026, 6, 30, 22, 30, tzinfo=timezone.utc)) == date(2026, 7, 1)
-
-
 def test_heute_berlin_nimmt_die_aktuelle_uhr_in_berliner_zeit(monkeypatch):
     class FesteUhr(datetime):
         @classmethod
         def now(cls, tz=None):
-            return datetime(2026, 6, 30, 22, 30, tzinfo=timezone.utc)
+            jetzt = datetime(2026, 6, 30, 22, 30, tzinfo=timezone.utc)
+            return jetzt.astimezone(tz) if tz else jetzt.replace(tzinfo=None)
 
     monkeypatch.setattr(gueltigkeit, "datetime", FesteUhr)
 
