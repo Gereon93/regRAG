@@ -107,3 +107,8 @@ für diese Norm erzwingen. Das verweigert nur und ist nicht schlimmer als die of
 - Zwischen Entscheidung und Schreiben des Datensatzes kann ein Mitternachtswechsel liegen. Status und Entscheidung weichen
   dann um einen Tag ab; der `stichtag` steht im Datensatz.
 - Prompt-Injection im Uploadtext kann den Konflikt-Judge Richtung "kein Konflikt" schieben.
+
+## Qodana: `PyTypeHintsInspection` in `gate.py`
+
+Der Report zeigt `SDKs.json` mit leeren `roots`: Der Linter kennt kein Python 3.12 und meldet `float | None` in den
+Dataclass-Feldern als ungültig. Die Inspektion ist deshalb nur für `gate.py` abgeschaltet (`qodana.yaml`), nicht global.

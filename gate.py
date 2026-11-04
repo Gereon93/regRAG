@@ -90,15 +90,11 @@ class AbstainReason(Enum):
     AMBIGUOUS_VERSION = "AMBIGUOUS_VERSION"
 
 
-OptionalerScore = float | None
-OptionaleEvidenz = tuple | None
-
-
 @dataclass(frozen=True)
 class GateScores:
-    relevance: OptionalerScore = None
-    answerable: OptionalerScore = None
-    konflikt: OptionalerScore = None
+    relevance: float | None = None
+    answerable: float | None = None
+    konflikt: float | None = None
 
 
 @dataclass(frozen=True)
@@ -106,7 +102,7 @@ class GateDecision:
     outcome: Outcome
     reasons: tuple[AbstainReason, ...]
     scores: GateScores
-    evidenz: OptionaleEvidenz = None
+    evidenz: tuple | None = None
 
     def __post_init__(self):
         if self.outcome is Outcome.ABSTAIN and not self.reasons:

@@ -2,3 +2,9 @@ version: "1.0"
 linter: qodana-python-community
 profile:
   name: qodana.recommended
+# Der Python-Community-Linter laeuft hier ohne Python-SDK (SDKs.json: roots leer) und
+# wertet `float | None` faelschlich als ungueltig; CI nutzt 3.12. Beleg: ADR 0015.
+exclude:
+  - name: PyTypeHintsInspection
+    paths:
+      - gate.py
