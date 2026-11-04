@@ -1,7 +1,5 @@
 """Decision Gate zwischen Retrieval und Generierung — ohne schwere Imports, damit die CI ihn testen kann."""
 
-from __future__ import annotations
-
 import json
 import logging
 import math
@@ -92,11 +90,15 @@ class AbstainReason(Enum):
     AMBIGUOUS_VERSION = "AMBIGUOUS_VERSION"
 
 
+OptionalerScore = float | None
+OptionaleEvidenz = tuple | None
+
+
 @dataclass(frozen=True)
 class GateScores:
-    relevance: float | None = None
-    answerable: float | None = None
-    konflikt: float | None = None
+    relevance: OptionalerScore = None
+    answerable: OptionalerScore = None
+    konflikt: OptionalerScore = None
 
 
 @dataclass(frozen=True)
@@ -104,7 +106,7 @@ class GateDecision:
     outcome: Outcome
     reasons: tuple[AbstainReason, ...]
     scores: GateScores
-    evidenz: tuple | None = None
+    evidenz: OptionaleEvidenz = None
 
     def __post_init__(self):
         if self.outcome is Outcome.ABSTAIN and not self.reasons:
