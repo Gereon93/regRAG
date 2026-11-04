@@ -45,6 +45,7 @@ def pruefe(frage, nodes):
 def retrieve(s):
     s["nodes"] = retriever.retrieve(s["frage"])
     pruefung = pruefe(s["frage"], s["nodes"])
+    s["nodes"] = pruefung.entscheidung.genutzte_nodes(s["nodes"])
     s["entscheidung"] = pruefung.entscheidung
     s["vorgemerkt"] = pruefung.vorgemerkt
     return s

@@ -5,6 +5,8 @@ import os
 import re
 from pathlib import Path
 
+import gueltigkeit
+
 MAX_MB = float(os.getenv("REGRAG_UPLOAD_MAX_MB", "25"))
 PDF_MAGIC = b"%PDF-"
 _UNERLAUBT = re.compile(r"[^A-Za-z0-9._-]")
@@ -45,6 +47,13 @@ def pruefe_pdf(daten):
     pruefe_groesse(len(daten))
     if not daten.startswith(PDF_MAGIC):
         raise UploadFehler("Datei ist kein PDF.", 400)
+
+
+def pruefe_gueltigkeit(gueltig_ab, gueltig_bis, fassung):
+    try:
+        return gueltigkeit.normalisiere({"gueltig_ab": gueltig_ab, "gueltig_bis": gueltig_bis, "fassung": fassung})
+    except gueltigkeit.MetadatenFehler as e:
+        raise UploadFehler(str(e), 422) from e
 
 
 def datei_hash(md_pfad):

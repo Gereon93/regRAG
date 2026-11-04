@@ -35,8 +35,8 @@ eine Verweigerung hinterließ weder Begründung noch Spur.
 - Evaluationsläufe (`evaluation/run.py`) verwerfen Eskalationsdatensätze (`os.devnull`), damit sie
   die echte Datei nicht füllen.
 - Wohin eskaliert wird (Queue, Fachexperte) ist offen; bis dahin ist die Datei nur Export.
-- Noch nicht umgesetzt: Nur `LOW_RELEVANCE` wird erzeugt, die übrigen Reasons sind Platzhalter
-  für die Folge-Issues.
+- Erzeugt werden `LOW_RELEVANCE`, `NOT_ANSWERABLE`, `JUDGE_UNAVAILABLE`, `OUTDATED_SOURCE`, `AMBIGUOUS_VERSION` und
+  `CONFLICTING_PROVISIONS` ([0015](0015-gueltigkeit-fassungen-normkonflikte.md)). `UNGROUNDED_CLAIM` ist noch Platzhalter (#29).
 
 ## Aufbewahrung und Löschung (Issue #34)
 

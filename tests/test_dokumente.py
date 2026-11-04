@@ -139,3 +139,34 @@ def test_ohne_dokument_unbekannter_name_ist_kein_fehler():
     ergebnis = dokumente.ohne_dokument(fp, "unbekannt.md")
 
     assert ergebnis["dokumente"] == {"a.md": "1"}
+
+
+def test_pruefe_gueltigkeit_liefert_gesetzte_felder():
+    assert dokumente.pruefe_gueltigkeit("2026-01-01", None, " 2. Fassung ") == {
+        "gueltig_ab": "2026-01-01",
+        "fassung": "2. Fassung",
+    }
+
+
+def test_pruefe_gueltigkeit_ohne_felder_ist_leer():
+    assert dokumente.pruefe_gueltigkeit(None, None, None) == {}
+
+
+@pytest.mark.parametrize(
+    "felder",
+    [("2026-02-30", None, None), (None, "20260101", None), ("2026-01-02", "2026-01-01", None), (None, None, "x" * 101)],
+)
+def test_pruefe_gueltigkeit_meldet_422(felder):
+    with pytest.raises(dokumente.UploadFehler) as fehler:
+        dokumente.pruefe_gueltigkeit(*felder)
+
+    assert fehler.value.status == 422
+
+
+def test_fingerprint_aendert_sich_mit_gueltigkeit(tmp_path):
+    pfad = _schreibe(tmp_path, "a.md", "text", '{"gueltig_bis": "2026-01-01"}')
+    vorher = dokumente.fingerprint([pfad], "bge-m3", "cosine")
+
+    pfad.with_suffix(".source.json").write_text('{"gueltig_bis": "2026-01-02"}', encoding="utf-8")
+
+    assert vorher != dokumente.fingerprint([pfad], "bge-m3", "cosine")
