@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -69,9 +69,10 @@ def _sse(obj):
 
 async def _antwort_strom(frage):
     nodes = retriever.retrieve(frage)
-    quellen = _quellen(nodes)
 
     pruefung = await asyncio.to_thread(pruefe, frage, nodes)
+    nodes = pruefung.entscheidung.genutzte_nodes(nodes)
+    quellen = _quellen(nodes)
     if pruefung.verweigert:
         yield _sse({"type": "abstain", "text": abstain_antwort(pruefung.vorgemerkt, pruefung.entscheidung.reasons)})
         yield _sse({"type": "sources", "quellen": quellen})
@@ -104,7 +105,7 @@ def _entferne_fragmente(md_pfad):
     md_pfad.with_suffix(".source.json").unlink(missing_ok=True)
 
 
-def _indexiere(job_id, daten, dateiname):
+def _indexiere(job_id, daten, dateiname, metadaten):
     job = JOBS[job_id]
     md_pfad = None
     try:
@@ -112,7 +113,7 @@ def _indexiere(job_id, daten, dateiname):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / dateiname
             pdf.write_bytes(daten)
-            md_pfad = pdf_nach_markdown(pdf, DOKUMENTE)
+            md_pfad = pdf_nach_markdown(pdf, DOKUMENTE, metadaten=metadaten)
         rag.indexiere(md_pfad)
         job["status"] = "ready"
     except Exception as e:  # noqa: BLE001 - Hintergrund-Job: jeder Fehler landet im Job-Status statt im Nichts
@@ -135,9 +136,15 @@ async def _lies_begrenzt(datei):
 
 
 @app.post("/upload", status_code=202)
-async def upload(datei: Annotated[UploadFile, File()]):
+async def upload(
+    datei: Annotated[UploadFile, File()],
+    gueltig_ab: Annotated[str | None, Form()] = None,
+    gueltig_bis: Annotated[str | None, Form()] = None,
+    fassung: Annotated[str | None, Form()] = None,
+):
     try:
         name = dokumente.saeubere_dateiname(datei.filename or "")
+        metadaten = dokumente.pruefe_gueltigkeit(gueltig_ab, gueltig_bis, fassung)
         inhalt = await _lies_begrenzt(datei)
         dokumente.pruefe_pdf(inhalt)
     except dokumente.UploadFehler as e:
@@ -152,7 +159,7 @@ async def upload(datei: Annotated[UploadFile, File()]):
 
         job_id = uuid.uuid4().hex
         JOBS[job_id] = {"status": "pending", "dateiname": name, "fehler": None}
-        POOL.submit(_indexiere, job_id, inhalt, name)
+        POOL.submit(_indexiere, job_id, inhalt, name, metadaten)
     return {"job": job_id, **JOBS[job_id]}
 
 

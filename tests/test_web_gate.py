@@ -4,6 +4,7 @@ import json
 import sys
 import types
 from contextlib import contextmanager
+from datetime import date
 from types import SimpleNamespace
 
 import httpx
@@ -21,8 +22,8 @@ from laya import baue_gate
 MIN_SCORE = 0.62
 
 
-def node(score):
-    return SimpleNamespace(score=score, text="Art. 5 DORA", metadata={"quelle": "dora.md"})
+def node(score, text="Art. 5 DORA", **metadata):
+    return SimpleNamespace(score=score, text=text, metadata={"quelle": "dora.md", **metadata})
 
 
 class FakeLLM:
@@ -42,7 +43,8 @@ def _strom(gate, eskalationen):
     def pruefe(frage, nodes):
         return entscheide_und_eskaliere(gate, eskalationen, frage, nodes)
 
-    prompt = SimpleNamespace(format_messages=lambda **kw: [])
+    kontexte = []
+    prompt = SimpleNamespace(format_messages=lambda **kw: kontexte.append(kw["kontext"]) or [])
     retriever = SimpleNamespace(retrieve=lambda frage: treffer)
     stubs = {
         "rag": {},
@@ -74,7 +76,7 @@ def _strom(gate, eskalationen):
         events = asyncio.run(sammle())
         return [json.loads(e.removeprefix("data: ")) for e in events]
 
-    yield SimpleNamespace(lauf=lauf, llm=llm, eskalationen=eskalationen, main=main)
+    yield SimpleNamespace(lauf=lauf, llm=llm, eskalationen=eskalationen, main=main, kontexte=kontexte)
 
     for name, vorher in alt.items():
         if vorher is None:
@@ -110,6 +112,7 @@ def laya_strom(tmp_path):
             LAYA_MIN_ANSWERABLE=0.5,
             LAYA_MODELL="multilingual",
             GATE_MANIFEST="",
+            LAYA_KONFLIKT_SCHWELLE=None,
         )
         gate = baue_gate(einstellungen, transport=httpx.MockTransport(handler))
         with _strom(gate, tmp_path / "eskalationen.jsonl") as s:
@@ -160,7 +163,7 @@ def test_laya_nicht_beantwortbar_verweigert_mit_answerable_im_datensatz(laya_str
         assert strom.llm.aufrufe == 0
         satz = json.loads(strom.eskalationen.read_text(encoding="utf-8"))
         assert satz["reasons"] == ["NOT_ANSWERABLE"]
-        assert satz["scores"] == {"relevance": 0.8, "answerable": 0.2}
+        assert satz["scores"] == {"relevance": 0.8, "answerable": 0.2, "konflikt": None}
 
 
 def test_laya_ausfall_verweigert_mit_judge_unavailable(laya_strom):
@@ -240,3 +243,183 @@ def test_serverstart_bereinigt_ueberfaelliges_archiv(strom, monkeypatch):
         pass
 
     assert not archiv.exists()
+
+
+STICHTAG = date(2026, 6, 15)
+ABGELOEST = {"gueltig_bis": "2026-06-14", "file_name": "alt.md"}
+GUELTIG = {"gueltig_ab": "2026-06-15", "file_name": "neu.md"}
+
+
+def zeigt_quellen(events):
+    return next(e["quellen"] for e in events if e["type"] == "sources")
+
+
+@pytest.fixture
+def korpus_strom(tmp_path, monkeypatch):
+    @contextmanager
+    def bauen(handler=None, schwelle=None):
+        einstellungen = SimpleNamespace(
+            MIN_RETRIEVAL_SCORE=MIN_SCORE,
+            LAYA_URL="http://localhost:8000" if handler else "",
+            LAYA_API_KEY="",
+            LAYA_TIMEOUT=5.0,
+            LAYA_MAX_LEN=4096,
+            LAYA_LANG="de",
+            LAYA_MIN_ANSWERABLE=0.5,
+            LAYA_MODELL="multilingual",
+            GATE_MANIFEST="",
+            LAYA_KONFLIKT_SCHWELLE=schwelle,
+        )
+        transport = httpx.MockTransport(handler) if handler else None
+        gate = baue_gate(einstellungen, transport=transport)
+        gate.gates[1].uhr = lambda: STICHTAG
+        with _strom(gate, tmp_path / "eskalationen.jsonl") as s:
+            yield s
+
+    return bauen
+
+
+def _laya(answerable=0.9, konflikt=0.0, fragen=None):
+    def handler(request):
+        anfrage = json.loads(request.content)
+        frage_id = next(iter(anfrage["questions"]))
+        if fragen is not None:
+            fragen.append((frage_id, anfrage["state"]))
+        wert = {"answerable": answerable, "conflict": konflikt}[frage_id]
+        return httpx.Response(200, json={"answers": {frage_id: {"noul": wert}}})
+
+    return handler
+
+
+def _datensatz(strom):
+    return json.loads(strom.eskalationen.read_text(encoding="utf-8"))
+
+
+def test_nur_abgeloeste_fassung_verweigert_ohne_llm(korpus_strom):
+    with korpus_strom() as strom:
+        events = strom.lauf("Frage?", [node(0.8, **ABGELOEST)])
+
+        assert [e["type"] for e in events] == ["abstain", "sources", "done"]
+        assert strom.llm.aufrufe == 0
+        satz = _datensatz(strom)
+        assert satz["reasons"] == ["OUTDATED_SOURCE"]
+        assert satz["evidenz"][0]["gueltigkeit"] == "abgelaufen"
+
+
+def test_abgeloest_plus_unbekannt_ist_outdated(korpus_strom):
+    with korpus_strom() as strom:
+        strom.lauf("Frage?", [node(0.8, **ABGELOEST), node(0.7, file_name="ohne.md")])
+
+        assert _datensatz(strom)["reasons"] == ["OUTDATED_SOURCE"]
+
+
+def test_mischfall_antwortet_nur_aus_der_gueltigen_fassung(korpus_strom):
+    alt, neu = node(0.8, "alter Text", **ABGELOEST), node(0.7, "neuer Text", **GUELTIG)
+
+    with korpus_strom() as strom:
+        events = strom.lauf("Frage?", [alt, neu])
+
+        assert [e["type"] for e in events] == ["token", "sources", "done"]
+        assert strom.kontexte == ["neuer Text"]
+        assert len(zeigt_quellen(events)) == 1
+        assert not strom.eskalationen.exists()
+
+
+def test_mischfall_mit_laya_nein_zeigt_nur_gueltige_fundstellen_und_eskaliert_alle(korpus_strom):
+    alt, neu = node(0.8, "alter Text", **ABGELOEST), node(0.7, "neuer Text", **GUELTIG)
+    fragen = []
+
+    with korpus_strom(_laya(answerable=0.1, fragen=fragen)) as strom:
+        events = strom.lauf("Frage?", [alt, neu])
+
+        assert fragen == [("answerable", {"frage": "Frage?", "evidenz": "neuer Text"})]
+        assert len(zeigt_quellen(events)) == 1
+        satz = _datensatz(strom)
+        assert satz["reasons"] == ["NOT_ANSWERABLE"]
+        assert [e["gueltigkeit"] for e in satz["evidenz"]] == ["abgelaufen", "gueltig"]
+
+
+def test_verdraengung_durch_top_k_verweigert_und_ist_dokumentiert(korpus_strom):
+    with korpus_strom() as strom:
+        events = strom.lauf("Frage?", [node(0.8, **ABGELOEST) for _ in range(3)])
+
+        assert events[0]["type"] == "abstain"
+        assert _datensatz(strom)["reasons"] == ["OUTDATED_SOURCE"]
+
+
+def test_zwei_fassungen_derselben_quelle_sind_mehrdeutig_auch_ohne_laya(korpus_strom):
+    eins = node(0.8, gueltig_ab="2025-01-01", file_name="a.md")
+    zwei = node(0.7, gueltig_ab="2026-01-01", file_name="b.md")
+
+    with korpus_strom() as strom:
+        strom.lauf("Frage?", [eins, zwei])
+
+        assert _datensatz(strom)["reasons"] == ["AMBIGUOUS_VERSION"]
+        assert strom.llm.aufrufe == 0
+
+
+def _gesetz_und_auslegung():
+    return [
+        node(0.8, "Die Frist beträgt 72 Stunden.", quelle="Gesetz", file_name="g.md", segment="gesetz"),
+        node(0.7, "Die Frist beträgt 24 Stunden.", quelle="Auslegung", file_name="a.md", segment="auslegung"),
+    ]
+
+
+def test_gesetz_gegen_auslegung_mit_fake_judge_ist_normkonflikt(korpus_strom):
+    with korpus_strom(_laya(konflikt=0.9), schwelle=0.8) as strom:
+        strom.lauf("Frage?", _gesetz_und_auslegung())
+
+        satz = _datensatz(strom)
+        assert satz["reasons"] == ["CONFLICTING_PROVISIONS"]
+        assert satz["scores"]["konflikt"] == 0.9
+        assert strom.llm.aufrufe == 0
+
+
+def test_nicht_beantwortbar_spart_den_konflikt_aufruf(korpus_strom):
+    fragen = []
+
+    with korpus_strom(_laya(answerable=0.1, fragen=fragen), schwelle=0.8) as strom:
+        strom.lauf("Frage?", _gesetz_und_auslegung())
+
+        assert _datensatz(strom)["reasons"] == ["NOT_ANSWERABLE"]
+        assert [f for f, _ in fragen] == ["answerable"]
+
+
+def test_ausfall_beim_konflikt_ist_judge_unavailable(korpus_strom):
+    def handler(request):
+        if "conflict" in json.loads(request.content)["questions"]:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"answers": {"answerable": {"noul": 0.9}}})
+
+    with korpus_strom(handler, schwelle=0.8) as strom:
+        strom.lauf("Frage?", _gesetz_und_auslegung())
+
+        assert _datensatz(strom)["reasons"] == ["JUDGE_UNAVAILABLE"]
+
+
+def test_metrics_zaehlt_die_neuen_reasons(korpus_strom, monkeypatch):
+    import metrics
+
+    monkeypatch.setattr(metrics, "METRIKEN", metrics.Metriken())
+    eins = node(0.8, gueltig_ab="2025-01-01", file_name="a.md")
+    zwei = node(0.7, gueltig_ab="2026-01-01", file_name="b.md")
+
+    with korpus_strom(_laya(konflikt=0.9), schwelle=0.8) as strom:
+        strom.lauf("Frage?", [node(0.8, **ABGELOEST)])
+        strom.lauf("Frage?", [eins, zwei])
+        strom.lauf("Frage?", _gesetz_und_auslegung())
+        daten = TestClient(strom.main.app).get("/metrics").json()
+
+    assert daten["eskalationen_nach_reason"] == {
+        "OUTDATED_SOURCE": 1,
+        "AMBIGUOUS_VERSION": 1,
+        "CONFLICTING_PROVISIONS": 1,
+    }
+
+
+def test_bestandsdokument_ohne_angaben_antwortet_wie_bisher(korpus_strom):
+    with korpus_strom() as strom:
+        events = strom.lauf("Was regelt DORA?", [node(0.8, file_name="alt.md")])
+
+        assert [e["type"] for e in events] == ["token", "sources", "done"]
+        assert not strom.eskalationen.exists()

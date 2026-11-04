@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-04
+### Neu
+- **Gültigkeitsmetadaten:** `gueltig_ab`, `gueltig_bis`, `fassung` im Sidecar und am `POST /upload`; ein kaputter Sidecar nimmt nur dieses Dokument aus dem Index (#30, ADR 0015).
+- **`OUTDATED_SOURCE`:** Das Gate prüft gegen heute (Europe/Berlin). Abgelaufene Treffer verschwinden neben einer gültigen Fassung aus Kontext und Quellenliste; ohne gültige Fassung verweigert es (#30).
+- **`AMBIGUOUS_VERSION`:** Zwei nutzbare Fassungen desselben Titels verweigern; neue Reason, kein Normkonflikt (#30).
+- **Konflikt-Judge:** `REGRAG_LAYA_KONFLIKT_SCHWELLE` schaltet `CONFLICTING_PROVISIONS` über Laya ein. Default aus, kein gemessener Wert (#30).
+### Geändert
+- `baue_gate` liefert immer eine Kaskade: Score, Gültigkeit, Score, Fassung, optional Laya und Konflikt-Judge (#30).
+- Der Eskalationsdatensatz trägt `stichtag`, je Evidenz `gueltigkeit` samt gesetzten Feldern und `scores.konflikt`; `segment` und Metriken beziehen sich auf die genutzten Treffer (#30).
+- `tzdata` ist feste Abhängigkeit (#30).
+### Hinweis
+- **Offen:** Ohne gepflegte Daten bleibt alles `unbekannt` und der Filter wirkt nie. Ohne Konflikt-Judge erkennt eine Standardinstallation keine Normkonflikte; der Fake-Judge-Test belegt nur die Mechanik. Fragen zur früheren Rechtslage werden aus der heute gültigen Fassung beantwortet.
+
 ## 2026-11-01
 ### Neu
 - **Eskalationsdatei begrenzt:** Rotation ab `REGRAG_ESKALATION_MAX_BYTES` (5 MiB) oder halber Frist, Löschung nach `REGRAG_ESKALATION_AUFBEWAHRUNG_TAGE` (90) und über `REGRAG_ESKALATION_MAX_ARCHIVE` (5), Bereinigung auch beim Serverstart; Löschweg in ADR 0010 (#34).

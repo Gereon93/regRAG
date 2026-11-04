@@ -15,7 +15,7 @@ def dokument_titel(pdf_pfad, fallback):
     return f"Verordnung (EU) {nummer.group(1)} (DORA)" if nummer else fallback
 
 
-def pdf_nach_markdown(pdf_pfad, ausgabe=AUSGABE):
+def pdf_nach_markdown(pdf_pfad, ausgabe=AUSGABE, metadaten=None):
     """Konvertiert eine PDF nach <ausgabe>/<stamm>.md samt Quellen-Sidecar, gibt den Markdown-Pfad zurück."""
     pdf_pfad = pathlib.Path(pdf_pfad)
     ausgabe = pathlib.Path(ausgabe)
@@ -24,7 +24,7 @@ def pdf_nach_markdown(pdf_pfad, ausgabe=AUSGABE):
     stamm = pdf_pfad.stem
     titel = dokument_titel(pdf_pfad, stamm)
     md = pymupdf4llm.to_markdown(str(pdf_pfad))
-    quelle = json.dumps({"titel": titel, "pdf": pdf_pfad.name}, ensure_ascii=False, indent=2)
+    quelle = json.dumps({"titel": titel, "pdf": pdf_pfad.name, **(metadaten or {})}, ensure_ascii=False, indent=2)
 
     md_pfad = ausgabe / f"{stamm}.md"
     md_pfad.write_text(md, encoding="utf-8")

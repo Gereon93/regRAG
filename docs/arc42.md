@@ -113,6 +113,7 @@ graph TD
 | `rag.py` | Embedding-Modell, Index laden, Dokumente inkrementell mergen | Den Ablauf, das LLM |
 | `agent.py` | Ablaufsteuerung, Schwellwert als bedingte Kante, Prompt, LLM-Aufruf | Wie retrievt wird |
 | `web/main.py` | HTTP: Chat mit SSE-Streaming, Upload, Job-Status, Dokumentliste | Wie indexiert oder retrievt wird |
+| `gueltigkeit.py` | Sidecar-Felder, Validierung, Status am Stichtag ([ADR 0015](adr/0015-gueltigkeit-fassungen-normkonflikte.md)) | Gate-Entscheidung, Retrieval |
 | `gate.py`, `laya.py`, `manifest.py`, `metrics.py` | Gate-Port, Score-Guard, Laya-Adapter mit Segmentschwellen und Manifest, prozesslokale Eskalationszähler für `GET /metrics` ([ADR 0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md)) | Retrieval, LLM |
 | `evaluation/` | Versioniertes Eval-Set (`evalset/v1.jsonl`), Splits, Kostenfunktion und Segment-Report ([ADR 0012](adr/0012-eval-set-splits-kostenfunktion-report.md)), Guard-Trennschärfe messen, Faithfulness bewerten | Den Produktionspfad — liest nur mit |
 
@@ -169,6 +170,12 @@ sequenceDiagram
 
 `pruefe()` liefert ABSTAIN mit Reason, ein Eskalationsdatensatz wird geschrieben, die bedingte Kante führt nach `abstain`, das LLM wird
 nie aufgerufen und kann nicht halluzinieren, was es nicht sieht.
+
+### Abgelöste Fassung und Konflikt
+
+Die Kaskade prüft Score, Gültigkeit, erneut den Score, Fassung, Laya und optional den Konflikt-Judge. Ein abgelaufener Treffer
+neben einem gültigen wird für Kontext und Quellenliste aussortiert, ohne gültige Fassung folgt `OUTDATED_SOURCE`. Zwei nutzbare
+Fassungen desselben Titels ergeben `AMBIGUOUS_VERSION`. `CONFLICTING_PROVISIONS` entsteht nur mit eingeschaltetem Konflikt-Judge.
 
 **Das ist gemessen, nicht behauptet:** Über 14 Fälle (8 beantwortbare DORA-Fragen, 6 themenfremde)
 trennt der Guard bei `MIN_RETRIEVAL_SCORE = 0.62` **14/14** korrekt (ADR 0005, `evaluation/run.py`).
@@ -289,6 +296,7 @@ Pfade würden garantiert auseinanderlaufen — einer davon still.
 | [0006](adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md) | Inkrementeller Merge statt Voll-Rebuild | akzeptiert |
 | [0007](adr/0007-sprachgrenze-im-code.md) | Sprachgrenze: Domäne deutsch, Technik englisch | akzeptiert |
 | [0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md) | Laya-Kalibrierung, Segmentschwellen, Gate-Manifest, `/metrics` | akzeptiert als Mechanik; Nutzen **nicht gemessen** |
+| [0015](adr/0015-gueltigkeit-fassungen-normkonflikte.md) | Gültigkeit, `AMBIGUOUS_VERSION`, Konflikt-Judge | akzeptiert; Konflikt-Judge experimentell, Nutzen **unbelegt** |
 
 ---
 
@@ -344,6 +352,7 @@ Korpora — ob der Guard-Schwellwert dann noch trennt, ist offen.
 | 7 | **Chunking ungetunt** | LlamaIndex-Defaults. Für Gesetzestexte mit Artikelstruktur vermutlich nicht optimal | offen |
 | 8 | **LangGraph bleibt unterfordert** | Mit der bedingten Kante (ADR 0005) verdient der Graph seinen Platz knapp. Ein zweiter Retrieval-Versuch oder ein Reranking-Knoten wären die ehrliche Rechtfertigung | ADR 0004 |
 | 9 | **Laya-Kalibrierung ohne Messung** | Mechanik für Temperatur, Segmentschwellen, Manifest und Vergleich steht, aber es gibt keine Labels (>= 200) und keinen trainierten Checkpoint; die Revision im Manifest ist deklariert, ein fehlendes `routing.model` wird akzeptiert; `/metrics` ist prozesslokal und unauthentifiziert | ADR 0013, offen |
+| 10 | **Gültigkeit hängt an gepflegten Metadaten, Normkonflikte am Judge** | Ohne `gueltig_ab`/`gueltig_bis` bleibt alles `unbekannt`. Eine Standardinstallation erkennt keine widersprechenden Normen; der Konflikt-Judge ist unkalibriert | ADR 0015, [#52](../../../issues/52) |
 
 Schuld 1 ist die interessante: Der Upload macht das System nützlicher und sein zentrales
 Versprechen zugleich fragiler. Die Kalibrierung war eine Momentaufnahme über einen Korpus —

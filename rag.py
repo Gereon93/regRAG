@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from contextlib import suppress
 from pathlib import Path
@@ -15,12 +16,16 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 import config
 import dokumente
 import embedding
+import gueltigkeit
 from gate import normalisiere_segment
+
+log = logging.getLogger(__name__)
 
 DISTANZMETRIK_WIE_IN_MEMORY = {"hnsw:space": "cosine"}  # docs/adr/0003
 METRIK = DISTANZMETRIK_WIE_IN_MEMORY["hnsw:space"]
 NEU_BAUEN = os.getenv("REGRAG_INDEX_NEU_BAUEN") == "1"
 FINGERPRINT_DATEI = Path(config.CHROMA_VERZEICHNIS) / "fingerprint.json"
+GATE_METADATEN = ("segment", *gueltigkeit.FELDER)
 
 index = None
 _collection = None
@@ -38,12 +43,19 @@ def _md_dateien():
 def _quelle_metadata(pfad):
     p = Path(pfad)
     sidecar = p.with_suffix(".source.json")
-    daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
+    try:
+        daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
+        if not isinstance(daten, dict):
+            raise gueltigkeit.MetadatenFehler("Sidecar ist kein Objekt.")
+        gueltig = gueltigkeit.normalisiere(daten)
+    except (json.JSONDecodeError, gueltigkeit.MetadatenFehler) as e:
+        raise gueltigkeit.MetadatenFehler(f"{p.name}: {e}") from e
     return {
         "file_name": p.name,
         "quelle": daten.get("titel", p.name),
         "pdf": daten.get("pdf"),
         "segment": normalisiere_segment(daten.get("segment"), p.name),
+        **gueltig,
     }
 
 
@@ -85,10 +97,9 @@ def indexiere(md_pfad):
     for dok in SimpleDirectoryReader(
         input_files=[str(md_pfad)], file_metadata=_quelle_metadata
     ).load_data():
-        # segment ist Gate-Metadatum, kein Inhalt: nicht in den Embedding-Text (verschiebt Cosine-Scores) und nicht ins LLM-Prompt
+        # GATE_METADATEN sind kein Inhalt: nicht in den Embedding-Text (verschiebt Cosine-Scores) und nicht ins LLM-Prompt
         for schluessel in (dok.excluded_embed_metadata_keys, dok.excluded_llm_metadata_keys):
-            if "segment" not in schluessel:
-                schluessel.append("segment")
+            schluessel.extend(feld for feld in GATE_METADATEN if feld not in schluessel)
         index.insert(dok)
 
     fp = _fingerprint_lesen() or dokumente.leerer_fingerprint(config.EMBEDDING_MODELL, METRIK)
@@ -132,7 +143,10 @@ def lade_oder_baue_index():
     _fingerprint_schreiben(fp)
 
     for name in zu_indexieren:
-        indexiere(Path(config.DOKUMENTE_VERZEICHNIS) / name)
+        try:
+            indexiere(Path(config.DOKUMENTE_VERZEICHNIS) / name)
+        except gueltigkeit.MetadatenFehler as e:
+            log.error("Dokument nicht indexiert: %s", e)
 
     return index
 
