@@ -462,14 +462,25 @@ def test_nicht_schaetzbare_temperatur_schreibt_kein_manifest(tmp_path, monkeypat
     assert list((tmp_path / "reports").glob("bericht-*laya*.json"))
 
 
+def ids_im_split(prefix, split, n):
+    kandidaten = [fall(f"{prefix}{i}", "abstain", "x") for i in range(20 * n)]
+    ids = sorted(f["id"] for f in teile(kandidaten)[split])[:n]
+    assert len(ids) == n, f"Zu wenige Gruppen im Split {split}"
+    return ids
+
+
 def mit_nur_test_segment():
-    """Szenario plus Eval-Segment 'nur_test', dessen Fälle alle im Test-Split liegen (#42)."""
+    """Szenario plus Eval-Segment 'nur_test', dessen Fälle alle im Test-Split liegen (#42).
+
+    'locker' (nur Calibration) trennt bei top ~0.35, die übrigen Segmente bei ~0.9: die strengste Schwelle
+    eskaliert die nur_test-Fälle (top 0.5), die lockerste würde sie beantworten.
+    """
     s = Szenario()
-    kandidaten = [fall(f"t{i}", "abstain", "nur_test") for i in range(40)]
-    test_ids = {f["id"] for f in teile(kandidaten)["test"]}
-    for id in sorted(test_ids)[:4]:
-        s.add(id, "abstain", "nur_test", "verordnung", 0.9, 0.3)
-    assert test_ids, "Keine Gruppe im Test-Split gefunden"
+    for i, id in enumerate(ids_im_split("l", "calibration", 6)):
+        erwartet = "answer" if i % 2 else "abstain"
+        s.add(id, erwartet, "locker", "verordnung", 0.5 if erwartet == "answer" else 0.2, 0.5)
+    for id in ids_im_split("t", "test", 4):
+        s.add(id, "abstain", "nur_test", "verordnung", 0.5, 0.3)
     return s
 
 
@@ -485,7 +496,13 @@ def test_test_segment_ohne_calibration_blockiert_den_laya_lauf_nicht(chroma):
     assert manifest is not None
     assert "nur_test" not in b["schwellen"]
     assert b["segmente"]["nur_test"]["n"] == 4
-    assert any("nur_test" in w for w in b["warnungen"])
+    strengste = max(b["schwellen"].values())
+    assert b["schwellen"]["locker"] < 0.5 < strengste
+    assert b["segmente"]["nur_test"]["beantwortet"] == 0
+    assert (
+        f"Segment 'nur_test': keine Calibration-Fälle, Test-Fälle mit der strengsten Schwelle {strengste} bewertet."
+        in b["warnungen"]
+    )
 
 
 def test_main_mit_laya_meldet_test_segment_ohne_calibration(tmp_path, monkeypatch, capsys, chroma):
