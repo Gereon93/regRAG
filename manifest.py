@@ -176,7 +176,7 @@ def lade_manifest(pfad, einstellungen) -> Manifest:
     )
 
 
-def index_fingerprint(chroma_verzeichnis) -> str | None:
+def index_fingerprint(chroma_verzeichnis):
     """SHA-256 ueber den kanonischen Inhalt von fingerprint.json (sortierte Schluessel), None ohne Datei.
 
     rag schreibt die Datei in Einfuegereihenfolge; derselbe Index-Inhalt muss unabhaengig davon gleich hashen.
