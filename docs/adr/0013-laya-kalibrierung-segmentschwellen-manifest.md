@@ -87,7 +87,7 @@ Format (UTF-8, JSON ohne `Infinity`/`NaN`):
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "checkpoint": {"modell": "multilingual", "revision": "<vom Betreiber angegeben>"},
   "eval_version": "sha256:…",
   "min_retrieval_score": 0.62,
@@ -95,16 +95,39 @@ Format (UTF-8, JSON ohne `Infinity`/`NaN`):
   "schwellen": {"verordnung": 0.41},
   "fallback_schwelle": 0.41,
   "kosten": {"falschantwort": 10.0, "eskalation": 1.0},
-  "erzeugt": "2026-10-31T12:00:00+00:00"
+  "erzeugt": "2026-10-31T12:00:00+00:00",
+  "index_fingerprint": "<64 Hex-Zeichen>"
 }
 ```
 
 `kosten` ist reine Herkunftsangabe und wird zur Laufzeit nicht ausgewertet. Der Betreiber kopiert die Datei ins
 Deployment und setzt `REGRAG_GATE_MANIFEST`. Gültigkeitsregeln (`manifest.lade_manifest`, jede Verletzung
-ist ein `ValueError` mit Feldname): `schema == 1`; alle Felder vorhanden und vom richtigen Typ; Schwellen-Schlüssel
+ist ein `ValueError` mit Feldname): `schema == 2` (Schema 1 ohne `index_fingerprint` wird abgelehnt, neu erzeugen); alle Felder vorhanden und vom richtigen Typ; Schwellen-Schlüssel
 ⊆ `SEGMENTE` (nie `unbekannt`); Schwellen und `fallback_schwelle` endlich in `[0, 1]`; `fallback_schwelle >= max(schwellen)`;
 `0.05 <= temperatur <= 20`; `checkpoint.modell == REGRAG_LAYA_MODELL`; `min_retrieval_score == REGRAG_MIN_SCORE`
-(die Laya-Schwellen gelten nur unter diesem Guard); `checkpoint.revision` nicht leer; `eval_version` beginnt mit `sha256:`.
+(die Laya-Schwellen gelten nur unter diesem Guard); `checkpoint.revision` nicht leer; `eval_version` beginnt mit `sha256:`; `index_fingerprint` ist ein SHA-256-Hexdigest
+(64 Zeichen, klein).
+
+**Index-Bindung (Issue [#41](../../../../issues/41)).** Retrieval-Scores und Evidenz hängen vom Index ab; Schwellen,
+die auf einem anderen Index kalibriert wurden, gelten dort nur eingeschränkt. Der Report schreibt deshalb ein Manifest
+nur, wenn `chroma/fingerprint.json` existiert, und trägt dessen Fingerprint ein (sonst Warnung "Kein Manifest").
+`laya.baue_gate` vergleicht beim Start (nach dem Index-Aufbau in `rag`) mit dem aktuellen Fingerprint
+(`manifest.warne_bei_anderem_index`):
+
+- gleich: nichts;
+- abweichend oder `fingerprint.json` fehlt: **WARNING** mit beiden Kurz-Hashes, der Start läuft weiter.
+
+Entscheidung **WARNING statt Startfehler:** Uploads über die Web-UI ändern den Fingerprint im laufenden Betrieb
+(jedes Dokument ist ein Eintrag). Ein Startfehler würde nach jedem Upload den nächsten Neustart blockieren, bis neu
+kalibriert ist, und damit das Gate komplett abschalten statt es nur ungenauer zu machen. Uploads landen ohnehin im
+Segment `unbekannt` mit der strengsten Schwelle. Der Betreiber sieht die Abweichung im Log und entscheidet über die
+Neukalibrierung.
+
+Der Fingerprint ist SHA-256 über den **kanonischen** Inhalt von `fingerprint.json` (JSON mit sortierten Schlüsseln,
+ohne Leerraum), nicht über die Dateibytes: `rag` schreibt die Datei in Einfügereihenfolge, und derselbe Index-Inhalt
+(Embedding-Modell, Metrik, Hash pro Dokument inkl. Sidecar) soll auf jeder Maschine gleich hashen, egal in welcher
+Reihenfolge die Dokumente indexiert wurden. Reports von vor #41 trugen den Byte-Hash; `evaluation.vergleich` hält
+sie deshalb für nicht vergleichbar mit neuen Reports (Report neu erzeugen).
 
 **Drei Ladezustände** (`laya.baue_gate`, beim Start):
 
@@ -152,8 +175,8 @@ diese Revision lädt. Geprüft wird nur der Name:
 Im Report ist `y = 1` genau dann, wenn `erwartet == "answer"`: "der Korpus beantwortet die Frage". Laya beurteilt
 aber "die **gelieferte Evidenz** enthält die Antwort". Verfehlt das Retrieval den richtigen Chunk, ist das Label
 für Laya falsch, und Temperatur wie Schwelle lernen Retrieval-Fehler mit. Das steht im Report-Feld `definition`.
-Weil die Evidenz vom Index-Stand abhängt, speichert der Report `index_fingerprint` (SHA-256 über
-`chroma/fingerprint.json`).
+Weil die Evidenz vom Index-Stand abhängt, speichern Report und Manifest `index_fingerprint` (SHA-256 über
+den kanonischen Inhalt von `chroma/fingerprint.json`, siehe Index-Bindung).
 
 ### Vergleich Baseline gegen Fine-Tuned
 
@@ -187,7 +210,10 @@ Der Report des aktuellen (zero-shot) Checkpoints ist die Baseline. Der Vergleich
 
 - Ein Segment, dessen Calibration-Fälle nur eine Klasse enthalten (einseitige Kalibrierung), bekommt eine lockere
   eigene Schwelle plus Warnung. Folgearbeit: solche Segmente ausschließen oder das Manifest verweigern.
-- Das Manifest ist nicht an den Index-Fingerprint gebunden; nur der Report trägt `index_fingerprint`.
+- Die Index-Bindung wird nur **beim Start** geprüft und führt nur zu einer WARNING (Begründung unter Index-Bindung).
+  Uploads und Löschungen im laufenden Betrieb ändern den Index, ohne dass erneut gewarnt wird; erst der nächste Start
+  meldet die Abweichung. Der Fingerprint erfasst den Index-Inhalt, nicht den Stichtag der Gültigkeitsprüfung
+  ([0015](0015-gueltigkeit-fassungen-normkonflikte.md), #54).
 - Der Report bricht ab, wenn ein TEST-Segment keine Calibration-Fälle hat (z. B. das Eval-Segment `ausserhalb`),
   obwohl der Laya-Pfad dieses Segment gar nicht braucht.
 - Gleiche `eval_version` mit anderer Revision überschreibt das eingecheckte Manifest (`git diff` macht es sichtbar).

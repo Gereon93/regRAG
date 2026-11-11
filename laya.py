@@ -19,7 +19,7 @@ from gate import (
     kalibriere,
     segment_von,
 )
-from manifest import lade_manifest
+from manifest import lade_manifest, warne_bei_anderem_index
 
 log = logging.getLogger(__name__)
 
@@ -218,6 +218,7 @@ def baue_gate(einstellungen, transport=None):
     }
     if manifest_pfad:
         manifest = lade_manifest(manifest_pfad, einstellungen)
+        warne_bei_anderem_index(manifest, einstellungen.CHROMA_VERZEICHNIS)
         laya = LayaGate(
             client,
             manifest.schwelle_fuer,

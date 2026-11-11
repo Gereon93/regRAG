@@ -19,7 +19,7 @@ from evaluation.eval_report import (
 from evaluation.evalset import Kosten, eval_version, teile
 from gate import Kaskade, Outcome, RetrievalScoreGate, kalibriere
 from laya import LayaGate, SystemOneClient
-from manifest import lade_manifest, schreibe_manifest
+from manifest import index_fingerprint, lade_manifest, schreibe_manifest
 
 KOSTEN = Kosten(falschantwort=10.0, eskalation=1.0)
 
@@ -86,6 +86,8 @@ class Szenario:
 @pytest.fixture
 def chroma(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CHROMA_VERZEICHNIS", str(tmp_path / "chroma"))
+    (tmp_path / "chroma").mkdir()
+    (tmp_path / "chroma" / "fingerprint.json").write_text('{"dokumente": {"a.md": "x"}}', encoding="utf-8")
     return tmp_path / "chroma"
 
 
@@ -134,7 +136,7 @@ def test_report_enthaelt_laya_teil_und_pflichtfelder_fuer_den_vergleich(chroma):
     assert b["kosten"] == {"falschantwort": 10.0, "eskalation": 1.0}
     laya = b["laya"]
     assert laya["checkpoint"] == {"modell": "multilingual", "revision": "rev1"}
-    assert laya["index_fingerprint"] is None
+    assert laya["index_fingerprint"] == index_fingerprint(chroma)
     assert laya["fallback_schwelle"] == max(laya["schwellen"].values())
     assert "unbekannt" not in laya["schwellen"]
     assert {f["id"] for f in laya["test_faelle"]} == {f["id"] for f in teile(s.faelle)["test"]}
@@ -217,6 +219,7 @@ def test_manifest_wird_nur_mit_revision_erzeugt_und_ist_ladbar(chroma, tmp_path)
     assert geladen.schwellen == b["laya"]["schwellen"]
     assert geladen.fallback_schwelle == b["laya"]["fallback_schwelle"]
     assert geladen.temperatur == b["laya"]["temperatur"]
+    assert geladen.index_fingerprint == b["laya"]["index_fingerprint"] == index_fingerprint(chroma)
 
 
 @pytest.mark.parametrize("revision", ["", "   ", "\t\n"])
@@ -234,12 +237,22 @@ def test_revision_wird_getrimmt(chroma):
     assert b["laya"]["checkpoint"]["revision"] == "r1"
 
 
-def test_index_fingerprint_ist_sha256_der_datei(chroma):
-    chroma.mkdir()
-    (chroma / "fingerprint.json").write_bytes(b'{"a": 1}')
+def test_index_fingerprint_ist_sha256_des_kanonischen_inhalts(chroma):
+    (chroma / "fingerprint.json").write_text('{"b": 2,\n "a": 1}', encoding="utf-8")
     s = Szenario()
-    b, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None)
-    assert b["laya"]["index_fingerprint"] == hashlib.sha256(b'{"a": 1}').hexdigest()
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "r1")
+    assert b["laya"]["index_fingerprint"] == hashlib.sha256(b'{"a":1,"b":2}').hexdigest()
+    assert manifest.index_fingerprint == b["laya"]["index_fingerprint"]
+
+
+def test_ohne_index_fingerprint_kein_manifest(chroma):
+    """#41: ein Manifest ohne Index-Bindung waere zur Laufzeit nicht pruefbar."""
+    (chroma / "fingerprint.json").unlink()
+    s = Szenario()
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "r1")
+    assert manifest is None
+    assert b["laya"]["index_fingerprint"] is None
+    assert any("Kein Manifest" in w and "fingerprint" in w for w in b["laya"]["warnungen"])
 
 
 def test_laya_report_enthaelt_den_31_report_unveraendert(chroma):

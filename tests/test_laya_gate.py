@@ -30,6 +30,7 @@ def einstellungen(**ueberschreibe):
         "LAYA_MODELL": "multilingual",
         "GATE_MANIFEST": "",
         "LAYA_KONFLIKT_SCHWELLE": None,
+        "CHROMA_VERZEICHNIS": "chroma-gibt-es-nicht",
     }
     return SimpleNamespace(**{**werte, **ueberschreibe})
 
@@ -187,6 +188,7 @@ def schreibe_fixture(tmp_path, **ueberschreibe):
         "fallback_schwelle": 0.7,
         "kosten": {"c_fehlantwort": 5.0, "c_eskalation": 1.0},
         "erzeugt": "2026-11-01T00:00:00+00:00",
+        "index_fingerprint": "ab" * 32,
     }
     return schreibe_manifest(Manifest(**{**werte, **ueberschreibe}), tmp_path)
 
@@ -211,6 +213,30 @@ def test_gueltiges_manifest_baut_die_kaskade_mit_segmentschwellen(tmp_path):
     assert gate.gates[-1].modell_streng is True
     assert gate.gates[-1].schwelle_fuer("verordnung") == 0.4
     assert gate.gates[-1].schwelle_fuer("unbekannt") == 0.7
+
+
+def test_manifest_auf_anderem_index_startet_mit_warnung(tmp_path, caplog):
+    """#41: abweichender Index ist WARNING, kein Startfehler (Uploads aendern den Fingerprint im Betrieb)."""
+    chroma = tmp_path / "chroma"
+    chroma.mkdir()
+    (chroma / "fingerprint.json").write_text('{"dokumente": {"upload.md": "x"}}', encoding="utf-8")
+    pfad = schreibe_fixture(tmp_path)
+    with caplog.at_level(logging.WARNING, logger="manifest"):
+        gate = baue_gate(einstellungen(LAYA_URL=URL, GATE_MANIFEST=str(pfad), CHROMA_VERZEICHNIS=str(chroma)))
+    assert gate.gates[-1].modell_streng is True
+    assert any("Index" in r.getMessage() and r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_manifest_auf_gleichem_index_warnt_nicht(tmp_path, caplog):
+    from manifest import index_fingerprint
+
+    chroma = tmp_path / "chroma"
+    chroma.mkdir()
+    (chroma / "fingerprint.json").write_text('{"dokumente": {"a.md": "x"}}', encoding="utf-8")
+    pfad = schreibe_fixture(tmp_path, index_fingerprint=index_fingerprint(chroma))
+    with caplog.at_level(logging.WARNING, logger="manifest"):
+        baue_gate(einstellungen(LAYA_URL=URL, GATE_MANIFEST=str(pfad), CHROMA_VERZEICHNIS=str(chroma)))
+    assert [r for r in caplog.records if r.name == "manifest"] == []
 
 
 def test_kaskade_mit_manifest_kalibriert_und_waehlt_die_schwelle_pro_segment(tmp_path):
