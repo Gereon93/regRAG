@@ -44,7 +44,8 @@ Das ist gewollt.
   nicht das Eval-Feld `segment`. Ein `ausserhalb`-Fall landet so in dem Segment, das sein Top-k zur Laufzeit hätte.
   Im Eval-Set ist `ausserhalb` nur zusammen mit `erwartet = "abstain"` erlaubt (`lade_faelle` prüft das).
 - **`unbekannt` bekommt nie eine eigene Schwelle.** Es, gemischte und fehlende Segmente fallen auf
-  `fallback_schwelle = max(schwellen)` zurück, also nie lockerer als irgendein Segment.
+  `fallback_schwelle` zurück, das Maximum der Kostenschwellen aller kalibrierten Segmente (einschließlich
+  ausgeschlossener einseitiger, siehe unten), also nie lockerer als irgendein Segment.
 - **Einseitige Segmente (nur `answer`) bekommen keine eigene Schwelle** (#40). Ohne `abstain`-Fall setzt die
   Kostenfunktion die Schwelle auf den niedrigsten gesehenen Score, Laya wäre dort abgeschaltet. Das Segment fällt
   stattdessen auf den Fallback; der wird über alle Segmente gebildet, einschließlich der ausgeschlossenen, ist also nie
