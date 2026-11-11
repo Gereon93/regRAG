@@ -155,7 +155,8 @@ Details und Grenzen: [ADR 0015](docs/adr/0015-gueltigkeit-fassungen-normkonflikt
 - **Ablösen:** Bei der alten Fassung `gueltig_bis` setzen, der neuen denselben `titel` geben. Zwei gleichzeitig gültige
   Fassungen desselben Titels verweigern mit `AMBIGUOUS_VERSION`. Abweichende Titel erkennt das Gate nicht.
 - **Ohne Angaben** gilt ein Dokument als `unbekannt`: Es bleibt nutzbar, ist aber kein Beleg für Aktualität. Liegt daneben
-  eine abgelaufene Fassung und keine gültige, verweigert das Gate mit `OUTDATED_SOURCE`.
+  eine abgelaufene Fassung und keine gültige, verweigert das Gate mit `OUTDATED_SOURCE`, auch wenn die abgelaufene
+  Fassung zu einer anderen Quelle gehört (#58). Wer Altfassungen datiert, sollte deshalb auch die geltenden datieren.
 - **Frühere Rechtslage:** Es gibt nur den Stichtag heute. Fragen zu einem früheren Stand werden aus der heute gültigen
   Fassung beantwortet.
 - **Normkonflikte** erkennt nur der experimentelle Konflikt-Judge (`REGRAG_LAYA_KONFLIKT_SCHWELLE`, braucht Laya, kein

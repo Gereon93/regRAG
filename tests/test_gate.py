@@ -719,6 +719,15 @@ def test_unbekannt_ersetzt_keine_gueltige_fassung():
     assert entscheidung.reasons == (AbstainReason.OUTDATED_SOURCE,)
 
 
+def test_abgelaufen_aus_anderer_quelle_neben_unbekannt_ist_outdated():
+    alt = fassung(quelle="marisk", **ABGELAUFEN)
+    dora = fassung(file_name="b.md")
+
+    entscheidung = gueltigkeits_gate().entscheide("f", [dora, alt])
+
+    assert entscheidung.reasons == (AbstainReason.OUTDATED_SOURCE,)
+
+
 def test_mischfall_engt_auf_gueltig_und_unbekannt_ein():
     alt, neu, ohne = fassung(**ABGELAUFEN), fassung(file_name="b.md", **GUELTIG), fassung(file_name="c.md")
 

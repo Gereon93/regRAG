@@ -37,6 +37,10 @@ schon in den Fingerprint ein ([0006](0006-inkrementeller-index-merge-statt-voll-
 - `gueltig` ist nutzbar. `unbekannt` ist nutzbar, **gilt aber nicht als gültige Fassung.** Liegt ein nicht nutzbarer
   Treffer vor und kein `gueltig`-Treffer, ist die Entscheidung `OUTDATED_SOURCE`, auch neben `unbekannt`-Treffern. Das
   kostet Antworten und ist gewollt (Falschantwort ≫ Eskalation). Liegen nur nutzbare Treffer vor, läuft alles wie vor #30.
+- Die Regel gilt über alle Treffer, nicht pro Quelle: Ein abgelaufener MaRisk-Chunk unter den Treffern einer DORA-Frage
+  verweigert auch dann, wenn die DORA-Treffer `unbekannt` sind. Pro Quelle würde eine Frage zur alten MaRisk aus einem
+  themenfremden Treffer beantwortet. Datiert der Betreiber nur Altfassungen, steigt so die Fehl-Eskalation; ob die Regel
+  pro Quelle besser trägt, entscheidet eine Messung ([#58](../../../../issues/58)).
 
 ### Einengender Gate statt Dekorator
 
