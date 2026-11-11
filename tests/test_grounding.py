@@ -305,6 +305,26 @@ def test_verwurf_ist_abstain_mit_vorherigen_scores_und_einer_zeile(tmp_path, mon
     assert metrics.METRIKEN.schnappschuss()["eskalationen_nach_reason"] == {"UNGROUNDED_CLAIM": 1}
 
 
+def test_eingeengte_entscheidung_prueft_gegen_genutzte_und_eskaliert_alle_treffer(tmp_path):
+    ziel = tmp_path / "e.jsonl"
+    alt = SimpleNamespace(
+        score=0.9,
+        text="Die Frist beträgt 24 Stunden.",
+        metadata={"quelle": "dora.md", "segment": "auslegung", "gueltig_bis": "2000-01-01"},
+    )
+    neu = node("Die Frist beträgt 72 Stunden.", segment="verordnung")
+    eingeengt = GateDecision(Outcome.ANSWER, (), GateScores(relevance=0.9), (neu,))
+
+    bestanden = pruefe_antwort_und_eskaliere(ziel, "F?", [alt, neu], "Die Frist beträgt 72 Stunden [1].", eingeengt)
+    verworfen = pruefe_antwort_und_eskaliere(ziel, "F?", [alt, neu], "Die Frist beträgt 24 Stunden [1].", eingeengt)
+
+    assert not bestanden.verweigert
+    assert verworfen.entscheidung.evidenz == (neu,)
+    satz = json.loads(ziel.read_text(encoding="utf-8"))
+    assert [e["gueltigkeit"] for e in satz["evidenz"]] == ["abgelaufen", "unbekannt"]
+    assert satz["segment"] == "verordnung"
+
+
 def test_datensatz_begrenzt_antwort_und_fehlstellen(tmp_path):
     ziel = tmp_path / "e.jsonl"
     lang = " ".join(f"Satz{i} {'x' * 300}." for i in range(30))

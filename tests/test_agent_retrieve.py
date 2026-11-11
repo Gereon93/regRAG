@@ -32,3 +32,23 @@ def test_retrieve_laesst_nur_die_genutzten_nodes_im_zustand(agent, monkeypatch):
     zustand = agent.retrieve({"frage": "f"})
 
     assert zustand["nodes"] == [neu]
+
+
+def test_ground_eskaliert_mit_allen_abgerufenen_treffern(agent, monkeypatch):
+    alt, neu = SimpleNamespace(), SimpleNamespace()
+    entscheidung = GateDecision(Outcome.ANSWER, (), GateScores(), (neu,))
+    gesehen = []
+    monkeypatch.setattr(agent, "pruefe", lambda frage, nodes: SimpleNamespace(entscheidung=entscheidung, vorgemerkt=False))
+    monkeypatch.setattr(agent, "retriever", SimpleNamespace(retrieve=lambda frage: [alt, neu]))
+    monkeypatch.setattr(
+        agent,
+        "pruefe_grounding",
+        lambda frage, nodes, antwort, vorherige: gesehen.append(nodes) or SimpleNamespace(verweigert=False),
+    )
+    zustand = agent.retrieve({"frage": "f"})
+    zustand.update(antwort="A", llm_fehler=False)
+
+    agent.ground(zustand)
+
+    assert gesehen == [[alt, neu]]
+    assert zustand["nodes"] == [neu]

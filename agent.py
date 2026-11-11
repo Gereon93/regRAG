@@ -33,6 +33,7 @@ prompt = ChatPromptTemplate.from_messages([
 
 class S(TypedDict):
     frage: str
+    treffer: list
     nodes: list
     entscheidung: GateDecision
     vorgemerkt: bool
@@ -51,9 +52,9 @@ def pruefe_grounding(frage, nodes, antwort, vorherige):
 
 
 def retrieve(s):
-    s["nodes"] = retriever.retrieve(s["frage"])
-    pruefung = pruefe(s["frage"], s["nodes"])
-    s["nodes"] = pruefung.entscheidung.genutzte_nodes(s["nodes"])
+    s["treffer"] = retriever.retrieve(s["frage"])
+    pruefung = pruefe(s["frage"], s["treffer"])
+    s["nodes"] = pruefung.entscheidung.genutzte_nodes(s["treffer"])
     s["entscheidung"] = pruefung.entscheidung
     s["vorgemerkt"] = pruefung.vorgemerkt
     return s
@@ -83,7 +84,7 @@ def answer(s):
 def ground(s):
     if s["llm_fehler"]:
         return s
-    pruefung = pruefe_grounding(s["frage"], s["nodes"], s["antwort"], s["entscheidung"])
+    pruefung = pruefe_grounding(s["frage"], s["treffer"], s["antwort"], s["entscheidung"])
     if pruefung.verweigert:
         s["entscheidung"] = pruefung.entscheidung
         s["vorgemerkt"] = pruefung.vorgemerkt

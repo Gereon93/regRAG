@@ -72,10 +72,10 @@ def _sse(obj):
 
 
 async def _antwort_strom(frage):
-    nodes = retriever.retrieve(frage)
+    treffer = retriever.retrieve(frage)
 
-    pruefung = await asyncio.to_thread(pruefe, frage, nodes)
-    nodes = pruefung.entscheidung.genutzte_nodes(nodes)
+    pruefung = await asyncio.to_thread(pruefe, frage, treffer)
+    nodes = pruefung.entscheidung.genutzte_nodes(treffer)
     quellen = _quellen(nodes)
     if pruefung.verweigert:
         yield _sse({"type": "abstain", "text": abstain_antwort(pruefung.vorgemerkt, pruefung.entscheidung.reasons)})
@@ -87,7 +87,7 @@ async def _antwort_strom(frage):
     try:
         nachrichten = prompt.format_messages(kontext=baue_kontext(nodes), frage=frage)
         antwort = "".join([c.content async for c in llm.astream(nachrichten) if c.content])
-        geprueft = await asyncio.to_thread(pruefe_grounding, frage, nodes, antwort, pruefung.entscheidung)
+        geprueft = await asyncio.to_thread(pruefe_grounding, frage, treffer, antwort, pruefung.entscheidung)
     except Exception as e:
         log.exception("Antwort konnte nicht erzeugt oder geprüft werden")
         yield _sse({"type": "error", "text": f"Antwort konnte nicht erzeugt werden ({type(e).__name__}) — bitte erneut versuchen."})

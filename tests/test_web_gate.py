@@ -476,6 +476,20 @@ def test_mischfall_mit_laya_nein_zeigt_nur_gueltige_fundstellen_und_eskaliert_al
         assert [e["gueltigkeit"] for e in satz["evidenz"]] == ["abgelaufen", "gueltig"]
 
 
+def test_mischfall_mit_verworfener_antwort_eskaliert_alle_treffer(korpus_strom):
+    alt, neu = node(0.8, "alter Text", **ABGELOEST), node(0.7, "neuer Text", **GUELTIG)
+
+    with korpus_strom() as strom:
+        strom.llm.teile = ["Die Frist beträgt 4 Stunden [1]."]
+        events = strom.lauf("Frage?", [alt, neu])
+
+        assert [e["type"] for e in events] == ["status", "abstain", "sources", "done"]
+        assert len(zeigt_quellen(events)) == 1
+        satz = _datensatz(strom)
+        assert satz["reasons"] == ["UNGROUNDED_CLAIM"]
+        assert [e["gueltigkeit"] for e in satz["evidenz"]] == ["abgelaufen", "gueltig"]
+
+
 def test_verdraengung_durch_top_k_verweigert_und_ist_dokumentiert(korpus_strom):
     with korpus_strom() as strom:
         events = strom.lauf("Frage?", [node(0.8, **ABGELOEST) for _ in range(3)])
