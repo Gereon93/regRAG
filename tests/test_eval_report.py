@@ -453,6 +453,40 @@ def test_einseitiges_calibration_segment_wird_gewarnt(chroma):
     assert any("'gesetz'" in w and "nur 'answer'" in w for w in b["laya"]["warnungen"])
 
 
+def test_einseitiges_answer_segment_bekommt_keine_eigene_schwelle(chroma):
+    """#40: nur 'answer' im Segment setzt die Schwelle auf den niedrigsten Score; das Segment fällt auf den Fallback."""
+    s = einseitiges_szenario()
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "r1")
+    lockere = kalibriere(0.8, b["laya"]["temperatur"])  # niedrigster gesehener gesetz-Score
+    assert "gesetz" not in b["laya"]["schwellen"]
+    assert "gesetz" not in manifest.schwellen
+    assert manifest.schwelle_fuer("gesetz") == b["laya"]["fallback_schwelle"] >= lockere
+    assert b["laya"]["fallback_schwelle"] >= max(b["laya"]["schwellen"].values())
+
+
+def test_einseitiges_abstain_segment_behaelt_seine_strenge_schwelle(chroma):
+    s = einseitiges_szenario()
+    for i in range(40):
+        s.add(f"n{i}", "abstain", "gesetz", "gesetz", 0.9, 0.3)
+    for i in range(40):
+        s.faelle.remove(next(f for f in s.faelle if f["id"] == f"e{i}"))
+    b, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None)
+    assert b["laya"]["schwellen"]["gesetz"] > kalibriere(0.3, b["laya"]["temperatur"])
+
+
+def test_nur_einseitige_answer_segmente_schreiben_kein_manifest(chroma):
+    """Ohne belastbare Segmentschwelle wäre auch der Fallback nur der niedrigste answer-Score."""
+    s = Szenario(leer=True)
+    for i in range(60):
+        s.add(f"a{i}", "answer", "verordnung", "verordnung", 0.9, 0.8)
+        s.add(f"u{i}", "abstain", "verordnung", "verordnung", 0.9, 0.2)
+        s.treffer[f"Frage u{i}?"] = [knoten(0.9, "verordnung"), knoten(0.9, "gesetz")]  # unbekannt
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "r1")
+    assert manifest is None
+    assert b["laya"]["schwellen"] == {}
+    assert any("Kein Manifest" in w and "einseitig" in w for w in b["laya"]["warnungen"])
+
+
 def test_main_zeigt_laya_schwellen_und_warnungen_auf_stderr(tmp_path, monkeypatch, capsys, chroma):
     s = einseitiges_szenario()
     vorbereitet(s, tmp_path, monkeypatch, "http://laya.test")

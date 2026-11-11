@@ -163,6 +163,17 @@ class _Zwischenspeicher:
         return self._treffer[frage]
 
 
+def _ohne_nur_answer_segmente(schwellen, zeilen):
+    """Segmente, deren Calibration nur 'answer' kennt, verlieren ihre eigene Schwelle (#40).
+
+    Die Kostenfunktion setzt sie dort auf den niedrigsten gesehenen Score, Laya wäre abgeschaltet. Solche Segmente
+    fallen auf den Fallback; der bleibt das Maximum über alle Segmente, ist also nie lockerer als ihre eigene Schwelle.
+    Nur-'abstain'-Segmente behalten ihre (strenge) Schwelle.
+    """
+    mit_abstain = {z["segment_laufzeit"] for z in zeilen if z["erwartet"] != "answer"}
+    return {segment: schwelle for segment, schwelle in schwellen.items() if segment in mit_abstain}
+
+
 def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revision):
     checkpoint_revision = normalisiere_revision(checkpoint_revision)
     retriever = _Zwischenspeicher(retriever)
@@ -192,10 +203,13 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
     fingerprint = index_fingerprint(config.CHROMA_VERZEICHNIS)
     if fingerprint is None:
         warnungen.append("Kein Manifest: Index ohne fingerprint.json, Manifest wäre an keinen Index gebunden.")
-    schwellen = schwellen_pro_segment(
+    roh_schwellen = schwellen_pro_segment(
         _mit_kalibriert(bewertet, temperatur), kosten, score_feld="laya_kal", segment_feld="segment_laufzeit"
     )
-    fallback = max(schwellen.values())
+    schwellen = _ohne_nur_answer_segmente(roh_schwellen, bewertet)
+    if not schwellen:
+        warnungen.append("Kein Manifest: alle Segmente einseitig (nur 'answer'), keine belastbare Schwelle.")
+    fallback = max(roh_schwellen.values())
     test_kal = _mit_kalibriert(test, temperatur)
     laya_bericht = bericht(
         test_kal,
@@ -230,7 +244,7 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
         ],
     }
     manifest = None
-    if checkpoint_revision and schaetzbar and fingerprint:
+    if checkpoint_revision and schaetzbar and fingerprint and schwellen:
         manifest = Manifest(
             checkpoint_modell=laya_gate.modell,
             checkpoint_revision=checkpoint_revision,
