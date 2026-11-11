@@ -191,8 +191,19 @@ def index_fingerprint(chroma_verzeichnis):
 
 
 def warne_bei_anderem_index(manifest: Manifest, chroma_verzeichnis) -> None:
-    """WARNING, wenn der Index nicht der ist, auf dem kalibriert wurde; der Start laeuft weiter (docs/adr/0013)."""
-    aktuell = index_fingerprint(chroma_verzeichnis)
+    """WARNING, wenn der Index nicht der ist, auf dem kalibriert wurde; der Start laeuft weiter (docs/adr/0013).
+
+    Auch eine unlesbare fingerprint.json (etwa halb geschrieben von einem parallelen Prozess) ergibt nur eine WARNING.
+    """
+    try:
+        aktuell = index_fingerprint(chroma_verzeichnis)
+    except (OSError, ValueError) as fehler:
+        log.warning(
+            "Gate-Manifest auf Index %s kalibriert, aktuelle fingerprint.json nicht lesbar (%s): Index-Bindung ungeprueft.",
+            manifest.index_fingerprint[:INDEX_KURZ],
+            fehler.__class__.__name__,
+        )
+        return
     if aktuell is None:
         log.warning(
             "Gate-Manifest auf Index %s kalibriert, aktueller Index ohne fingerprint.json: "

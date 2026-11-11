@@ -383,3 +383,12 @@ def test_fehlender_index_warnt(tmp_path, caplog):
         warne_bei_anderem_index(_manifest(), tmp_path / "chroma")
     (eintrag,) = caplog.records
     assert "fingerprint.json" in eintrag.getMessage()
+
+
+def test_unlesbarer_index_warnt_statt_den_start_abzubrechen(tmp_path, caplog):
+    """PR #59: halb geschriebene fingerprint.json (paralleler Schreiber) darf baue_gate nicht abbrechen."""
+    chroma = _schreibe_index(tmp_path / "chroma", '{"dokumente": {"a.md"')
+    with caplog.at_level(logging.WARNING, logger="manifest"):
+        warne_bei_anderem_index(_manifest(), chroma)
+    (eintrag,) = caplog.records
+    assert "nicht lesbar" in eintrag.getMessage()

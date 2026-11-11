@@ -116,6 +116,8 @@ nur, wenn `chroma/fingerprint.json` existiert, und trägt dessen Fingerprint ein
 
 - gleich: nichts;
 - abweichend oder `fingerprint.json` fehlt: **WARNING** mit beiden Kurz-Hashes, der Start läuft weiter.
+- `fingerprint.json` unlesbar (z. B. von einem parallelen Prozess halb geschrieben): **WARNING**, Bindung
+  ungeprüft, der Start läuft weiter. Der Report bricht in diesem Fall dagegen ab.
 
 Entscheidung **WARNING statt Startfehler:** Uploads über die Web-UI ändern den Fingerprint im laufenden Betrieb
 (jedes Dokument ist ein Eintrag). Ein Startfehler würde nach jedem Upload den nächsten Neustart blockieren, bis neu
