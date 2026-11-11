@@ -59,7 +59,8 @@ def einseitige_segmente(zeilen):
     return [f"Segment '{s}': Calibration enthält nur '{next(iter(werte))}', Schwelle nicht belastbar." for s, werte in sorted(labels.items()) if len(werte) == 1]
 
 
-def erzeuge_bericht(faelle, retriever, kosten):
+def erzeuge_bericht(faelle, retriever, kosten, fehlende_segmente_warnen=False):
+    """fehlende_segmente_warnen: Test-Segmente ohne Calibration-Fälle warnen statt abbrechen (Laya-Lauf, #42)."""
     version = eval_version(faelle)
     splits = teile(faelle)
     leere = [name for name, fs in splits.items() if not fs]
@@ -72,14 +73,21 @@ def erzeuge_bericht(faelle, retriever, kosten):
     schwellen = schwellen_pro_segment(kalibrierung, kosten)
     test = hole_zeilen(splits["test"], retriever)
     fehlend = sorted({z["segment"] for z in test} - set(schwellen))
-    if fehlend:
+    if fehlend and not fehlende_segmente_warnen:
         raise SystemExit(
             f"Segmente ohne Calibration-Fälle, keine Schwelle möglich: {fehlend}. "
             "Mehr Fälle dieser Segmente labeln oder die Segmente zusammenlegen."
         )
-    ergebnis = bericht(test, schwellen, kosten, version)
+    fallback = max(schwellen.values()) if fehlend else None
+    ergebnis = bericht(test, schwellen, kosten, version, fallback=fallback)
     ergebnis["split"] = "test"
-    ergebnis["warnungen"] = einseitige_segmente(kalibrierung)
+    ergebnis["warnungen"] = [
+        *(
+            f"Segment '{s}': keine Calibration-Fälle, Test-Fälle mit der strengsten Schwelle {fallback} bewertet."
+            for s in fehlend
+        ),
+        *einseitige_segmente(kalibrierung),
+    ]
     ergebnis["faelle"] = {name: len(fs) for name, fs in splits.items()}
     ergebnis["zeitpunkt"] = datetime.now(timezone.utc).isoformat()
     return ergebnis
@@ -163,7 +171,7 @@ class _Zwischenspeicher:
 def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revision):
     checkpoint_revision = normalisiere_revision(checkpoint_revision)
     retriever = _Zwischenspeicher(retriever)
-    ergebnis = erzeuge_bericht(faelle, retriever, kosten)
+    ergebnis = erzeuge_bericht(faelle, retriever, kosten, fehlende_segmente_warnen=True)
     splits = teile(faelle)
     guard = config.MIN_RETRIEVAL_SCORE
     kalibrierung = hole_laya_zeilen(splits["calibration"], retriever, laya_gate, guard)
@@ -293,6 +301,8 @@ def main(argv=None):
                 f"Laya: T={laya['temperatur']} Schwellen={laya['schwellen']} Fallback={laya['fallback_schwelle']}",
                 file=sys.stderr,
             )
+        for warnung in ergebnis["warnungen"]:
+            print(f"WARNUNG: {warnung}", file=sys.stderr)
         for warnung in laya["warnungen"]:
             print(f"WARNUNG (Laya): {warnung}", file=sys.stderr)
     else:

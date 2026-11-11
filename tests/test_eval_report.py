@@ -460,3 +460,37 @@ def test_nicht_schaetzbare_temperatur_schreibt_kein_manifest(tmp_path, monkeypat
     assert "Kein Manifest" in capsys.readouterr().err
     assert not (tmp_path / "manifest").exists()
     assert list((tmp_path / "reports").glob("bericht-*laya*.json"))
+
+
+def mit_nur_test_segment():
+    """Szenario plus Eval-Segment 'nur_test', dessen Fälle alle im Test-Split liegen (#42)."""
+    s = Szenario()
+    kandidaten = [fall(f"t{i}", "abstain", "nur_test") for i in range(40)]
+    test_ids = {f["id"] for f in teile(kandidaten)["test"]}
+    for id in sorted(test_ids)[:4]:
+        s.add(id, "abstain", "nur_test", "verordnung", 0.9, 0.3)
+    assert test_ids, "Keine Gruppe im Test-Split gefunden"
+    return s
+
+
+def test_ohne_laya_bricht_test_segment_ohne_calibration_ab():
+    s = mit_nur_test_segment()
+    with pytest.raises(SystemExit, match="nur_test"):
+        erzeuge_bericht(s.faelle, s.retriever, KOSTEN)
+
+
+def test_test_segment_ohne_calibration_blockiert_den_laya_lauf_nicht(chroma):
+    s = mit_nur_test_segment()
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "r1")
+    assert manifest is not None
+    assert "nur_test" not in b["schwellen"]
+    assert b["segmente"]["nur_test"]["n"] == 4
+    assert any("nur_test" in w for w in b["warnungen"])
+
+
+def test_main_mit_laya_meldet_test_segment_ohne_calibration(tmp_path, monkeypatch, capsys, chroma):
+    s = mit_nur_test_segment()
+    vorbereitet(s, tmp_path, monkeypatch, "http://laya.test")
+    eval_report.main(["--checkpoint-revision", "r1"])
+    assert "nur_test" in capsys.readouterr().err
+    assert len(list((tmp_path / "manifest").glob("gate-manifest-*.json"))) == 1
