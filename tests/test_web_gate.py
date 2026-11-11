@@ -276,6 +276,7 @@ def test_chat_lehnt_riesigen_body_vor_dem_parsen_ab(strom):
 
 
 def test_chat_drosselt_flut_ohne_weitere_eskalationen(strom):
+    strom.main.CHAT_DROSSEL.uhr = lambda: 0.0
     client = TestClient(strom.main.app)
     grenze = strom.main.config.CHAT_MAX_PRO_MINUTE
 

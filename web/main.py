@@ -41,11 +41,10 @@ async def _lebenszyklus(_app):
 
 
 MAX_CHAT_BYTES = 16 * MAX_FRAGE_ZEICHEN
+CHAT_DROSSEL = Drossel(config.CHAT_MAX_PRO_MINUTE)
 
 app = FastAPI(title="RegRAG", lifespan=_lebenszyklus)
-app.add_middleware(
-    ChatSchutz, pfad="/chat", drossel=Drossel(config.CHAT_MAX_PRO_MINUTE), max_bytes=MAX_CHAT_BYTES
-)
+app.add_middleware(ChatSchutz, pfad="/chat", drossel=CHAT_DROSSEL, max_bytes=MAX_CHAT_BYTES)
 STATIC = Path(__file__).parent / "static"
 DOKUMENTE = Path(config.DOKUMENTE_VERZEICHNIS)
 
