@@ -460,3 +460,54 @@ def test_nicht_schaetzbare_temperatur_schreibt_kein_manifest(tmp_path, monkeypat
     assert "Kein Manifest" in capsys.readouterr().err
     assert not (tmp_path / "manifest").exists()
     assert list((tmp_path / "reports").glob("bericht-*laya*.json"))
+
+
+def ids_im_split(prefix, split, n):
+    kandidaten = [fall(f"{prefix}{i}", "abstain", "x") for i in range(20 * n)]
+    ids = sorted(f["id"] for f in teile(kandidaten)[split])[:n]
+    assert len(ids) == n, f"Zu wenige Gruppen im Split {split}"
+    return ids
+
+
+def mit_nur_test_segment():
+    """Szenario plus Eval-Segment 'nur_test', dessen Fälle alle im Test-Split liegen (#42).
+
+    'locker' (nur Calibration) trennt bei top ~0.35, die übrigen Segmente bei ~0.9: die strengste Schwelle
+    eskaliert die nur_test-Fälle (top 0.5), die lockerste würde sie beantworten.
+    """
+    s = Szenario()
+    for i, id in enumerate(ids_im_split("l", "calibration", 6)):
+        erwartet = "answer" if i % 2 else "abstain"
+        s.add(id, erwartet, "locker", "verordnung", 0.5 if erwartet == "answer" else 0.2, 0.5)
+    for id in ids_im_split("t", "test", 4):
+        s.add(id, "abstain", "nur_test", "verordnung", 0.5, 0.3)
+    return s
+
+
+def test_ohne_laya_bricht_test_segment_ohne_calibration_ab():
+    s = mit_nur_test_segment()
+    with pytest.raises(SystemExit, match="nur_test"):
+        erzeuge_bericht(s.faelle, s.retriever, KOSTEN)
+
+
+def test_test_segment_ohne_calibration_blockiert_den_laya_lauf_nicht(chroma):
+    s = mit_nur_test_segment()
+    b, manifest = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, "r1")
+    assert manifest is not None
+    assert "nur_test" not in b["schwellen"]
+    assert b["segmente"]["nur_test"]["n"] == 4
+    strengste = max(b["schwellen"].values())
+    assert b["schwellen"]["locker"] < 0.5 < strengste
+    assert b["segmente"]["nur_test"]["beantwortet"] == 0
+    assert (
+        f"Segment 'nur_test': keine Calibration-Fälle, Test-Fälle mit der strengsten Schwelle {strengste} bewertet."
+        in b["warnungen"]
+    )
+
+
+def test_main_mit_laya_meldet_test_segment_ohne_calibration(tmp_path, monkeypatch, capsys, chroma):
+    s = mit_nur_test_segment()
+    vorbereitet(s, tmp_path, monkeypatch, "http://laya.test")
+    eval_report.main(["--checkpoint-revision", "r1"])
+    assert "nur_test" in capsys.readouterr().err
+    assert len(list((tmp_path / "manifest").glob("gate-manifest-*.json"))) == 1
