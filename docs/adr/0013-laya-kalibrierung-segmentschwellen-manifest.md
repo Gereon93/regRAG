@@ -44,7 +44,15 @@ Das ist gewollt.
   nicht das Eval-Feld `segment`. Ein `ausserhalb`-Fall landet so in dem Segment, das sein Top-k zur Laufzeit hätte.
   Im Eval-Set ist `ausserhalb` nur zusammen mit `erwartet = "abstain"` erlaubt (`lade_faelle` prüft das).
 - **`unbekannt` bekommt nie eine eigene Schwelle.** Es, gemischte und fehlende Segmente fallen auf
-  `fallback_schwelle = max(schwellen)` zurück, also nie lockerer als irgendein Segment.
+  `fallback_schwelle` zurück, das Maximum der Kostenschwellen aller kalibrierten Segmente (einschließlich
+  ausgeschlossener einseitiger, siehe unten), also nie lockerer als irgendein Segment.
+- **Einseitige Segmente (nur `answer`) bekommen keine eigene Schwelle** (#40). Ohne `abstain`-Fall setzt die
+  Kostenfunktion die Schwelle auf den niedrigsten gesehenen Score, Laya wäre dort abgeschaltet. Das Segment fällt
+  stattdessen auf den Fallback; der wird über alle Segmente gebildet, einschließlich der ausgeschlossenen, ist also nie
+  lockerer als deren eigene Schwelle gewesen wäre. Bleibt kein belastbares Segment übrig, wird **kein Manifest**
+  geschrieben, weil auch der Fallback nur aus niedrigsten `answer`-Scores bestünde. Nur-`abstain`-Segmente behalten
+  ihre Schwelle: sie liegt über allen gesehenen Scores und ist damit streng, nicht locker. Beide Fälle bleiben als
+  Warnung im Report sichtbar.
 
 ### Temperature Scaling
 
@@ -210,8 +218,6 @@ Der Report des aktuellen (zero-shot) Checkpoints ist die Baseline. Der Vergleich
 
 ### Bekannte Grenzen
 
-- Ein Segment, dessen Calibration-Fälle nur eine Klasse enthalten (einseitige Kalibrierung), bekommt eine lockere
-  eigene Schwelle plus Warnung. Folgearbeit: solche Segmente ausschließen oder das Manifest verweigern.
 - Die Index-Bindung wird nur **beim Start** geprüft und führt nur zu einer WARNING (Begründung unter Index-Bindung).
   Uploads und Löschungen im laufenden Betrieb ändern den Index, ohne dass erneut gewarnt wird; erst der nächste Start
   meldet die Abweichung. Der Fingerprint erfasst den Index-Inhalt, nicht den Stichtag der Gültigkeitsprüfung

@@ -5,6 +5,9 @@
 - **Gate-Manifest Schema 2:** Pflichtfeld `index_fingerprint`; Schema-1-Manifeste lassen den Start fehlschlagen (neu erzeugen). Ohne `chroma/fingerprint.json` schreibt der Report kein Manifest (#41, ADR 0013).
 - Beim Start warnt `baue_gate`, wenn das Manifest auf einem anderen Index kalibriert wurde; kein Startfehler (#41).
 - `index_fingerprint` ist SHA-256 über den kanonischen Inhalt von `fingerprint.json`; ältere Reports sind mit neuen nicht mehr vergleichbar (#41).
+### Fix
+- Calibration-Segmente nur mit `answer` bekommen keine eigene Laya-Schwelle mehr: die Kostenfunktion hätte sie auf den niedrigsten gesehenen Score gesetzt. Sie fallen auf `fallback_schwelle` zurück, das Maximum über alle Segmente einschließlich der ausgeschlossenen (#40, ADR 0013).
+- Bleibt kein belastbares Segment übrig, schreibt der Report kein Manifest und warnt `Kein Manifest: alle Segmente einseitig …` (#40).
 
 ## 2026-11-04
 ### Neu
