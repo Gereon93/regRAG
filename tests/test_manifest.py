@@ -5,14 +5,22 @@ from types import SimpleNamespace
 
 import pytest
 
-from manifest import Manifest, checkpoint_kennung, lade_manifest, schreibe_manifest
+from manifest import (
+    Manifest,
+    checkpoint_kennung,
+    index_fingerprint,
+    lade_manifest,
+    schreibe_manifest,
+    warne_bei_anderem_index,
+)
 
 EINSTELLUNGEN = SimpleNamespace(LAYA_MODELL="multilingual", MIN_RETRIEVAL_SCORE=0.62)
+FINGERPRINT = "ab" * 32
 
 
 def _roh(**ueberschreibungen):
     daten = {
-        "schema": 1,
+        "schema": 2,
         "checkpoint": {"modell": "multilingual", "revision": "abc123"},
         "eval_version": "sha256:0123456789abcdef0123",
         "min_retrieval_score": 0.62,
@@ -21,6 +29,7 @@ def _roh(**ueberschreibungen):
         "fallback_schwelle": 0.41,
         "kosten": {"falschantwort": 10.0, "eskalation": 1.0},
         "erzeugt": "2026-10-31T12:00:00+00:00",
+        "index_fingerprint": FINGERPRINT,
     }
     daten.update(ueberschreibungen)
     return daten
@@ -43,6 +52,7 @@ def _manifest():
         fallback_schwelle=0.41,
         kosten={"falschantwort": 10.0, "eskalation": 1.0},
         erzeugt="2026-10-31T12:00:00+00:00",
+        index_fingerprint=FINGERPRINT,
     )
 
 
@@ -144,7 +154,14 @@ def _ohne(feld):
 @pytest.mark.parametrize(
     ("daten", "feld"),
     [
-        (_roh(schema=2), "schema"),
+        (_roh(schema=1), "schema"),
+        (_roh(schema=3), "schema"),
+        (_ohne("index_fingerprint"), "index_fingerprint"),
+        (_roh(index_fingerprint=None), "index_fingerprint"),
+        (_roh(index_fingerprint="abc"), "index_fingerprint"),
+        (_roh(index_fingerprint="AB" * 32), "index_fingerprint"),
+        (_roh(index_fingerprint="sha256:" + "ab" * 32), "index_fingerprint"),
+        (_roh(index_fingerprint="ab" * 32 + "\n"), "index_fingerprint"),
         (_ohne("temperatur"), "temperatur"),
         (_ohne("checkpoint"), "checkpoint"),
         (_roh(schwellen={"unbekannt": 0.4}), "schwellen"),
@@ -321,3 +338,57 @@ def test_schwellen_grenzen_gueltig(tmp_path, wert):
         lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN).fallback_schwelle
         == wert
     )
+
+
+def _schreibe_index(verzeichnis, text):
+    verzeichnis.mkdir(parents=True, exist_ok=True)
+    (verzeichnis / "fingerprint.json").write_text(text, encoding="utf-8")
+    return verzeichnis
+
+
+def test_index_fingerprint_fehlt_ohne_datei(tmp_path):
+    assert index_fingerprint(tmp_path / "chroma") is None
+
+
+def test_index_fingerprint_haengt_vom_inhalt_nicht_von_reihenfolge_oder_einrueckung_ab(tmp_path):
+    """rag schreibt fingerprint.json in Einfuegereihenfolge; gleicher Index-Inhalt muss gleich hashen (#41)."""
+    a = _schreibe_index(tmp_path / "a", '{"metrik": "cosine", "dokumente": {"a.md": "1", "b.md": "2"}}')
+    b = _schreibe_index(tmp_path / "b", '{\n  "dokumente": {\n    "b.md": "2",\n    "a.md": "1"\n  },\n  "metrik": "cosine"\n}')
+    c = _schreibe_index(tmp_path / "c", '{"metrik": "cosine", "dokumente": {"a.md": "1", "b.md": "3"}}')
+    assert re.fullmatch("[0-9a-f]{64}", index_fingerprint(a))
+    assert index_fingerprint(a) == index_fingerprint(b)
+    assert index_fingerprint(a) != index_fingerprint(c)
+
+
+def test_gleicher_index_warnt_nicht(tmp_path, caplog):
+    chroma = _schreibe_index(tmp_path / "chroma", '{"dokumente": {}}')
+    with caplog.at_level(logging.WARNING, logger="manifest"):
+        warne_bei_anderem_index(_mit(index_fingerprint=index_fingerprint(chroma)), chroma)
+    assert caplog.records == []
+
+
+def test_anderer_index_warnt_mit_beiden_fingerprints(tmp_path, caplog):
+    chroma = _schreibe_index(tmp_path / "chroma", '{"dokumente": {"neu.md": "x"}}')
+    with caplog.at_level(logging.WARNING, logger="manifest"):
+        warne_bei_anderem_index(_manifest(), chroma)
+    (eintrag,) = caplog.records
+    assert eintrag.levelno == logging.WARNING
+    assert FINGERPRINT[:12] in eintrag.getMessage()
+    assert index_fingerprint(chroma)[:12] in eintrag.getMessage()
+    assert str(tmp_path) not in eintrag.getMessage()
+
+
+def test_fehlender_index_warnt(tmp_path, caplog):
+    with caplog.at_level(logging.WARNING, logger="manifest"):
+        warne_bei_anderem_index(_manifest(), tmp_path / "chroma")
+    (eintrag,) = caplog.records
+    assert "fingerprint.json" in eintrag.getMessage()
+
+
+def test_unlesbarer_index_warnt_statt_den_start_abzubrechen(tmp_path, caplog):
+    """PR #59: halb geschriebene fingerprint.json (paralleler Schreiber) darf baue_gate nicht abbrechen."""
+    chroma = _schreibe_index(tmp_path / "chroma", '{"dokumente": {"a.md"')
+    with caplog.at_level(logging.WARNING, logger="manifest"):
+        warne_bei_anderem_index(_manifest(), chroma)
+    (eintrag,) = caplog.records
+    assert "nicht lesbar" in eintrag.getMessage()

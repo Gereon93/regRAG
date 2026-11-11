@@ -1,9 +1,10 @@
-"""Gate-Manifest: Schwellen, Temperatur und Checkpoint-Herkunft laden, validieren, schreiben (stdlib only)."""
+"""Gate-Manifest: Schwellen, Temperatur, Checkpoint-Herkunft und Index-Stand laden, validieren, schreiben (stdlib only)."""
 
 import hashlib
 import json
 import logging
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,7 +12,9 @@ from gate import SEGMENTE
 
 log = logging.getLogger(__name__)
 
-SCHEMA = 1
+SCHEMA = 2
+INDEX_FINGERPRINT_MUSTER = re.compile(r"[0-9a-f]{64}")
+INDEX_KURZ = 12
 TEMPERATUR_MIN = 0.05
 TEMPERATUR_MAX = 20.0
 CHECKPOINT_KENNUNG_ZEICHEN = 12
@@ -31,6 +34,7 @@ class Manifest:
     fallback_schwelle: float
     kosten: dict[str, float]
     erzeugt: str
+    index_fingerprint: str
 
     def schwelle_fuer(self, segment: str) -> float:
         return self.schwellen.get(segment, self.fallback_schwelle)
@@ -147,6 +151,9 @@ def lade_manifest(pfad, einstellungen) -> Manifest:
     roh_kosten = _objekt(_feld(daten, "kosten"), "kosten")
     kosten = {name: _zahl(wert, f"kosten.{name}") for name, wert in roh_kosten.items()}
     erzeugt = _text(_feld(daten, "erzeugt"), "erzeugt")
+    fingerprint = _feld(daten, "index_fingerprint")
+    if not isinstance(fingerprint, str) or not INDEX_FINGERPRINT_MUSTER.fullmatch(fingerprint):
+        raise ValueError("Manifest: index_fingerprint muss ein SHA-256-Hexdigest (64 Zeichen, klein) sein.")
 
     log.info(
         "Gate-Manifest geladen: eval_version=%s checkpoint=%s@%s datei=%s",
@@ -165,7 +172,51 @@ def lade_manifest(pfad, einstellungen) -> Manifest:
         fallback_schwelle=fallback,
         kosten=kosten,
         erzeugt=erzeugt,
+        index_fingerprint=fingerprint,
     )
+
+
+def index_fingerprint(chroma_verzeichnis):
+    """SHA-256 ueber den kanonischen Inhalt von fingerprint.json (sortierte Schluessel), None ohne Datei.
+
+    rag schreibt die Datei in Einfuegereihenfolge; derselbe Index-Inhalt muss unabhaengig davon gleich hashen.
+    """
+    datei = Path(chroma_verzeichnis) / "fingerprint.json"
+    if not datei.is_file():
+        return None
+    kanonisch = json.dumps(
+        json.loads(datei.read_text(encoding="utf-8")), sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
+    return hashlib.sha256(kanonisch.encode("utf-8")).hexdigest()
+
+
+def warne_bei_anderem_index(manifest: Manifest, chroma_verzeichnis) -> None:
+    """WARNING, wenn der Index nicht der ist, auf dem kalibriert wurde; der Start laeuft weiter (docs/adr/0013).
+
+    Auch eine unlesbare fingerprint.json (etwa halb geschrieben von einem parallelen Prozess) ergibt nur eine WARNING.
+    """
+    try:
+        aktuell = index_fingerprint(chroma_verzeichnis)
+    except (OSError, ValueError) as fehler:
+        log.warning(
+            "Gate-Manifest auf Index %s kalibriert, aktuelle fingerprint.json nicht lesbar (%s): Index-Bindung ungeprueft.",
+            manifest.index_fingerprint[:INDEX_KURZ],
+            fehler.__class__.__name__,
+        )
+        return
+    if aktuell is None:
+        log.warning(
+            "Gate-Manifest auf Index %s kalibriert, aktueller Index ohne fingerprint.json: "
+            "Schwellen gelten fuer einen anderen Index-Stand.",
+            manifest.index_fingerprint[:INDEX_KURZ],
+        )
+    elif aktuell != manifest.index_fingerprint:
+        log.warning(
+            "Gate-Manifest auf Index %s kalibriert, aktueller Index ist %s: "
+            "Retrieval-Scores und Evidenz koennen abweichen, Schwellen gelten nur eingeschraenkt.",
+            manifest.index_fingerprint[:INDEX_KURZ],
+            aktuell[:INDEX_KURZ],
+        )
 
 
 def checkpoint_kennung(modell: str, revision) -> str:
@@ -221,6 +272,7 @@ def schreibe_manifest(manifest: Manifest, verzeichnis) -> Path:
         "fallback_schwelle": manifest.fallback_schwelle,
         "kosten": manifest.kosten,
         "erzeugt": manifest.erzeugt,
+        "index_fingerprint": manifest.index_fingerprint,
     }
     text = json.dumps(inhalt, indent=2, ensure_ascii=False, allow_nan=False)
     verzeichnis = Path(verzeichnis)

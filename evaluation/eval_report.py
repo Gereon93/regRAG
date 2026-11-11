@@ -4,7 +4,6 @@ Aufruf: python -m evaluation.eval_report. Braucht den Index, läuft deshalb nich
 """
 
 import argparse
-import hashlib
 import json
 import sys
 from datetime import datetime, timezone
@@ -27,6 +26,7 @@ from laya import JudgeFehler, LayaGate, SystemOneClient
 from manifest import (
     Manifest,
     checkpoint_kennung,
+    index_fingerprint,
     manifest_ziel,
     pruefe_ueberschreibbar,
     schreibe_manifest,
@@ -127,11 +127,6 @@ def hole_laya_zeilen(faelle, retriever, laya_gate, min_retrieval_score):
     return zeilen
 
 
-def index_fingerprint():
-    datei = Path(config.CHROMA_VERZEICHNIS) / "fingerprint.json"
-    return hashlib.sha256(datei.read_bytes()).hexdigest() if datei.is_file() else None
-
-
 def _ece_bericht(zeilen, temperatur):
     bewertet = [z for z in zeilen if z["laya_roh"] is not None]
     if not bewertet:
@@ -194,6 +189,9 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
     ]
     if not schaetzbar:
         warnungen.append("Kein Manifest: Temperatur nicht schätzbar, T = 1.0 ist nicht einsetzbar.")
+    fingerprint = index_fingerprint(config.CHROMA_VERZEICHNIS)
+    if fingerprint is None:
+        warnungen.append("Kein Manifest: Index ohne fingerprint.json, Manifest wäre an keinen Index gebunden.")
     schwellen = schwellen_pro_segment(
         _mit_kalibriert(bewertet, temperatur), kosten, score_feld="laya_kal", segment_feld="segment_laufzeit"
     )
@@ -216,7 +214,7 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
         "fallback_schwelle": fallback,
         "ece": _ece_bericht(test, temperatur),
         "checkpoint": {"modell": laya_gate.modell, "revision": checkpoint_revision},
-        "index_fingerprint": index_fingerprint(),
+        "index_fingerprint": fingerprint,
         "definition": LAYA_DEFINITION,
         "segmente": laya_bericht["segmente"],
         "gesamt": laya_bericht["gesamt"],
@@ -232,7 +230,7 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
         ],
     }
     manifest = None
-    if checkpoint_revision and schaetzbar:
+    if checkpoint_revision and schaetzbar and fingerprint:
         manifest = Manifest(
             checkpoint_modell=laya_gate.modell,
             checkpoint_revision=checkpoint_revision,
@@ -243,6 +241,7 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
             fallback_schwelle=fallback,
             kosten={"falschantwort": kosten.falschantwort, "eskalation": kosten.eskalation},
             erzeugt=ergebnis["zeitpunkt"],
+            index_fingerprint=fingerprint,
         )
     return ergebnis, manifest
 
