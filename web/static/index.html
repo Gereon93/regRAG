@@ -118,6 +118,7 @@
     margin-bottom: 6px;
   }
   .abstain .text { font-family: var(--serif); font-size: 17px; font-style: italic; }
+  .wartetext { color: var(--ink-soft); font-style: italic; }
   .quellen {
     margin-top: 18px;
     border-top: 1px dotted var(--rule);
@@ -314,7 +315,7 @@ function quellenBlock(quellen) {
   box.appendChild(el('h4', null, 'Fundstellen'));
   for (const q of quellen) {
     const zeile = el('div', 'quelle');
-    zeile.appendChild(el('span', 'datei', q.quelle || '—'));
+    zeile.appendChild(el('span', 'datei', `[${q.nr}] ${q.quelle || '—'}`));
     const balken = el('span', 'balken');
     const fuellung = el('i');
     fuellung.style.width = Math.round(Math.max(0, Math.min(1, q.score)) * 100) + '%';
@@ -357,7 +358,9 @@ async function fragen(text) {
       const zeile = stueck.trim();
       if (!zeile.startsWith('data:')) continue;
       const ev = JSON.parse(zeile.slice(5).trim());
-      if (ev.type === 'token') {
+      if (ev.type === 'status') {
+        antwort.replaceChildren(el('span', 'wartetext', ev.text), caret);
+      } else if (ev.type === 'token') {
         inhalt += ev.text;
         antwort.textContent = inhalt;
         antwort.appendChild(caret);
@@ -370,6 +373,7 @@ async function fragen(text) {
         eintrag.appendChild(box);
       } else if (ev.type === 'error') {
         caret.remove();
+        antwort.remove();
         eintrag.appendChild(el('div', 'fehler', ev.text));
       } else if (ev.type === 'sources') {
         eintrag.appendChild(quellenBlock(ev.quellen));

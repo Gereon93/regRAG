@@ -35,8 +35,9 @@ eine Verweigerung hinterließ weder Begründung noch Spur.
 - Evaluationsläufe (`evaluation/run.py`) verwerfen Eskalationsdatensätze (`os.devnull`), damit sie
   die echte Datei nicht füllen.
 - Wohin eskaliert wird (Queue, Fachexperte) ist offen; bis dahin ist die Datei nur Export.
-- Noch nicht umgesetzt: Nur `LOW_RELEVANCE` wird erzeugt, die übrigen Reasons sind Platzhalter
-  für die Folge-Issues.
+- Erzeugt werden `LOW_RELEVANCE`, `NOT_ANSWERABLE`, `JUDGE_UNAVAILABLE` und nach der Generierung
+  `UNGROUNDED_CLAIM` ([0014](0014-claim-level-grounding.md), mit Zusatzfeldern `antwort`, `aussagen_gesamt`,
+  `aussagen_ohne_beleg`). Die übrigen Reasons sind Platzhalter für #30.
 
 ## Aufbewahrung und Löschung (Issue #34)
 
@@ -46,7 +47,7 @@ Fragen können personenbezogen sein; die Datei ist deshalb in Größe und Alter 
 
 - **Rotation:** Vor jedem Append wird die aktive Datei nach `<name>.<UTC-Zeitstempel>.<pid>` verschoben,
   wenn sie `max_bytes` (Default 5 MiB) erreicht oder ihr ältester Datensatz älter als die halbe Frist ist.
-  Eine Datei bleibt damit höchstens `max_bytes` − 1 plus eine Zeile (ca. 50 KB) groß.
+  Eine Datei bleibt damit höchstens `max_bytes` − 1 plus eine Zeile (ca. 73 KB) groß.
 - **Frist:** Archive, deren ältester Datensatz die Aufbewahrungsfrist (Default **90 Tage**) überschreitet,
   werden gelöscht. Gelöscht wird die ganze Datei; jüngere Datensätze darin gehen mit. Jeder Datensatz lebt
   dadurch mindestens die halbe und höchstens die volle Frist, sofern geschrieben oder gestartet wird.
@@ -69,6 +70,7 @@ Fragen können personenbezogen sein; die Datei ist deshalb in Größe und Alter 
   Zeichen begrenzt; Verstöße liefern 422 statt stillem Abschneiden. Die UI prüft vor dem Senden mit `[...text].length` (Zeichen, nicht UTF-16-Einheiten wie `maxlength`).
 - **Manueller Löschweg:** Server stoppen, dann `rm chroma/eskalationen.jsonl chroma/eskalationen.jsonl.[0-9]*Z.[0-9]*` (das Muster trifft nur Archive, keine `.bak`-Kopien).
   Einzelne Personen entfernt man bei gestopptem Server mit einem `jq`-Filter auf die Zeilen in der aktiven Datei
-  und in jedem Archiv.
+  und in jedem Archiv. Der Filter muss die ganze Zeile treffen, nicht nur `frage`: `antwort` und
+  `aussagen_ohne_beleg` können die Frage wiederholen.
 - **Nicht umgesetzt (Issue #44):** Rate-Limit und Begrenzung der Body-Größe vor dem Parsen. Das Längenlimit
   greift erst, nachdem der Body gelesen wurde.
