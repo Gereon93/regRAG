@@ -218,17 +218,21 @@ def _datensatz_zusatz(antwort, befund):
 
 
 def pruefe_antwort_und_eskaliere(eskalations_datei, frage, nodes, antwort, vorherige, grenzen=None, judge=zahlen_judge):
-    befund = pruefe_antwort(antwort, nodes, judge)
+    """`nodes` sind alle abgerufenen Treffer: Marker beziehen sich auf die genutzten, der Datensatz führt alle (ADR 0015)."""
+    genutzt = vorherige.genutzte_nodes(nodes)
+    befund = pruefe_antwort(antwort, genutzt, judge)
     if befund.bestanden:
         return Pruefung(vorherige, False)
-    entscheidung = GateDecision(Outcome.ABSTAIN, (AbstainReason.UNGROUNDED_CLAIM,), vorherige.scores)
+    entscheidung = GateDecision(
+        Outcome.ABSTAIN, (AbstainReason.UNGROUNDED_CLAIM,), vorherige.scores, vorherige.evidenz
+    )
     log.info(
         "Grounding: %s aussagen=%d fehlstellen=%d",
         AbstainReason.UNGROUNDED_CLAIM.value,
         befund.aussagen_gesamt,
         len(befund.fehlstellen),
     )
-    gate.zaehle_verwurf(entscheidung, nodes)
+    gate.zaehle_verwurf(entscheidung, genutzt)
     vorgemerkt = gate.schreibe_eskalation(
         eskalations_datei, frage, nodes, entscheidung, grenzen, zusatz=_datensatz_zusatz(antwort, befund)
     )

@@ -5,7 +5,7 @@ import pytest
 
 import config
 from gate import Outcome
-from laya import LayaGate, SystemOneClient
+from laya import LayaGate, LayaKonfliktGate, SystemOneClient
 
 URL = os.getenv("REGRAG_LAYA_URL", "").strip()
 SCHWELLE = 0.5
@@ -34,6 +34,17 @@ def test_antwort_haengt_von_der_evidenz_ab(gate):
     unpassend = gate.entscheide(FRAGE, [node(UNPASSEND)])
 
     assert passend.scores.answerable - unpassend.scores.answerable >= ABSTAND
+
+
+def test_konflikt_frage_wird_vom_server_angenommen(gate):
+    nodes = [
+        SimpleNamespace(score=0.9, text=PASSEND, metadata={"file_name": "a.md"}),
+        SimpleNamespace(score=0.9, text=UNPASSEND, metadata={"file_name": "b.md"}),
+    ]
+
+    entscheidung = LayaKonfliktGate(gate, SCHWELLE).entscheide(FRAGE, nodes)
+
+    assert entscheidung.scores.konflikt is not None
 
 
 def test_injection_text_schiebt_unpassende_evidenz_nicht_ueber_die_schwelle(gate):

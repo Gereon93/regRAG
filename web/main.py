@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -72,10 +72,11 @@ def _sse(obj):
 
 
 async def _antwort_strom(frage):
-    nodes = retriever.retrieve(frage)
-    quellen = _quellen(nodes)
+    treffer = retriever.retrieve(frage)
 
-    pruefung = await asyncio.to_thread(pruefe, frage, nodes)
+    pruefung = await asyncio.to_thread(pruefe, frage, treffer)
+    nodes = pruefung.entscheidung.genutzte_nodes(treffer)
+    quellen = _quellen(nodes)
     if pruefung.verweigert:
         yield _sse({"type": "abstain", "text": abstain_antwort(pruefung.vorgemerkt, pruefung.entscheidung.reasons)})
         yield _sse({"type": "sources", "quellen": quellen})
@@ -86,7 +87,7 @@ async def _antwort_strom(frage):
     try:
         nachrichten = prompt.format_messages(kontext=baue_kontext(nodes), frage=frage)
         antwort = "".join([c.content async for c in llm.astream(nachrichten) if c.content])
-        geprueft = await asyncio.to_thread(pruefe_grounding, frage, nodes, antwort, pruefung.entscheidung)
+        geprueft = await asyncio.to_thread(pruefe_grounding, frage, treffer, antwort, pruefung.entscheidung)
     except Exception as e:
         log.exception("Antwort konnte nicht erzeugt oder geprüft werden")
         yield _sse({"type": "error", "text": f"Antwort konnte nicht erzeugt werden ({type(e).__name__}) — bitte erneut versuchen."})
@@ -112,7 +113,7 @@ def _entferne_fragmente(md_pfad):
     md_pfad.with_suffix(".source.json").unlink(missing_ok=True)
 
 
-def _indexiere(job_id, daten, dateiname):
+def _indexiere(job_id, daten, dateiname, metadaten):
     job = JOBS[job_id]
     md_pfad = None
     try:
@@ -120,7 +121,7 @@ def _indexiere(job_id, daten, dateiname):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / dateiname
             pdf.write_bytes(daten)
-            md_pfad = pdf_nach_markdown(pdf, DOKUMENTE)
+            md_pfad = pdf_nach_markdown(pdf, DOKUMENTE, metadaten=metadaten)
         rag.indexiere(md_pfad)
         job["status"] = "ready"
     except Exception as e:  # noqa: BLE001 - Hintergrund-Job: jeder Fehler landet im Job-Status statt im Nichts
@@ -143,9 +144,15 @@ async def _lies_begrenzt(datei):
 
 
 @app.post("/upload", status_code=202)
-async def upload(datei: Annotated[UploadFile, File()]):
+async def upload(
+    datei: Annotated[UploadFile, File()],
+    gueltig_ab: Annotated[str | None, Form()] = None,
+    gueltig_bis: Annotated[str | None, Form()] = None,
+    fassung: Annotated[str | None, Form()] = None,
+):
     try:
         name = dokumente.saeubere_dateiname(datei.filename or "")
+        metadaten = dokumente.pruefe_gueltigkeit(gueltig_ab, gueltig_bis, fassung)
         inhalt = await _lies_begrenzt(datei)
         dokumente.pruefe_pdf(inhalt)
     except dokumente.UploadFehler as e:
@@ -160,7 +167,7 @@ async def upload(datei: Annotated[UploadFile, File()]):
 
         job_id = uuid.uuid4().hex
         JOBS[job_id] = {"status": "pending", "dateiname": name, "fehler": None}
-        POOL.submit(_indexiere, job_id, inhalt, name)
+        POOL.submit(_indexiere, job_id, inhalt, name, metadaten)
     return {"job": job_id, **JOBS[job_id]}
 
 
@@ -172,13 +179,21 @@ def job_status(job_id: str):
     return job
 
 
+def _titel(md):
+    """Ein abgelehntes Sidecar (rag._quelle_metadata) darf die Liste nicht kippen; es bleibt der Dateiname."""
+    sidecar = md.with_suffix(".source.json")
+    try:
+        daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
+    except ValueError:
+        return md.stem
+    return daten.get("titel", md.stem) if isinstance(daten, dict) else md.stem
+
+
 @app.get("/documents")
 def dokument_liste():
     liste = []
     for md in sorted(DOKUMENTE.glob("*.md")) if DOKUMENTE.is_dir() else []:
-        sidecar = md.with_suffix(".source.json")
-        daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
-        liste.append({"datei": md.name, "titel": daten.get("titel", md.stem)})
+        liste.append({"datei": md.name, "titel": _titel(md)})
     return liste
 
 

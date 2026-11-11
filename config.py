@@ -28,6 +28,21 @@ LAYA_MIN_ANSWERABLE = float(os.getenv("REGRAG_LAYA_MIN_ANSWERABLE", "0.5"))
 LAYA_MODELL = os.getenv("REGRAG_LAYA_MODELL", "multilingual").strip()
 GATE_MANIFEST = os.getenv("REGRAG_GATE_MANIFEST", "").strip()
 
+
+def _konflikt_schwelle(roh):
+    if not roh:
+        return None
+    try:
+        wert = float(roh)
+    except ValueError:
+        wert = math.nan
+    if not 0 < wert <= 1:
+        raise ValueError("REGRAG_LAYA_KONFLIKT_SCHWELLE muss leer oder eine Zahl in (0, 1] sein.")
+    return wert
+
+
+LAYA_KONFLIKT_SCHWELLE = _konflikt_schwelle(os.getenv("REGRAG_LAYA_KONFLIKT_SCHWELLE", "").strip())
+
 if not LAYA_MODELL:
     raise ValueError("REGRAG_LAYA_MODELL darf nicht leer sein.")
 if not 0 <= LAYA_MIN_ANSWERABLE <= 1:

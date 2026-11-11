@@ -140,6 +140,28 @@ Für einen manuellen Lauf: `npm run check:a11y`. Dabei werden auch positive und 
 Validator-Fixtures für Formularlabels und Bild-Alt-Texte ausgeführt.
 
 
+### Gültigkeit von Dokumenten
+
+Details und Grenzen: [ADR 0015](docs/adr/0015-gueltigkeit-fassungen-normkonflikte.md).
+
+- **Sidecar** `<datei>.source.json`, alle Felder optional: `gueltig_ab` (erster Anwendungstag, nicht das Inkrafttreten),
+  `gueltig_bis` (letzter Anwendungstag), beide `YYYY-MM-DD` und inklusive, sowie `fassung` (Freitext, 1 bis 100 Zeichen).
+- **Upload:** `curl -F datei=@neu.pdf -F gueltig_ab=2026-01-01 -F fassung="2. Fassung" http://localhost:8000/upload`.
+  Ein ungültiger Wert liefert 422. Die UI bietet die Felder nicht an, `segment` ist per Upload nicht setzbar.
+- **Neustart:** Eine Sidecar-Änderung wirkt erst nach dem nächsten Start und bettet das Dokument neu ein. Das Verstreichen
+  eines `gueltig_bis` braucht keinen Neustart, verglichen wird pro Anfrage gegen heute (Europe/Berlin).
+- **Kaputter Sidecar:** Der Start läuft weiter, das Dokument fehlt in der Suche, das Log zeigt `ERROR`. `GET /documents` listet
+  es weiter.
+- **Ablösen:** Bei der alten Fassung `gueltig_bis` setzen, der neuen denselben `titel` geben. Zwei gleichzeitig gültige
+  Fassungen desselben Titels verweigern mit `AMBIGUOUS_VERSION`. Abweichende Titel erkennt das Gate nicht.
+- **Ohne Angaben** gilt ein Dokument als `unbekannt`: Es bleibt nutzbar, ist aber kein Beleg für Aktualität. Liegt daneben
+  eine abgelaufene Fassung und keine gültige, verweigert das Gate mit `OUTDATED_SOURCE`, auch wenn die abgelaufene
+  Fassung zu einer anderen Quelle gehört (#58). Wer Altfassungen datiert, sollte deshalb auch die geltenden datieren.
+- **Frühere Rechtslage:** Es gibt nur den Stichtag heute. Fragen zu einem früheren Stand werden aus der heute gültigen
+  Fassung beantwortet.
+- **Normkonflikte** erkennt nur der experimentelle Konflikt-Judge (`REGRAG_LAYA_KONFLIKT_SCHWELLE`, braucht Laya, kein
+  gemessener Wert). Ohne ihn werden widersprechende Normen nicht erkannt.
+
 ### Eigene Dokumente hochladen
 
 Über die Seite lässt sich eine weitere PDF hinzufügen (z. B. MaRisk, EBA-Guidelines, NIS2). Der Upload nimmt an und gibt eine Job-ID zurück; die Indexierung läuft im Hintergrund, weil Embedding Minuten dauert und den Request nicht blockieren darf. Die Statuszeile meldet, sobald das Dokument durchsuchbar ist — sonst stellt man eine Frage, bekommt Abstain und hält das System für kaputt.
@@ -223,6 +245,7 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 - [0009](docs/adr/0009-query-embedding-cpu-mps.md) — Query-Embedding im CPU-Container: Latenz und Threadzahl gemessen
 - [0013](docs/adr/0013-laya-kalibrierung-segmentschwellen-manifest.md) — Laya-Kalibrierung, Segmentschwellen, Gate-Manifest und Eskalationsmetriken (Nutzen unbelegt)
 - [0014](docs/adr/0014-claim-level-grounding.md) — Claim-Level-Grounding nach der Generierung
+- [0015](docs/adr/0015-gueltigkeit-fassungen-normkonflikte.md) — Gültigkeitsmetadaten, mehrdeutige Fassungen und Normkonflikte
 
 ## Gemessen
 

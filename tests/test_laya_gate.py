@@ -1,11 +1,20 @@
+import json
 import logging
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
-from gate import AbstainReason, Kaskade, Outcome, RetrievalScoreGate, kalibriere
-from laya import LayaGate, SystemOneClient, baue_gate
+from gate import (
+    AbstainReason,
+    FassungsGate,
+    GueltigkeitsGate,
+    Kaskade,
+    Outcome,
+    RetrievalScoreGate,
+    kalibriere,
+)
+from laya import LayaGate, LayaKonfliktGate, SystemOneClient, baue_gate
 from manifest import Manifest, schreibe_manifest
 
 
@@ -20,19 +29,26 @@ def einstellungen(**ueberschreibe):
         "LAYA_MIN_ANSWERABLE": 0.5,
         "LAYA_MODELL": "multilingual",
         "GATE_MANIFEST": "",
+        "LAYA_KONFLIKT_SCHWELLE": None,
     }
     return SimpleNamespace(**{**werte, **ueberschreibe})
 
 
-def test_ohne_laya_url_bleibt_es_beim_score_guard():
-    assert isinstance(baue_gate(einstellungen()), RetrievalScoreGate)
+VORPRUEFUNG = [RetrievalScoreGate, GueltigkeitsGate, RetrievalScoreGate, FassungsGate]
+
+
+def test_ohne_laya_url_laeuft_nur_die_vorpruefung():
+    gate = baue_gate(einstellungen())
+
+    assert isinstance(gate, Kaskade)
+    assert [type(g) for g in gate.gates] == VORPRUEFUNG
 
 
 def test_mit_laya_url_laeuft_der_score_guard_vor_laya():
     gate = baue_gate(einstellungen(LAYA_URL="http://localhost:8000"))
 
     assert isinstance(gate, Kaskade)
-    assert [type(g) for g in gate.gates] == [RetrievalScoreGate, LayaGate]
+    assert [type(g) for g in gate.gates] == [*VORPRUEFUNG, LayaGate]
 
 
 def test_laya_wird_bei_schwacher_relevanz_nicht_aufgerufen():
@@ -138,7 +154,7 @@ def test_kalibrierung_wirkt_vor_dem_vergleich_und_answerable_bleibt_roh():
 
 def test_manifest_leer_behaelt_das_alte_verhalten():
     gate = baue_gate(einstellungen(LAYA_URL=URL, LAYA_MIN_ANSWERABLE=0.7))
-    laya_gate = gate.gates[1]
+    laya_gate = gate.gates[-1]
 
     assert laya_gate.modell == "multilingual"
     assert laya_gate.modell_streng is False
@@ -191,10 +207,10 @@ def kaskade_mit_manifest(tmp_path, wert, routing=None, **manifest):
 def test_gueltiges_manifest_baut_die_kaskade_mit_segmentschwellen(tmp_path):
     gate, _ = kaskade_mit_manifest(tmp_path, 0.5)
 
-    assert [type(g) for g in gate.gates] == [RetrievalScoreGate, LayaGate]
-    assert gate.gates[1].modell_streng is True
-    assert gate.gates[1].schwelle_fuer("verordnung") == 0.4
-    assert gate.gates[1].schwelle_fuer("unbekannt") == 0.7
+    assert [type(g) for g in gate.gates] == [*VORPRUEFUNG, LayaGate]
+    assert gate.gates[-1].modell_streng is True
+    assert gate.gates[-1].schwelle_fuer("verordnung") == 0.4
+    assert gate.gates[-1].schwelle_fuer("unbekannt") == 0.7
 
 
 def test_kaskade_mit_manifest_kalibriert_und_waehlt_die_schwelle_pro_segment(tmp_path):
@@ -249,3 +265,141 @@ def test_kaskade_mit_manifest_und_judge_ausfall_enthaelt_sich(tmp_path):
 
     assert d.outcome is Outcome.ABSTAIN
     assert AbstainReason.JUDGE_UNAVAILABLE in d.reasons
+
+
+def konflikt_node(file_name, text="t"):
+    return SimpleNamespace(score=0.9, text=text, metadata={"file_name": file_name})
+
+
+def konflikt_gate(handler, schwelle=0.8, **optionen):
+    client = SystemOneClient(URL, transport=httpx.MockTransport(handler))
+    return LayaKonfliktGate(LayaGate(client, lambda segment: 0.5, **optionen), schwelle)
+
+
+def konflikt_antwort(*werte):
+    gesehen = []
+    rest = list(werte)
+
+    def handler(request):
+        gesehen.append(json.loads(request.content))
+        return httpx.Response(200, json={"answers": {"conflict": {"noul": rest.pop(0)}}})
+
+    return handler, gesehen
+
+
+def test_konflikt_request_folgt_dem_protokoll():
+    handler, gesehen = konflikt_antwort(0.1)
+    gate = konflikt_gate(handler, max_evidenz_zeichen=10, max_len=2048, lang="en", modell="m")
+
+    gate.entscheide("Frage?", [konflikt_node("a.md", "a" * 50), konflikt_node("b.md", "b" * 50)])
+
+    (anfrage,) = gesehen
+    assert anfrage["state"] == {"frage": "Frage?", "a": "a" * 5, "b": "b" * 5}
+    assert anfrage["questions"]["conflict"]["type"] == "noul"
+    assert (anfrage["model"], anfrage["lang"], anfrage["max_len"]) == ("m", "en", 2048)
+
+
+@pytest.mark.parametrize(("wert", "outcome"), [(0.8, Outcome.ABSTAIN), (0.79, Outcome.ANSWER)])
+def test_konflikt_schwelle_ist_inklusive(wert, outcome):
+    handler, _ = konflikt_antwort(wert)
+
+    entscheidung = konflikt_gate(handler).entscheide("f", [konflikt_node("a.md"), konflikt_node("b.md")])
+
+    assert entscheidung.outcome is outcome
+    assert entscheidung.scores.konflikt == wert
+    if outcome is Outcome.ABSTAIN:
+        assert entscheidung.reasons == (AbstainReason.CONFLICTING_PROVISIONS,)
+
+
+def test_konflikt_score_ist_der_hoechste_gesehene_wert():
+    handler, gesehen = konflikt_antwort(0.2, 0.7, 0.1)
+    nodes = [konflikt_node("a.md"), konflikt_node("b.md"), konflikt_node("c.md")]
+
+    entscheidung = konflikt_gate(handler).entscheide("f", nodes)
+
+    assert len(gesehen) == 3
+    assert entscheidung.scores.konflikt == 0.7
+
+
+def test_konflikt_bricht_beim_ersten_treffer_ab():
+    handler, gesehen = konflikt_antwort(0.9, 0.1, 0.1)
+    nodes = [konflikt_node("a.md"), konflikt_node("b.md"), konflikt_node("c.md")]
+
+    assert konflikt_gate(handler).entscheide("f", nodes).verweigert
+    assert len(gesehen) == 1
+
+
+def test_ein_dokument_bildet_keine_konfliktpaare():
+    handler, gesehen = konflikt_antwort()
+
+    entscheidung = konflikt_gate(handler).entscheide("f", [konflikt_node("a.md"), konflikt_node("a.md")])
+
+    assert entscheidung.outcome is Outcome.ANSWER
+    assert entscheidung.scores.konflikt is None
+    assert gesehen == []
+
+
+def _zeitueberschreitung(request):
+    raise httpx.ReadTimeout("zu langsam")
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [
+        _zeitueberschreitung,
+        lambda r: httpx.Response(500),
+        lambda r: httpx.Response(200, content=b"kein json"),
+        lambda r: httpx.Response(200, json={"answers": {"conflict": {"noul": 1.5}}}),
+        lambda r: httpx.Response(200, content=b'{"answers": {"conflict": {"noul": NaN}}}'),
+        lambda r: httpx.Response(200, json={"answers": {"answerable": {"noul": 0.1}}}),
+    ],
+    ids=["timeout", "http500", "kein_json", "ausserhalb", "nan", "falsche_frage"],
+)
+def test_konflikt_ausfall_ist_judge_unavailable(handler):
+    entscheidung = konflikt_gate(handler).entscheide("f", [konflikt_node("a.md"), konflikt_node("b.md")])
+
+    assert entscheidung.reasons == (AbstainReason.JUDGE_UNAVAILABLE,)
+
+
+def test_konflikt_ausfall_behaelt_den_gesehenen_score():
+    werte = [httpx.Response(200, json={"answers": {"conflict": {"noul": 0.4}}}), httpx.Response(503)]
+    nodes = [konflikt_node("a.md"), konflikt_node("b.md"), konflikt_node("c.md")]
+
+    entscheidung = konflikt_gate(lambda r: werte.pop(0)).entscheide("f", nodes)
+
+    assert entscheidung.reasons == (AbstainReason.JUDGE_UNAVAILABLE,)
+    assert entscheidung.scores.konflikt == 0.4
+
+
+def test_fremder_checkpoint_ist_unter_modell_streng_judge_unavailable():
+    def handler(request):
+        return httpx.Response(200, json={"answers": {"conflict": {"noul": 0.1}}, "routing": {"model": "anders"}})
+
+    entscheidung = konflikt_gate(handler, modell_streng=True).entscheide(
+        "f", [konflikt_node("a.md"), konflikt_node("b.md")]
+    )
+
+    assert entscheidung.reasons == (AbstainReason.JUDGE_UNAVAILABLE,)
+
+
+def test_konflikt_schwelle_schaltet_den_judge_ein_und_warnt(caplog):
+    with caplog.at_level(logging.WARNING, logger="laya"):
+        gate = baue_gate(einstellungen(LAYA_URL=URL, LAYA_KONFLIKT_SCHWELLE=0.8))
+
+    assert [type(g) for g in gate.gates] == [*VORPRUEFUNG, LayaGate, LayaKonfliktGate]
+    assert gate.gates[-1].laya is gate.gates[-2]
+    assert "unkalibrierter Schwelle" in caplog.text
+
+
+def test_konflikt_schwelle_ohne_laya_url_ist_ein_startfehler():
+    with pytest.raises(ValueError, match="KONFLIKT_SCHWELLE"):
+        baue_gate(einstellungen(LAYA_KONFLIKT_SCHWELLE=0.8))
+
+
+def test_manifest_kaskade_bleibt_und_bekommt_den_konflikt_judge(tmp_path):
+    pfad = schreibe_fixture(tmp_path)
+
+    gate = baue_gate(einstellungen(LAYA_URL=URL, GATE_MANIFEST=str(pfad), LAYA_KONFLIKT_SCHWELLE=0.8))
+
+    assert [type(g) for g in gate.gates] == [*VORPRUEFUNG, LayaGate, LayaKonfliktGate]
+    assert gate.gates[-1].laya.modell_streng is True
