@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-12
+### Neu
+- **Rate-Limit für `/chat`:** `REGRAG_CHAT_MAX_PRO_MINUTE` (Default 10, ungemessen) Anfragen je Client-IP und Minute, darüber 429 mit `Retry-After`. Der Zähler gilt je Prozess (#44, ADR 0016).
+- **Body-Grenze für `/chat`:** über 32 000 Bytes 413, bevor der Body gelesen oder geparst wird (#44).
+### Fix
+- Die UI zeigt eine abgelehnte Chat-Anfrage (413, 422, 429) als Fehler statt eines hängenden Cursors (#44).
+
 ## 2026-11-11
 ### Geändert
 - **Gate-Manifest Schema 2:** Pflichtfeld `index_fingerprint`; Schema-1-Manifeste lassen den Start fehlschlagen (neu erzeugen). Ohne `chroma/fingerprint.json` schreibt der Report kein Manifest (#41, ADR 0013).

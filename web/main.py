@@ -27,6 +27,7 @@ from gate import (
     grenzen_aus,
 )
 from grounding import baue_kontext
+from web.schutz import ChatSchutz, Drossel
 
 aktiviere_score_log()
 log = logging.getLogger(__name__)
@@ -39,7 +40,12 @@ async def _lebenszyklus(_app):
     yield
 
 
+MAX_CHAT_BYTES = 16 * MAX_FRAGE_ZEICHEN
+
 app = FastAPI(title="RegRAG", lifespan=_lebenszyklus)
+app.add_middleware(
+    ChatSchutz, pfad="/chat", drossel=Drossel(config.CHAT_MAX_PRO_MINUTE), max_bytes=MAX_CHAT_BYTES
+)
 STATIC = Path(__file__).parent / "static"
 DOKUMENTE = Path(config.DOKUMENTE_VERZEICHNIS)
 

@@ -343,6 +343,15 @@ async function fragen(text) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ frage: text }),
   });
+  if (!res.ok) {
+    const fehler = await res.json().catch(() => null);
+    caret.remove();
+    antwort.remove();
+    eintrag.appendChild(el('div', 'fehler', typeof fehler?.detail === 'string'
+      ? fehler.detail
+      : `Anfrage abgelehnt (HTTP ${res.status}).`));
+    return;
+  }
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let puffer = '';

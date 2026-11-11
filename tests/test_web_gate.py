@@ -257,6 +257,35 @@ def test_chat_akzeptiert_frage_an_der_grenze_in_zeichen_nicht_bytes(strom, frage
     assert antwort.status_code == 200
 
 
+def test_chat_akzeptiert_laengste_frage_auch_vollstaendig_escaped(strom):
+    koerper = json.dumps({"frage": "😀" * 2000}).encode()
+
+    antwort = TestClient(strom.main.app).post("/chat", content=koerper, headers={"content-type": "application/json"})
+
+    assert antwort.status_code == 200
+
+
+def test_chat_lehnt_riesigen_body_vor_dem_parsen_ab(strom):
+    koerper = json.dumps({"frage": "x" * 10_000_000}).encode()
+
+    antwort = TestClient(strom.main.app).post("/chat", content=koerper, headers={"content-type": "application/json"})
+
+    assert antwort.status_code == 413
+    assert strom.llm.aufrufe == 0
+    assert not strom.eskalationen.exists()
+
+
+def test_chat_drosselt_flut_ohne_weitere_eskalationen(strom):
+    client = TestClient(strom.main.app)
+    grenze = strom.main.config.CHAT_MAX_PRO_MINUTE
+
+    antworten = [client.post("/chat", json={"frage": ""}) for _ in range(grenze + 1)]
+
+    assert [a.status_code for a in antworten] == [422] * grenze + [429]
+    assert int(antworten[-1].headers["retry-after"]) >= 1
+    assert client.get("/documents").status_code == 200
+
+
 def test_serverstart_bereinigt_ueberfaelliges_archiv(strom, monkeypatch):
     archiv = strom.eskalationen.with_name(strom.eskalationen.name + ".20200101T000000000000Z.1")
     archiv.write_text('{"zeitpunkt": "2020-01-01T00:00:00+00:00"}\n', encoding="utf-8")
