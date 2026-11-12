@@ -9,10 +9,8 @@ import config
 from evaluation.evalset import (
     STANDARD_FAELLE,
     Kosten,
-    _beantwortet,
-    _kosten,
-    _waehle_schwelle,
     hole_zeilen,
+    kostenminimale_schwelle,
     lade_faelle,
 )
 
@@ -26,15 +24,15 @@ def diagnose(zeilen, kosten):
     mit_treffer = [z for z in zeilen if z["top"] is not None]
     antwortbar = _spanne([z["top"] for z in mit_treffer if z["erwartet"] == "answer"])
     abstain = _spanne([z["top"] for z in mit_treffer if z["erwartet"] == "abstain"])
-    schwelle = _waehle_schwelle(zeilen, kosten, "top")
+    schwelle, summe, korrekt = kostenminimale_schwelle(zeilen, kosten)
     return {
         "antwortbar": antwortbar,
         "abstain": abstain,
         "trennluecke": (abstain[1], antwortbar[0]) if antwortbar and abstain else None,
         "ohne_treffer": len(zeilen) - len(mit_treffer),
         "schwelle": schwelle,
-        "kosten": _kosten(zeilen, schwelle, kosten),
-        "korrekt": sum(_beantwortet(z, schwelle) == (z["erwartet"] == "answer") for z in zeilen),
+        "kosten": summe,
+        "korrekt": korrekt,
         "n": len(zeilen),
     }
 

@@ -142,6 +142,13 @@ def _waehle_schwelle(gruppe, kosten, score_feld):
     return min(kandidaten, key=lambda schwelle: (_kosten(gruppe, schwelle, kosten, score_feld), -schwelle))
 
 
+def kostenminimale_schwelle(zeilen, kosten, score_feld="top"):
+    """Schwelle mit den geringsten Kosten über alle Zeilen, dazu ihre Kosten und die Zahl korrekter Entscheidungen."""
+    schwelle = _waehle_schwelle(zeilen, kosten, score_feld)
+    korrekt = sum(_beantwortet(z, schwelle, score_feld) == (z["erwartet"] == "answer") for z in zeilen)
+    return schwelle, _kosten(zeilen, schwelle, kosten, score_feld), korrekt
+
+
 def schwellen_pro_segment(zeilen, kosten, score_feld="top", segment_feld="segment"):
     """Schwelle je Segment; UNBEKANNT bekommt nie eine eigene Schwelle (es gilt der Fallback)."""
     nach_segment = defaultdict(list)

@@ -40,6 +40,12 @@ Eval-Set, gleiches Embedding-Modell, gleiche Cosine-Metrik.
 | Trennlücke (Minimum beantwortbar − Maximum themenfremd) | 0.053 | **0.085** |
 | Guard-Entscheidungen | 14/14 | 14/14 |
 
+**Nachtrag (#38):** Die Tabelle stammt aus der alten Fassung von `calibrate` (erster Treffer
+`nodes[0].score`, 14 Fälle aus `dataset.py`, Accuracy-Schwelle). Die heutige Fassung nimmt den besten
+Treffer, liest `evaluation/evalset/v1.jsonl` und meldet statt „Guard-Entscheidungen" die kostenminimale
+Schwelle mit Kosten und `korrekt/n`. Spannen und Trennlücke sind bei absteigend sortierten Treffern
+gleich; ein Neulauf ersetzt die Tabelle erst, wenn er gelaufen ist.
+
 Die Trennlücke ist die Spanne, in der ein Schwellwert liegen darf, ohne einen Fall falsch zu entscheiden: `0.634 − 0.581 = 0.053` gegen `0.652 − 0.567 = 0.085`. Nicht die Differenz der Mittelwerte — für den Guard zählt der schlechteste beantwortbare Treffer gegen den besten themenfremden, nicht der Durchschnitt.
 
 Der Gewinn ist real, aber anders gelagert als erwartet: die Markdown-Variante
