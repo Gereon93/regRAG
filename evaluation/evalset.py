@@ -91,6 +91,26 @@ def _split_von(gruppe):
     return next(name for name, grenze in SPLIT_GRENZEN if bucket < grenze)
 
 
+def top_score(nodes):
+    """Bester Retrieval-Score wie im RetrievalScoreGate; None ohne Treffer."""
+    return max((n.score for n in nodes), default=None)
+
+
+def hole_zeilen(faelle, retriever):
+    zeilen = []
+    for fall in faelle:
+        zeilen.append(
+            {
+                "id": fall["id"],
+                "segment": fall["segment"],
+                "kategorie": fall["kategorie"],
+                "erwartet": fall["erwartet"],
+                "top": top_score(retriever.retrieve(fall["frage"])),
+            }
+        )
+    return zeilen
+
+
 def _beantwortet(zeile, schwelle, score_feld="top"):
     """Ohne Score (None) verweigert das Gate immer, wie RetrievalScoreGate."""
     return zeile[score_feld] is not None and zeile[score_feld] >= schwelle
@@ -120,6 +140,13 @@ def _waehle_schwelle(gruppe, kosten, score_feld):
     if score_feld != "top" and not all(math.isfinite(k) and k <= 1 for k in kandidaten):
         raise ValueError(f"Schwellenkandidaten für {score_feld!r} müssen endlich und <= 1 sein: {kandidaten}")
     return min(kandidaten, key=lambda schwelle: (_kosten(gruppe, schwelle, kosten, score_feld), -schwelle))
+
+
+def kostenminimale_schwelle(zeilen, kosten, score_feld="top"):
+    """Schwelle mit den geringsten Kosten über alle Zeilen, dazu ihre Kosten und die Zahl korrekter Entscheidungen."""
+    schwelle = _waehle_schwelle(zeilen, kosten, score_feld)
+    korrekt = sum(_beantwortet(z, schwelle, score_feld) == (z["erwartet"] == "answer") for z in zeilen)
+    return schwelle, _kosten(zeilen, schwelle, kosten, score_feld), korrekt
 
 
 def schwellen_pro_segment(zeilen, kosten, score_feld="top", segment_feld="segment"):
@@ -162,10 +189,16 @@ def _kennzahlen(zeilen, schwelle_von, score_feld="top"):
     }
 
 
-def bericht(zeilen, schwellen, kosten, version, score_feld="top", segment_feld="segment", fallback=None):
-    nach_segment = defaultdict(list)
+def _gruppiert(zeilen, feld):
+    gruppen = defaultdict(list)
     for z in zeilen:
-        nach_segment[z[segment_feld]].append(z)
+        gruppen[z[feld]].append(z)
+    return dict(sorted(gruppen.items()))
+
+
+def bericht(zeilen, schwellen, kosten, version, score_feld="top", segment_feld="segment", fallback=None):
+    """Kennzahlen je Segment, je Kategorie und gesamt; die Schwelle kommt immer aus dem Segment des Falls."""
+    nach_segment = _gruppiert(zeilen, segment_feld)
     fehlend = sorted(set(nach_segment) - set(schwellen))
     if fehlend and fallback is None:
         raise KeyError(f"Keine Schwelle für Segment(e): {', '.join(fehlend)}")
@@ -178,8 +211,10 @@ def bericht(zeilen, schwellen, kosten, version, score_feld="top", segment_feld="
         "definition": FALSCHANTWORT_DEFINITION,
         "kosten": {"falschantwort": kosten.falschantwort, "eskalation": kosten.eskalation},
         "schwellen": schwellen,
-        "segmente": {
-            segment: _kennzahlen(gruppe, schwelle_von, score_feld) for segment, gruppe in sorted(nach_segment.items())
+        "segmente": {segment: _kennzahlen(gruppe, schwelle_von, score_feld) for segment, gruppe in nach_segment.items()},
+        "kategorien": {
+            kategorie: _kennzahlen(gruppe, schwelle_von, score_feld)
+            for kategorie, gruppe in _gruppiert(zeilen, "kategorie").items()
         },
         "gesamt": _kennzahlen(zeilen, schwelle_von, score_feld),
     }

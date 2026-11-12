@@ -2,10 +2,13 @@
 
 ## 2026-11-12
 ### Neu
+- **Report je Kategorie:** neben `segmente` ein Block `kategorien` mit denselben Kennzahlen je `kategorie`, auch im Laya-Teil; die Schwelle kommt weiter aus dem Segment des Falls (#38, ADR 0012).
 - **Rate-Limit für `/chat`:** `REGRAG_CHAT_MAX_PRO_MINUTE` (Default 10, ungemessen) Anfragen je Client-IP und Minute, darüber 429 mit `Retry-After`. Der Zähler gilt je Prozess (#44, ADR 0016).
 - **Body-Grenze für `/chat`:** über 32 000 Bytes 413, immer vor dem Parsen. Mit zu großem `Content-Length` wird der Body gar nicht gelesen, ohne (chunked) bricht das Lesen beim ersten Überschreiten ab (#44).
 ### Fix
 - Die UI zeigt eine abgelehnte Chat-Anfrage (413, 422, 429) als Fehler statt eines hängenden Cursors, bei 429 mit der Wartezeit aus `Retry-After` (#44).
+### Geändert
+- `python -m evaluation.calibrate` ist nur noch Diagnose: liest das Eval-Set, nimmt den besten Score wie das Gate und meldet die kostenminimale statt der Accuracy-Schwelle (#38, ADR 0005).
 
 ## 2026-11-11
 ### Geändert

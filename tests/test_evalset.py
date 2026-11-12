@@ -7,7 +7,6 @@ import pytest
 from evaluation.eval_report import (
     einseitige_segmente,
     erzeuge_bericht,
-    hole_zeilen,
     schreibe,
 )
 from evaluation.evalset import (
@@ -15,6 +14,7 @@ from evaluation.evalset import (
     Kosten,
     bericht,
     eval_version,
+    hole_zeilen,
     lade_faelle,
     schwellen_pro_segment,
     teile,
@@ -129,8 +129,8 @@ def test_teile_haelt_gruppen_zusammen():
     assert all(len(s) == 1 for s in ort.values())
 
 
-def zeile(segment, erwartet, top):
-    return {"segment": segment, "erwartet": erwartet, "top": top}
+def zeile(segment, erwartet, top, kategorie="beantwortbar"):
+    return {"segment": segment, "erwartet": erwartet, "top": top, "kategorie": kategorie}
 
 
 def zeilen():
@@ -209,6 +209,22 @@ def test_bericht_pro_segment_mit_ci_und_version():
     assert b["gesamt"]["n"] == 6
 
 
+def test_bericht_je_kategorie_nutzt_die_schwelle_des_segments():
+    faelle = [
+        zeile("verordnung", "answer", 0.90, "beantwortbar"),
+        zeile("verordnung", "abstain", 0.80, "grenzfall"),
+        zeile("ausserhalb", "abstain", 0.80, "grenzfall"),
+        zeile("verordnung", "abstain", 0.40, "unbeantwortbar"),
+    ]
+    b = bericht(faelle, {"verordnung": 0.75, "ausserhalb": 0.85}, KOSTEN, version="v")
+    assert list(b["kategorien"]) == ["beantwortbar", "grenzfall", "unbeantwortbar"]
+    grenzfall = b["kategorien"]["grenzfall"]
+    assert (grenzfall["n"], grenzfall["beantwortet"], grenzfall["falschantworten"]) == (2, 1, 1)
+    assert grenzfall["falschantwortrate"]["wert"] == 1.0
+    assert b["kategorien"]["beantwortbar"]["coverage"]["wert"] == 1.0
+    assert sum(k["n"] for k in b["kategorien"].values()) == b["gesamt"]["n"]
+
+
 def test_bericht_falschantwortrate_ist_anteil_an_beantworteten():
     b = bericht(zeilen(), {"verordnung": 0.5, "ausserhalb": 0.99}, KOSTEN, version="v")
     v = b["segmente"]["verordnung"]
@@ -275,6 +291,14 @@ def test_hole_zeilen_markiert_leeres_retrieval_als_none():
     assert hole_zeilen([fall("a")], leer)[0]["top"] is None
 
 
+def test_hole_zeilen_nimmt_den_besten_score_wie_das_gate_und_traegt_die_kategorie():
+    """calibrate.py nahm nodes[0].score; Gate und Report nehmen das Maximum (#38)."""
+    retriever = SimpleNamespace(retrieve=lambda frage: [SimpleNamespace(score=0.3), SimpleNamespace(score=0.8)])
+    z = hole_zeilen([fall("a", kategorie="grenzfall")], retriever)[0]
+    assert z["top"] == 0.8
+    assert z["kategorie"] == "grenzfall"
+
+
 def test_einseitige_calibration_segmente_werden_gewarnt():
     warnungen = einseitige_segmente([zeile("a", "answer", 0.9), zeile("b", "answer", 0.9), zeile("b", "abstain", 0.1)])
     assert len(warnungen) == 1 and "'a'" in warnungen[0]
@@ -289,7 +313,7 @@ def test_ausgeliefertes_seed_set_ist_noch_nicht_kalibrierbar():
 
 
 def kal_zeile(segment, erwartet, kal):
-    return {"segment_laufzeit": segment, "erwartet": erwartet, "laya_kal": kal}
+    return {"segment_laufzeit": segment, "kategorie": "beantwortbar", "erwartet": erwartet, "laya_kal": kal}
 
 
 def test_score_feld_none_zaehlt_als_eskalation_und_verschiebt_schwelle_nicht():

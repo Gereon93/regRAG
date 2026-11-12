@@ -16,9 +16,11 @@ from evaluation.evalset import (
     _kosten,
     bericht,
     eval_version,
+    hole_zeilen,
     lade_faelle,
     schwellen_pro_segment,
     teile,
+    top_score,
 )
 from evaluation.kalibrierung import ece, fitte_temperatur
 from gate import SEGMENTE, kalibriere, segment_von
@@ -40,15 +42,6 @@ LAYA_DEFINITION = (
     "Laya wird nur bei Retrieval-Score >= MIN_RETRIEVAL_SCORE befragt; verworfene Fälle zählen als Eskalation. "
     "Die Evidenz hängt vom Index-Stand ab (index_fingerprint)."
 )
-
-
-def hole_zeilen(faelle, retriever):
-    zeilen = []
-    for fall in faelle:
-        nodes = retriever.retrieve(fall["frage"])
-        top = max((n.score for n in nodes), default=None)
-        zeilen.append({"id": fall["id"], "segment": fall["segment"], "erwartet": fall["erwartet"], "top": top})
-    return zeilen
 
 
 def einseitige_segmente(zeilen):
@@ -103,7 +96,7 @@ def hole_laya_zeilen(faelle, retriever, laya_gate, min_retrieval_score):
     zeilen = []
     for fall in faelle:
         nodes = retriever.retrieve(fall["frage"])
-        top = max((n.score for n in nodes), default=None)
+        top = top_score(nodes)
         roh = None
         if top is not None and top >= min_retrieval_score:
             try:
@@ -118,6 +111,7 @@ def hole_laya_zeilen(faelle, retriever, laya_gate, min_retrieval_score):
                 "id": fall["id"],
                 "segment": fall["segment"],
                 "gruppe": fall["gruppe"],
+                "kategorie": fall["kategorie"],
                 "erwartet": fall["erwartet"],
                 "top": top,
                 "segment_laufzeit": segment_von(nodes),
@@ -231,6 +225,7 @@ def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revisi
         "index_fingerprint": fingerprint,
         "definition": LAYA_DEFINITION,
         "segmente": laya_bericht["segmente"],
+        "kategorien": laya_bericht["kategorien"],
         "gesamt": laya_bericht["gesamt"],
         "test_faelle": [
             {

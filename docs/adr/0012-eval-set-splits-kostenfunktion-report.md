@@ -44,5 +44,9 @@ getrennte Splits und eine Version, auf die sich ein Schwellwert zurückführen l
   `eval_report` bricht dort mit Handlungshinweis ab. Das ist gewollt, statt Normfassungen über Splits
   zu verteilen; ein Test hält das fest.
 - Ein Fall ohne Retrieval-Treffer wird wie im `RetrievalScoreGate` immer verweigert, unabhängig von der Schwelle.
-- `evaluation/calibrate.py` (Accuracy-Schwelle, ADR 0005) bleibt als Einzelmessung bestehen, ist aber für die
-  Schwellenwahl abgelöst; die Ablösung und ein Report je `kategorie` sind als Folgearbeit ausgelagert.
+- `evaluation/calibrate.py` (ADR 0005) ist abgelöst (#38): Es nutzt dieselbe Score-Ermittlung (`hole_zeilen`,
+  bester Score wie im Gate) und dieselbe Kostenfunktion, aber über alle Fälle ohne Split. Das ist eine Diagnose
+  für Korpus-Vergleiche (ADR 0001), keine Schwellenwahl.
+- Der Report hat neben `segmente` einen Block `kategorien` mit denselben Kennzahlen je `kategorie`
+  (z. B. beantwortbar, unbeantwortbar, grenzfall, veraltet, widerspruechlich), auch im Laya-Teil. Die Schwelle
+  kommt dabei weiter aus dem Segment des Falls; die Kategorie wählt keine eigene Schwelle.
