@@ -1,45 +1,73 @@
-from itertools import pairwise
+"""Score-Trennung über das ganze Eval-Set: Diagnose für Korpus- oder Index-Vergleiche (ADR 0001, 0005).
 
-from evaluation.dataset import FAELLE
-from rag import index
+Aufruf: python -m evaluation.calibrate. Wählt keine Schwelle für den Betrieb; dafür gibt es
+python -m evaluation.eval_report (Calibration/Test-Split, ADR 0012). Die Schwelle hier minimiert dieselbe
+Kostenfunktion, aber über alle Fälle ohne Split und ohne Segmente, und ist nur ein Vergleichswert.
+"""
 
-retriever = index.as_retriever(similarity_top_k=3)
+import config
+from evaluation.evalset import (
+    STANDARD_FAELLE,
+    Kosten,
+    _beantwortet,
+    _kosten,
+    _waehle_schwelle,
+    hole_zeilen,
+    lade_faelle,
+)
 
 
-def top_scores():
-    zeilen = []
-    for fall in FAELLE:
-        nodes = retriever.retrieve(fall["frage"])
-        top = nodes[0].score if nodes else 0.0
-        zeilen.append({"frage": fall["frage"], "erwartet": fall["erwartet"], "top": top})
-    return zeilen
+def _spanne(werte):
+    return (min(werte), max(werte)) if werte else None
 
 
-def bester_schwellwert(zeilen):
-    werte = sorted({z["top"] for z in zeilen})
-    kandidaten = [(a + b) / 2 for a, b in pairwise(werte)]
-    bestes = (0.0, -1)
-    for schwelle in kandidaten:
-        korrekt = sum(
-            (z["top"] >= schwelle) == (z["erwartet"] == "answer") for z in zeilen
-        )
-        if korrekt > bestes[1]:
-            bestes = (schwelle, korrekt)
-    return bestes
+def diagnose(zeilen, kosten):
+    """Score-Spannen je Label, Trennlücke und kostenminimale Schwelle über alle Zeilen."""
+    mit_treffer = [z for z in zeilen if z["top"] is not None]
+    antwortbar = _spanne([z["top"] for z in mit_treffer if z["erwartet"] == "answer"])
+    abstain = _spanne([z["top"] for z in mit_treffer if z["erwartet"] == "abstain"])
+    schwelle = _waehle_schwelle(zeilen, kosten, "top")
+    return {
+        "antwortbar": antwortbar,
+        "abstain": abstain,
+        "trennluecke": (abstain[1], antwortbar[0]) if antwortbar and abstain else None,
+        "ohne_treffer": len(zeilen) - len(mit_treffer),
+        "schwelle": schwelle,
+        "kosten": _kosten(zeilen, schwelle, kosten),
+        "korrekt": sum(_beantwortet(z, schwelle) == (z["erwartet"] == "answer") for z in zeilen),
+        "n": len(zeilen),
+    }
+
+
+def _zahl(wert):
+    return "—" if wert is None else f"{wert:.3f}"
+
+
+def main():
+    from rag import index
+
+    faelle = lade_faelle(STANDARD_FAELLE)
+    zeilen = hole_zeilen(faelle, index.as_retriever(similarity_top_k=3))
+    fragen = {f["id"]: f["frage"] for f in faelle}
+    for z in sorted(zeilen, key=lambda z: -1.0 if z["top"] is None else z["top"], reverse=True):
+        print(f"{_zahl(z['top'])}  {z['erwartet']:8s}  {z['kategorie']:16s}  {fragen[z['id']][:60]}")
+
+    kosten = Kosten(config.KOSTEN_FALSCHANTWORT, config.KOSTEN_ESKALATION)
+    d = diagnose(zeilen, kosten)
+    for name, spanne in (("Antwortbar", d["antwortbar"]), ("Abstain", d["abstain"])):
+        if spanne:
+            print(f"{name:11s}: min={spanne[0]:.3f}  max={spanne[1]:.3f}")
+    if d["ohne_treffer"]:
+        print(f"Ohne Treffer: {d['ohne_treffer']} (immer verweigert)")
+    if d["trennluecke"]:
+        unten, oben = d["trennluecke"]
+        print(f"Trennlücke : [{unten:.3f} .. {oben:.3f}]  Breite={oben - unten:.3f}")
+    print(
+        f"Kostenminimale Schwelle: {_zahl(d['schwelle'])}  (Kosten {d['kosten']:g} bei "
+        f"Falschantwort={kosten.falschantwort:g}, Eskalation={kosten.eskalation:g}; {d['korrekt']}/{d['n']} korrekt)"
+    )
+    print("Nur Diagnose. Schwellen für den Betrieb: python -m evaluation.eval_report (ADR 0012).")
 
 
 if __name__ == "__main__":
-    zeilen = top_scores()
-    zeilen.sort(key=lambda z: z["top"], reverse=True)
-    for z in zeilen:
-        print(f"{z['top']:.3f}  {z['erwartet']:8s}  {z['frage'][:60]}")
-
-    antwortbar = [z["top"] for z in zeilen if z["erwartet"] == "answer"]
-    abstain = [z["top"] for z in zeilen if z["erwartet"] == "abstain"]
-    print(f"\nAntwortbar : min={min(antwortbar):.3f}  max={max(antwortbar):.3f}")
-    print(f"Off-Topic  : min={min(abstain):.3f}  max={max(abstain):.3f}")
-    luecke_unten, luecke_oben = min(antwortbar), max(abstain)
-    print(f"Trennlücke : [{luecke_oben:.3f} .. {luecke_unten:.3f}]  "
-          f"Mitte={((luecke_oben + luecke_unten) / 2):.3f}")
-    schwelle, korrekt = bester_schwellwert(zeilen)
-    print(f"Bester Schwellwert: {schwelle:.3f}  ({korrekt}/{len(zeilen)} korrekt)")
+    main()

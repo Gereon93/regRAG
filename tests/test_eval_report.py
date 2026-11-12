@@ -143,6 +143,7 @@ def test_report_enthaelt_laya_teil_und_pflichtfelder_fuer_den_vergleich(chroma):
     assert set(laya["test_faelle"][0]) == {"id", "gruppe", "kosten"}
     assert "Evidenz" in laya["definition"]
     assert set(laya["ece"]) == {"vorher", "nachher"}
+    assert laya["kategorien"]["k"]["n"] == laya["gesamt"]["n"]
 
 
 def test_laya_sieht_keine_train_faelle(chroma):
@@ -283,6 +284,36 @@ def test_main_ohne_laya_url_schreibt_den_31_report(tmp_path, monkeypatch, chroma
     assert "laya" not in json.loads(datei.read_text())
     assert s.aufrufe == []
     assert not (tmp_path / "manifest").exists()
+
+
+def test_main_warnt_unter_200_faellen(tmp_path, monkeypatch, capsys, chroma):
+    s = Szenario()
+    vorbereitet(s, tmp_path, monkeypatch, "")
+    eval_report.main([])
+    assert f"WARNUNG: {len(s.faelle)} Fälle, Ziel sind >= 200." in capsys.readouterr().err
+
+
+def test_main_warnt_nicht_ab_der_zielfallzahl(tmp_path, monkeypatch, capsys, chroma):
+    s = Szenario()
+    vorbereitet(s, tmp_path, monkeypatch, "")
+    monkeypatch.setattr(eval_report, "ZIEL_FALLZAHL", len(s.faelle))
+    eval_report.main([])
+    assert "Fälle, Ziel sind" not in capsys.readouterr().err
+
+
+def test_main_verdrahtet_kosten_und_retriever_aus_der_config(tmp_path, monkeypatch, chroma):
+    s = Szenario()
+    vorbereitet(s, tmp_path, monkeypatch, "")
+    top_k = []
+    index = SimpleNamespace(as_retriever=lambda similarity_top_k: top_k.append(similarity_top_k) or s.retriever)
+    monkeypatch.setitem(sys.modules, "rag", SimpleNamespace(index=index))
+    monkeypatch.setattr(config, "KOSTEN_FALSCHANTWORT", 7.0)
+    monkeypatch.setattr(config, "KOSTEN_ESKALATION", 2.0)
+    eval_report.main([])
+    bericht = json.loads(next((tmp_path / "reports").glob("bericht-*.json")).read_text())
+    assert bericht["kosten"] == {"falschantwort": 7.0, "eskalation": 2.0}
+    assert top_k == [3]
+    assert set(bericht["kategorien"]) == {"k"}
 
 
 def test_main_mit_laya_ohne_revision_schreibt_kein_manifest_und_hinweis(tmp_path, monkeypatch, capsys, chroma):

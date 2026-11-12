@@ -72,7 +72,7 @@ Details und Grenzen: [ADR 0013](docs/adr/0013-laya-kalibrierung-segmentschwellen
 Das Eval-Set liegt versioniert in `evaluation/evalset/v1.jsonl` (Segment, Kategorie, Gruppe pro Fall,
 [ADR 0012](docs/adr/0012-eval-set-splits-kostenfunktion-report.md)). `python -m evaluation.eval_report`
 wählt Schwellen pro Segment über die Kostenfunktion auf dem Calibration-Split und berichtet auf dem
-Test-Split Falschantwortrate, Eskalationsrate und Coverage mit 95%-Intervall. **Das Set hat erst 14 Fälle**;
+Test-Split Falschantwortrate, Eskalationsrate und Coverage mit 95%-Intervall, je Segment und je Kategorie. **Das Set hat erst 14 Fälle**;
 Ziel sind >= 200, deren Labels der Maintainer liefert. Bis dahin sind die Werte nicht belastbar.
 
 ## Setup
@@ -210,7 +210,7 @@ Zwei Volumes: `chroma` trägt die Vektoren, `docs_md` den Korpus. Beide zusammen
 ## Evaluation
 
 ```bash
-python -m evaluation.calibrate       # misst Score-Trennung, schlägt Schwellwert vor
+python -m evaluation.calibrate       # Score-Trennung über das Eval-Set (Diagnose, keine Schwellenwahl)
 python -m evaluation.run             # Guard-Entscheidungen (14/14) + Faithfulness
 python -m evaluation.befolgung       # Wie oft das lokale Modell das Markerformat einhält (LM Studio + Index)
 python -m evaluation.baseline_pypdf  # zweiter Korpus: naive pypdf-Extraktion zum Vergleich
@@ -274,7 +274,7 @@ Jede Zahl oben ist mit einem Kommando reproduzierbar; die Rohwerte liegen im jew
 
 | Zahl | erzeugt durch | Einzelwerte / Messaufbau in |
 |---|---|---|
-| Scores, Trennlücke, Schwellwert, 14/14 | `python -m evaluation.calibrate` | [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md) |
+| Scores, Trennlücke, kostenminimale Schwelle (Diagnose) | `python -m evaluation.calibrate` | [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md) |
 | Faithfulness Ø 0.93 (alter Prompt vor #29) | `python -m evaluation.run` (gehosteter Judge) | [ADR 0005](docs/adr/0005-guard-kalibriert-abstain-als-bedingte-kante.md#faithfulness-lokaler-judge-verworfen-gehosteter-judge-gemessen) — alle 8 Fälle einzeln, Judge `openai/gpt-5.4-mini`, Lauf aus [#13](../../pull/13) |
 | Markdown vs. pypdf | `python -m evaluation.baseline_pypdf` + zwei `calibrate`-Läufe | [ADR 0001](docs/adr/0001-pdf-nach-markdown-statt-pdf-direkt.md#gemessen) |
 | Warum `exp(-Distanz)` und nicht Cosine | — | [ADR 0003](docs/adr/0003-persistenter-chroma-index-mit-cosine.md) |

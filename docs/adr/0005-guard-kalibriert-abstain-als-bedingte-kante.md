@@ -43,7 +43,12 @@ LangGraph verdient seinen Platz (Schuld aus 0004 eingelöst).
   gedreht: Der Schokoladenkuchen wird verweigert.
 - Der Wert 0.62 gilt **nur** für diesen Store, diese Metrik, dieses Embedding-Modell und
   diese Score-Transformation (`exp(-Distanz)`, siehe 0003). Ein Wechsel erfordert
-  Neukalibrierung — `evaluation/calibrate.py` ist dafür da.
+  Neukalibrierung. Die Schwellenwahl macht seit [0012](0012-eval-set-splits-kostenfunktion-report.md)
+  `evaluation/eval_report.py` (Kostenfunktion, Calibration/Test-Split, je Segment).
+- **Nachtrag (#38):** `evaluation/calibrate.py` ist seitdem nur noch Diagnose. Es liest das versionierte
+  Eval-Set, nimmt wie Gate und Report den *besten* Score der Treffer (vorher `nodes[0].score`) und meldet
+  statt der Accuracy-Schwelle die kostenminimale Schwelle über alle Fälle. Die Zahlen oben (0.62, 14/14)
+  stammen aus der alten Fassung; bei absteigend sortierten Treffern sind beide Scores gleich.
 - Die LLM-Konfiguration liegt in `config.py` (Umgebungsvariablen). Der DeepEval-Judge kann
   denselben Endpunkt wie das Antwortmodell nutzen oder über `REGRAG_JUDGE_BASE_URL`,
   `REGRAG_JUDGE_MODELL`, `REGRAG_JUDGE_API_KEY` und `REGRAG_JUDGE_TIMEOUT` getrennt auf

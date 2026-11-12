@@ -116,7 +116,7 @@ graph TD
 | `grounding.py` | Marker-Prompt, Zerlegung in Aussagen, `zahlen_judge`, Verwerfen nach der Generierung ([ADR 0014](adr/0014-claim-level-grounding.md)); im Graphen der Knoten `ground` | Retrieval, LLM-Aufruf |
 | `gueltigkeit.py` | Sidecar-Felder, Validierung, Status am Stichtag ([ADR 0015](adr/0015-gueltigkeit-fassungen-normkonflikte.md)) | Gate-Entscheidung, Retrieval |
 | `gate.py`, `laya.py`, `manifest.py`, `metrics.py` | Gate-Port, Score-Guard, Laya-Adapter mit Segmentschwellen und Manifest, prozesslokale Eskalationszähler für `GET /metrics` ([ADR 0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md)) | Retrieval, LLM |
-| `evaluation/` | Versioniertes Eval-Set (`evalset/v1.jsonl`), Splits, Kostenfunktion und Segment-Report ([ADR 0012](adr/0012-eval-set-splits-kostenfunktion-report.md)), Guard-Trennschärfe messen, Faithfulness bewerten | Den Produktionspfad — liest nur mit |
+| `evaluation/` | Versioniertes Eval-Set (`evalset/v1.jsonl`), Splits, Kostenfunktion, Report je Segment und Kategorie ([ADR 0012](adr/0012-eval-set-splits-kostenfunktion-report.md)), Score-Trennung als Diagnose (`calibrate`), Guard-Trennschärfe messen, Faithfulness bewerten | Den Produktionspfad — liest nur mit |
 
 Die Trennung ist der Punkt: `rag.py` weiß nichts vom LLM, `agent.py` nichts vom Vektor-Store,
 `web/main.py` nichts von beidem außer den Aufrufen. `dokumente.py` weiß von gar nichts — deshalb
