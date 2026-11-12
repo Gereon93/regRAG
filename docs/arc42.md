@@ -305,6 +305,7 @@ Pfade würden garantiert auseinanderlaufen — einer davon still.
 | [0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md) | Laya-Kalibrierung, Segmentschwellen, Gate-Manifest, `/metrics` | akzeptiert als Mechanik; Nutzen **nicht gemessen** |
 | [0014](adr/0014-claim-level-grounding.md) | Claim-Level-Grounding nach der Generierung, Puffern statt Streamen | akzeptiert; inhaltliche Stützung unbelegt |
 | [0015](adr/0015-gueltigkeit-fassungen-normkonflikte.md) | Gültigkeit, `AMBIGUOUS_VERSION`, Konflikt-Judge | akzeptiert; Konflikt-Judge experimentell, Nutzen **unbelegt** |
+| [0016](adr/0016-rate-limit-und-body-grenze-fuer-chat.md) | Rate-Limit je Client-IP und Body-Grenze für `/chat` | akzeptiert; Limit 10/min **ungemessen** |
 
 ---
 

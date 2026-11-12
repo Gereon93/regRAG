@@ -343,6 +343,20 @@ async function fragen(text) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ frage: text }),
   });
+  if (!res.ok) {
+    const fehler = await res.json().catch(() => null);
+    const warten = res.headers.get('Retry-After');
+    let text = typeof fehler?.detail === 'string'
+      ? fehler.detail
+      : res.status === 422
+        ? 'Die Frage ist leer oder zu lang (höchstens 2000 Zeichen).'
+        : `Anfrage abgelehnt (HTTP ${res.status}).`;
+    if (res.status === 429 && warten) text += ` Bitte in ${warten} Sekunden erneut fragen.`;
+    caret.remove();
+    antwort.remove();
+    eintrag.appendChild(el('div', 'fehler', text));
+    return;
+  }
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let puffer = '';

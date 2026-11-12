@@ -122,7 +122,7 @@ Neuaufbau erzwingen: `REGRAG_INDEX_NEU_BAUEN=1 python agent.py`.
 uvicorn web.main:app --reload      # http://localhost:8000
 ```
 
-Chat-Seite mit SSE. Die Antwort erscheint erst nach Generierung und Prüfung (lokal 1 bis 3 Minuten ohne Text, ein vorgeschalteter Proxy braucht einen passenden Timeout). Jede Aussage trägt Marker wie `[2]`, die Nummern stehen im Block "Fundstellen" mit Score. Bei zu dünner Beleglage oder einer Antwort ohne Beleg je Aussage erscheint der Abstain-Zustand sichtbar statt einer erfundenen Antwort. Die Prüfung sieht Marker sowie Zahlen und Norm-Nummern; ob eine Aussage ohne Zahl inhaltlich gedeckt ist, prüft sie nicht ([ADR 0014](docs/adr/0014-claim-level-grounding.md)). `POST /chat` ist auch ohne UI nutzbar.
+Chat-Seite mit SSE. Die Antwort erscheint erst nach Generierung und Prüfung (lokal 1 bis 3 Minuten ohne Text, ein vorgeschalteter Proxy braucht einen passenden Timeout). Jede Aussage trägt Marker wie `[2]`, die Nummern stehen im Block "Fundstellen" mit Score. Bei zu dünner Beleglage oder einer Antwort ohne Beleg je Aussage erscheint der Abstain-Zustand sichtbar statt einer erfundenen Antwort. Die Prüfung sieht Marker sowie Zahlen und Norm-Nummern; ob eine Aussage ohne Zahl inhaltlich gedeckt ist, prüft sie nicht ([ADR 0014](docs/adr/0014-claim-level-grounding.md)). `POST /chat` ist auch ohne UI nutzbar. Je Client-IP sind `REGRAG_CHAT_MAX_PRO_MINUTE` Anfragen pro Minute erlaubt (Default 10, ungemessen), darüber antwortet `/chat` mit 429 und `Retry-After`; Bodies über 32 000 Bytes lehnt es vor dem Parsen mit 413 ab. Der Zähler gilt je Prozess und sieht hinter einem Reverse-Proxy nur dessen IP ([ADR 0016](docs/adr/0016-rate-limit-und-body-grenze-fuer-chat.md)).
 
 ### Lokaler Accessibility-Pre-Commit-Check
 
@@ -247,6 +247,7 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 - [0013](docs/adr/0013-laya-kalibrierung-segmentschwellen-manifest.md) — Laya-Kalibrierung, Segmentschwellen, Gate-Manifest und Eskalationsmetriken (Nutzen unbelegt)
 - [0014](docs/adr/0014-claim-level-grounding.md) — Claim-Level-Grounding nach der Generierung
 - [0015](docs/adr/0015-gueltigkeit-fassungen-normkonflikte.md) — Gültigkeitsmetadaten, mehrdeutige Fassungen und Normkonflikte
+- [0016](docs/adr/0016-rate-limit-und-body-grenze-fuer-chat.md) — Rate-Limit je Client-IP und Body-Grenze vor dem Parsen für `/chat`
 
 ## Gemessen
 

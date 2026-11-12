@@ -31,7 +31,7 @@ eine Verweigerung hinterließ weder Begründung noch Spur.
 - Weitere Judges (#28 Laya, #29 Grounding, #30 Gültigkeit) werden Adapter, die Gate-Logik bleibt.
 - Der Datensatz enthält Fragen und Textauszüge im Klartext; die Datei liegt lokal, ist nicht im Repo
   und nur für den Besitzer lesbar. Aufbewahrung, Rotation und Löschweg: siehe
-  Abschnitt "Aufbewahrung und Löschung" unten. Ein Rate-Limit fehlt noch (Issue #44).
+  Abschnitt "Aufbewahrung und Löschung" unten. Rate-Limit und Body-Grenze für `/chat`: [0016](0016-rate-limit-und-body-grenze-fuer-chat.md).
 - Evaluationsläufe (`evaluation/run.py`) verwerfen Eskalationsdatensätze (`os.devnull`), damit sie
   die echte Datei nicht füllen.
 - Wohin eskaliert wird (Queue, Fachexperte) ist offen; bis dahin ist die Datei nur Export.
@@ -72,5 +72,5 @@ Fragen können personenbezogen sein; die Datei ist deshalb in Größe und Alter 
   Einzelne Personen entfernt man bei gestopptem Server mit einem `jq`-Filter auf die Zeilen in der aktiven Datei
   und in jedem Archiv. Der Filter muss die ganze Zeile treffen, nicht nur `frage`: `antwort` und
   `aussagen_ohne_beleg` können die Frage wiederholen.
-- **Nicht umgesetzt (Issue #44):** Rate-Limit und Begrenzung der Body-Größe vor dem Parsen. Das Längenlimit
-  greift erst, nachdem der Body gelesen wurde.
+- **Rate-Limit und Body-Grenze (Issue #44):** `/chat` drosselt je Client-IP (429) und lehnt Bodies über
+  32 000 Bytes vor dem Parsen ab (413), siehe [0016](0016-rate-limit-und-body-grenze-fuer-chat.md).
