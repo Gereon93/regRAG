@@ -126,7 +126,7 @@ liegt dort die Logik, die Tests brauchen.
 
 | Element | Aufgabe |
 |---|---|
-| `retrieve` (Knoten) | Die drei ähnlichsten Chunks holen |
+| `retrieve` (Knoten) | Die drei ähnlichsten Chunks holen; verdrängen abgelöste Fassungen die gültige, rücken aus `3 × REGRAG_UEBERABRUF_FAKTOR` Kandidaten nutzbare nach (ADR 0015) |
 | `answer` (Knoten) | Formulieren — sieht den Kontext nur, wenn der Guard ihn durchlässt |
 | `abstain` (Knoten) | `ABSTAIN_ANTWORT` setzen, ohne das LLM zu berühren |
 | `gate.RetrievalScoreGate` | Der Schwellwert-Test hinter dem Gate-Port, siehe ADR 0002, 0005 und 0010 |
@@ -158,8 +158,8 @@ sequenceDiagram
 
     N->>G: Frage
     G->>R: retrieve(frage)
-    R->>D: Ähnlichkeitssuche (Cosine, top_k=3)
-    D-->>R: 3 Chunks + Scores
+    R->>D: Ähnlichkeitssuche (Cosine, top_k = 3 × Faktor)
+    D-->>R: Kandidaten + Scores, Auswahl der 3 nach Gültigkeit (ADR 0015)
     R-->>G: nodes
     G->>G: pruefe(frage, nodes) → ANSWER
     G->>L: Prompt mit Kontext
@@ -320,7 +320,7 @@ Pfade würden garantiert auseinanderlaufen — einer davon still.
 | Kaltstart im Container (DORA, 351k Zeichen) | 360 s | `docker compose up` |
 | Neustart ohne Korpusänderung (DORA + NIS2) | 31 s | `docker compose restart` |
 | Upload NIS2 (1.3 MB PDF) bis `ready` | ~250 s | `POST /upload` → `GET /jobs/{id}` |
-| Retrieval, `similarity_top_k=3` | 0.5 s | — |
+| Retrieval, `similarity_top_k=3` (vor dem Überabruf, #53; mit 9 Kandidaten nicht gemessen) | 0.5 s | — |
 | Score eines guten Treffers (On-Topic) | 0.67–0.73 | — |
 | Kosten pro Anfrage (lokal) | 0 € | — |
 

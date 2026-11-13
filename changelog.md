@@ -4,6 +4,8 @@
 ### Neu
 - **Stichtag pro Anfrage:** `POST /chat` nimmt optional `stichtag` (`YYYY-MM-DD`, sonst 422), die CLI `--stichtag`, die UI ein Datumsfeld neben der Frage; der Eintrag im Verlauf nennt den Stichtag. Gültigkeit wird dann gegen diesen Tag statt gegen heute geprüft, der Eskalationsdatensatz trägt ihn als `stichtag` (#50, ADR 0015).
 - Der Report trägt `stichtag` (heute in Europe/Berlin, einmal je Lauf) und `vorab_verweigert` je Split; `calibrate` gibt den Stichtag aus und zählt solche Fälle getrennt von "Ohne Treffer" (#54).
+- **Überabruf gegen Verdrängung:** Der Retriever holt `3 × REGRAG_UEBERABRUF_FAKTOR` Kandidaten (Default 3, ungemessen). Liegen im Top-3 abgelöste Treffer und keine gültige Fassung, rücken nutzbare Treffer nach, bis drei beisammen sind; die abgelösten bleiben für Gate und Prüfer. Liegt die gültige Fassung knapp hinter drei Chunks der abgelösten, antwortet das System jetzt aus der gültigen statt mit `OUTDATED_SOURCE`. In allen anderen Fällen bleibt es exakt beim Top-3; `1` stellt das alte Verhalten her (#53, ADR 0015).
+- `python -m evaluation.verdraengung` misst je Eval-Frage, wie oft das Top-3 verdrängt ist und der Überabruf das behebt, dazu Entscheidungswechsel, besten nutzbaren Score und Abruflatenz mit 3 und mit `3 × Faktor` Kandidaten (#53).
 ### Geändert
 - Gate-Port `entscheide(frage, nodes, stichtag=None)`; eigene Gate-Implementierungen müssen das Argument annehmen, `Kaskade` reicht es positional weiter (#50).
 - `python agent.py` nimmt die Frage als Argument; ohne Argument bleibt es die DORA-Beispielfrage (#50).
@@ -11,6 +13,8 @@
 ### Hinweis
 - **Offen:** Ein Datum im Fragetext wird nicht als Stichtag erkannt (#63).
 - Reports vor und nach #54 sind nur vergleichbar, wenn der Index keine Gültigkeitsdaten und keine abweichenden `fassung` je Quelle trägt. Das Manifest-Schema bleibt 2.
+- **Offen:** Häufigkeit der Verdrängung, Wirkung auf die Guard-Schwelle und Latenz sind nicht gemessen; es gibt keinen Korpus mit datierten Fassungen. Belegt ist nur die Mechanik am Fixture-Korpus.
+- Wo heute `OUTDATED_SOURCE` steht, kann mit Überabruf `LOW_RELEVANCE` stehen: Die zweite Score-Stufe sieht den besten Score der gültigen Fassung. Bei weiter verweigerter Verdrängung zeigen Quellenliste und Eskalationsdatensatz bis `3 × Faktor` Fundstellen.
 
 ## 2026-11-12
 ### Neu

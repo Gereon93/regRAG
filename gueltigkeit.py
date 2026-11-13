@@ -71,6 +71,38 @@ def status_von(metadata, stichtag):
     return GUELTIG
 
 
+def waehle_treffer(kandidaten, top_k, stichtag):
+    """Top-k; nur wenn abgelöste Treffer die gültige Fassung daraus verdrängen, länger (docs/adr/0015, #53).
+
+    Verdrängt heißt: im Top-k ein nicht nutzbarer Treffer und kein gültiger, also heute `OUTDATED_SOURCE`.
+    Dann das kürzeste Präfix mit `top_k` nutzbaren Treffern; die nicht nutzbaren davor bleiben für Gate und Prüfer.
+    """
+    status = [status_von(n.metadata, stichtag) for n in kandidaten]
+    top = status[:top_k]
+    if GUELTIG in top or all(s in NUTZBAR for s in top):
+        return kandidaten[:top_k]
+    nutzbar = 0
+    for ende, s in enumerate(status, start=1):
+        nutzbar += s in NUTZBAR
+        if nutzbar == top_k:
+            return kandidaten[:ende]
+    return kandidaten
+
+
+class UeberabrufRetriever:
+    """Holt `top_k * faktor` Kandidaten und wählt daraus mit `waehle_treffer`; Stichtag je Abruf."""
+
+    def __init__(self, index, top_k, faktor, uhr=None):
+        if faktor < 1:
+            raise ValueError("faktor muss mindestens 1 sein.")
+        self.top_k = top_k
+        self.uhr = uhr or heute_berlin
+        self.kandidaten = index.as_retriever(similarity_top_k=top_k * faktor)
+
+    def retrieve(self, frage):
+        return waehle_treffer(self.kandidaten.retrieve(frage), self.top_k, self.uhr())
+
+
 def fassungs_kennung(metadata):
     return tuple(metadata.get(feld) for feld in FELDER)
 

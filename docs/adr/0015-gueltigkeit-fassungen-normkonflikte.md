@@ -1,7 +1,8 @@
 # 0015 — Gültigkeitsmetadaten, mehrdeutige Fassungen und Normkonflikte
 
-Status: akzeptiert; Gültigkeit und Fassungsprüfung im Betrieb, **Konflikt-Judge experimentell, Nutzen unbelegt**
-(Issue [#30](../../../../issues/30), Teil von #26)
+Status: akzeptiert; Gültigkeit und Fassungsprüfung im Betrieb, **Konflikt-Judge experimentell, Nutzen unbelegt**;
+Überabruf im Betrieb, **Faktor ungemessen**
+(Issue [#30](../../../../issues/30), Teil von #26; Überabruf [#53](../../../../issues/53))
 
 ## Kontext
 
@@ -70,6 +71,45 @@ Score, Gültigkeit, Score, Fassung, Laya `answerable`, Konflikt-Judge.
   `relevance` bleibt das Maximum aller Treffer, `LOW_RELEVANCE` kann also neben einem Wert über der Schwelle stehen.
 - Kostenlose Prüfungen vor Laya, `answerable` vor den Paaraufrufen.
 
+### Überabruf gegen Verdrängung ([#53](../../../../issues/53))
+
+- `agent.retriever` ist ein `gueltigkeit.UeberabrufRetriever`: Er holt `top_k × REGRAG_UEBERABRUF_FAKTOR`
+  Kandidaten (`top_k=3`), `gueltigkeit.waehle_treffer` wählt daraus. `/chat` und `evaluation/run.py` nutzen denselben
+  Retriever.
+- **Überabruf greift nur bei Verdrängung**, also wenn im Top-k ein nicht nutzbarer Treffer und kein gültiger liegt
+  (heute `OUTDATED_SOURCE`). Dann gilt das kürzeste Präfix der Kandidaten mit `top_k` nutzbaren Treffern; die nicht
+  nutzbaren davor bleiben drin. Sonst bleibt es exakt beim Top-k. Ein Top-k mit gültiger Fassung neben einer
+  abgelösten bleibt damit unverändert: kein dritter Treffer, kein neues `AMBIGUOUS_VERSION`, keine zusätzlichen
+  Laya-Paare.
+- **Die Gate-Regel bleibt unverändert.** Der Gate sieht die abgelösten Treffer weiter. Ohne gültige Fassung unter den
+  nachgerückten bleibt es bei `OUTDATED_SOURCE`; Quellenliste und Eskalationsdatensatz zeigen dann bis
+  `top_k × Faktor` Fundstellen, damit der Prüfer die abgelöste Fassung sieht. Der Datensatz wird entsprechend größer,
+  die Rotation ([0010](0010-decision-gate-port-und-eskalationsdatensatz.md)) greift früher. Mit gültiger Fassung engt
+  der Gate auf höchstens `top_k` nutzbare ein; Kontext und Laya-Aufrufe wachsen nicht.
+- Der Top-1-Treffer ist immer dabei, `relevance` ändert sich nie. Die zweite Score-Stufe sieht dagegen den besten
+  **nutzbaren** Score: Wo heute `OUTDATED_SOURCE` steht, kann künftig ANSWER oder `LOW_RELEVANCE` stehen, auch neben
+  einer `relevance` über der Schwelle (siehe Reihenfolge).
+- `REGRAG_UEBERABRUF_FAKTOR=1` stellt das alte Verhalten her. **Der Default 3 ist nicht gemessen:** Es gibt keinen
+  Korpus mit datierten Fassungen. Ohne datierte Treffer im Top-k ändert sich keine Entscheidung; dann kostet er nur
+  die größere Kandidatenzahl je Chroma-Abfrage, auch sie ungemessen.
+- **Messung:** `python -m evaluation.verdraengung [--faktor N] [--stichtag YYYY-MM-DD] [--fragen DATEI]` zählt je Frage
+  (Default: Eval-Set), wie oft das Top-k verdrängt ist, wie oft die gültige Fassung unter den Kandidaten und wie oft in
+  der Auswahl liegt; dazu Entscheidungswechsel, besten nutzbaren Score vorher und nachher und die Abruflatenz mit
+  `top_k` und mit `top_k × Faktor`. Vorher und nachher stammen aus demselben Kandidatenabruf, damit die ANN-Näherung
+  nicht als Effekt zählt. Der Gate läuft ohne Laya, deterministisch und am übergebenen Stichtag.
+- Der Retriever bestimmt den Stichtag selbst, getrennt vom `GueltigkeitsGate`. Um Mitternacht können beide um einen
+  Tag abweichen; dann wählt der Retriever nach dem Vortag.
+- Laya sieht neue Evidenz nur in Fällen, die heute als `OUTDATED_SOURCE` nie bis Laya kommen. Auf solchen Fällen ist
+  nichts kalibriert (#54).
+- **Verworfen: Chroma-`where`-Filter.** Er machte abgelöste Treffer unsichtbar: `OUTDATED_SOURCE` wäre nicht mehr
+  erkennbar, der Prüfer sähe die Fundstelle nicht, und eine Frage nur zur Altfassung würde aus fremden Treffern
+  beantwortet (das Risiko aus [#58](../../../../issues/58)). Fehlende Felder (nie `None`) sind in `where` zudem nicht
+  sauber ausdrückbar. **Verworfen: immer filtern und kürzen.** Änderte heutige ANSWER-Fälle. **Verworfen: k
+  erhöhen.** Mehr Kontext, mehr Konflikt-Judge-Aufrufe (quadratisch in k) und mehr fremde Altchunks.
+- **Zu #58:** Der Überabruf löst den Fall "gültige Fassung knapp hinter dem Top-k". Den Mischfall aus #58
+  (abgelaufener Fremdchunk neben `unbekannt`) entschärft er nur, wenn unter den nachrückenden nutzbaren Treffern eine
+  gültige Fassung liegt; sonst bleibt es bei `OUTDATED_SOURCE`.
+
 ### Mehrdeutige Fassung: `AMBIGUOUS_VERSION`
 
 Zwei gleichzeitig nutzbare Fassungen derselben Quelle sind ein **Datenfehler**, kein Normkonflikt: Es ist nicht bekannt,
@@ -111,8 +151,9 @@ für diese Norm erzwingen. Das verweigert nur und ist nicht schlimmer als die of
 - Ohne gepflegte `gueltig_ab`/`gueltig_bis` bleibt alles `unbekannt`, der Filter wirkt nie. `unbekannt` ist kein Beleg für
   Aktualität.
 - **Verdrängung:** Abgelöste und gültige Fassung sind fast textgleich. Bei `k=3` können alle Treffer aus der abgelösten
-  kommen, dann `OUTDATED_SOURCE`, obwohl die gültige im Index liegt ([#53](../../../../issues/53)). Bis dahin hilft es, die
-  abgelöste Fassung zu löschen.
+  kommen, dann `OUTDATED_SOURCE`, obwohl die gültige im Index liegt. Der Überabruf (oben) behebt das bis
+  `3 × REGRAG_UEBERABRUF_FAKTOR` Kandidaten; liegen mehr Altchunks vor der gültigen Fassung, hilft weiter nur, die
+  abgelöste Fassung zu löschen. Wie oft das vorkommt, ist nicht gemessen ([#53](../../../../issues/53)).
 - **Kosten:** Der Konflikt-Judge macht bis zu 3 zusätzliche Laya-Aufrufe je Anfrage auf dem ANSWER-Pfad, je bis
   `LAYA_TIMEOUT`, quadratisch in `similarity_top_k`. Kein Cap im Code.
 - **Eval:** Report und Laya-Kalibrierung durchlaufen dieselbe Vorprüfung (`gate.vorpruefung`) am Stichtag des Laufs; der
