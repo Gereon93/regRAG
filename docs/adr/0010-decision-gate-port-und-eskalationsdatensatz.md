@@ -75,7 +75,8 @@ Fragen können personenbezogen sein; die Datei ist deshalb in Größe und Alter 
     ihrer Stelle lässt das Schreiben scheitern, statt fremde Dateien zu öffnen.
   - *Wartezeit:* Hält ein anderer Prozess die Sperre länger als `gate.SPERR_WARTEZEIT_S` (5 s, z. B. eine per
     Debugger angehaltene CLI), scheitert der Aufruf: geloggt, keine Vormerkung, die Verweigerung bleibt.
-    Request-Threads warten so nie unbegrenzt.
+    Die Frist gilt je Aufruf ab dem Prozess-Lock: Threads, die dahinter anstehen, warten im schlechtesten
+    Fall ein Vielfaches davon, aber nicht unbegrenzt.
   - *Plattform:* `flock` gibt es nur auf POSIX (Linux-Container, macOS). Ohne `fcntl` (Windows) bleibt nur die
     prozesslokale Sperre und der Mehrprozess-Race wie vor #46; das ist akzeptiert, weil dort nichts betrieben
     wird. Auf Netzlaufwerken (NFS, SMB) ist `flock` nicht verlässlich; das Volume ist lokal.

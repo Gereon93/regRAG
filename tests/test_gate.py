@@ -704,6 +704,7 @@ def test_parallele_prozesse_mit_rotation_verlieren_keine_bestaetigte_zeile(tmp_p
     assert bestaetigt - {json.loads(z)["frage"] for z in zeilen} == set()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="flock gibt es nur auf POSIX")
 def test_sperrdatei_ist_versteckt_0600_und_wird_nie_rotiert_oder_verdraengt(tmp_path):
     ziel = tmp_path / "eskalationen.jsonl"
     grenzen = EskalationsGrenzen(max_bytes=1, max_archive=0, aufbewahrung_tage=30)
@@ -737,6 +738,7 @@ def test_gehaltene_sperre_laesst_den_schreiber_nicht_ewig_warten(tmp_path, monke
     assert "konnte nicht" in caplog.text
 
 
+@pytest.mark.skipif(os.name != "posix", reason="flock gibt es nur auf POSIX")
 def test_sperrdatei_als_symlink_wird_nicht_verfolgt(tmp_path):
     fremd = tmp_path / "fremd.txt"
     fremd.write_text("sicher")
