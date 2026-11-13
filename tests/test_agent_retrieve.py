@@ -108,3 +108,11 @@ def test_retrieve_und_ground_pruefen_mit_dem_stichtag_gegen_das_echte_gate(agent
     satz = json.loads(Path(config.ESKALATION_DATEI).read_text(encoding="utf-8"))
     assert satz["reasons"] == ["UNGROUNDED_CLAIM"]
     assert satz["stichtag"] == "2024-06-01"
+
+
+def test_retriever_holt_mit_ueberabruf_und_kuerzt_auf_drei(agent):
+    import gueltigkeit
+
+    assert isinstance(agent.retriever, gueltigkeit.UeberabrufRetriever)
+    assert agent.retriever.top_k == 3
+    sys.modules["rag"].index.as_retriever.assert_called_once_with(similarity_top_k=3 * config.UEBERABRUF_FAKTOR)

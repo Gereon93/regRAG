@@ -17,10 +17,11 @@ from gate import (
     grenzen_aus,
 )
 from grounding import SYSTEM_PROMPT, baue_kontext, pruefe_antwort_und_eskaliere
+from gueltigkeit import UeberabrufRetriever
 from laya import baue_gate
 from rag import index
 
-retriever = index.as_retriever(similarity_top_k=3)
+retriever = UeberabrufRetriever(index, top_k=3, faktor=config.UEBERABRUF_FAKTOR)
 gate = baue_gate(config)
 ESKALATIONS_GRENZEN = grenzen_aus(config)
 
