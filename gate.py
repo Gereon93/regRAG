@@ -6,6 +6,8 @@ import math
 import os
 import re
 import threading
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -14,6 +16,11 @@ from typing import Protocol
 
 import gueltigkeit
 import metrics
+
+try:
+    import fcntl
+except ImportError:  # Windows: nur die prozesslokale Sperre (ADR 0010)
+    fcntl = None
 
 log = logging.getLogger(__name__)
 
@@ -283,8 +290,37 @@ def grenzen_aus(einstellungen):
     )
 
 
-# Rotation und Append laufen im Prozess nie parallel; mehrere Prozesse bleiben ein akzeptiertes Race (ADR 0010).
+# Rotation, Löschen und Append laufen nie parallel: im Prozess per Lock, über Prozesse per flock (ADR 0010).
 _ESKALATIONS_SPERRE = threading.Lock()
+SPERR_WARTEZEIT_S = 5
+
+
+@contextmanager
+def _sperre(ziel):
+    """Hält die Eskalationsdatei exklusiv. Ohne `fcntl`, ohne Verzeichnis oder bei Sonderdateien nur im Prozess.
+
+    Die Sperrdatei `.<name>.lock` ist versteckt, trifft kein Archivmuster und wird nie gelöscht. Wer sie
+    länger als `SPERR_WARTEZEIT_S` hält, lässt den Aufruf mit `TimeoutError` scheitern statt ewig zu warten.
+    """
+    with _ESKALATIONS_SPERRE:
+        if fcntl is None or not ziel.parent.is_dir() or (ziel.exists() and not ziel.is_file()):
+            yield
+            return
+        sperrdatei = ziel.with_name(f".{ziel.name}.lock")
+        fd = os.open(sperrdatei, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, ESKALATIONS_DATEI_RECHTE)
+        try:
+            frist = time.monotonic() + SPERR_WARTEZEIT_S
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= frist:
+                        raise TimeoutError(f"{sperrdatei} länger als {SPERR_WARTEZEIT_S} s gesperrt") from None
+                    time.sleep(0.005)
+            yield
+        finally:
+            os.close(fd)
 
 
 def _aeltester_zeitpunkt(datei):
@@ -355,11 +391,11 @@ def _bereinige(ziel, grenzen, jetzt):
 def bereinige_eskalationen(ziel, grenzen):
     """Wendet Frist und Archivgrenze ohne neuen Datensatz an (Start des Servers). Fehler werden nur geloggt."""
     ziel = Path(ziel)
-    with _ESKALATIONS_SPERRE:
-        try:
+    try:
+        with _sperre(ziel):
             _bereinige(ziel, grenzen, datetime.now(timezone.utc))
-        except OSError:
-            log.exception("Bereinigung des Eskalationsdatensatzes %s fehlgeschlagen", ziel)
+    except OSError:
+        log.exception("Bereinigung des Eskalationsdatensatzes %s fehlgeschlagen", ziel)
 
 
 def schreibe_eskalation(ziel, frage, nodes, entscheidung, grenzen=None, zusatz=None, stichtag=None):
@@ -370,7 +406,7 @@ def schreibe_eskalation(ziel, frage, nodes, entscheidung, grenzen=None, zusatz=N
         zeile = json.dumps(satz, ensure_ascii=False) + "\n"
         ziel = Path(ziel)
         ziel.parent.mkdir(parents=True, exist_ok=True)
-        with _ESKALATIONS_SPERRE:
+        with _sperre(ziel):
             try:
                 _bereinige(ziel, grenzen, datetime.now(timezone.utc))
             except OSError:

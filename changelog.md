@@ -7,6 +7,9 @@
 - **Gültigkeit in der Web-UI:** Das Upload-Formular erfasst `gueltig_ab`, `gueltig_bis` und `fassung`; eine 422 zeigt die Meldung der API mit den Feldnamen der UI. Die Dokumentliste zeigt Status, Zeitraum und Fassung (#51, ADR 0015).
 - `GET /documents` liefert je Dokument die gesetzten Gültigkeitsfelder und `gueltigkeit` am Stichtag heute (Europe/Berlin); ein abgelehntes Sidecar erscheint als `metadaten_ungueltig` (#51).
 - CI führt `npm run check:a11y` und `npm run test:ui` aus (Node 22); `tests/ui` testet die Anzeige-Logik in `web/static/anzeige.js` (#51).
+### Fix
+- **Eskalationsdatei prozessübergreifend gesperrt:** Rotation, Löschen von Archiven und Append laufen unter `flock` auf der versteckten Sperrdatei `.<name>.lock` (z. B. `chroma/.eskalationen.jsonl.lock`). Vorher konnte ein zweiter Prozess (CLI neben dem Server) die Datei rotieren und löschen, während ein Datensatz hineingeschrieben wurde; die Antwort versprach dann eine Vormerkung, die es nicht gab (#46, ADR 0010).
+- Wird die Sperre länger als 5 s gehalten, scheitert das Schreiben geloggt und die Antwort verspricht keine Vormerkung. Ohne `fcntl` (Windows) gilt nur die prozesslokale Sperre wie bisher (#46).
 ### Geändert
 - Gate-Port `entscheide(frage, nodes, stichtag=None)`; eigene Gate-Implementierungen müssen das Argument annehmen, `Kaskade` reicht es positional weiter (#50).
 - `python agent.py` nimmt die Frage als Argument; ohne Argument bleibt es die DORA-Beispielfrage (#50).
