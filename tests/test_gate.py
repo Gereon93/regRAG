@@ -1,9 +1,12 @@
 import json
 import logging
+import multiprocessing
 import os
 import stat
 import threading
+import time
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -625,7 +628,7 @@ def test_dateiname_mit_glob_zeichen_wird_woertlich_behandelt(tmp_path):
     for i in range(5):
         schreibe_eskalation(ziel, f"f{i}", [], _abstain(), grenzen=grenzen)
 
-    archive = [p for p in tmp_path.iterdir() if p != ziel]
+    archive = [p for p in tmp_path.iterdir() if p not in (ziel, tmp_path / ".eskalationen[prod].jsonl.lock")]
     assert len(archive) == 1
 
 
@@ -638,6 +641,137 @@ def test_verzeichnis_mit_archivnamen_bricht_die_bereinigung_nicht_ab(tmp_path):
     bereinige_eskalationen(ziel, EskalationsGrenzen(max_bytes=10_000, max_archive=5, aufbewahrung_tage=30))
 
     assert not alt.exists()
+
+
+def _schreibe_als_prozess(ziel, friedhof, quittung, kennung, anzahl):
+    """Kindprozess: schreibt `anzahl` Datensätze und quittiert jede Frage, für die `True` kam.
+
+    Gelöschte Archive landen vorher im `friedhof`: Verdrängen ist gewollt (max_archive=0), verloren
+    ist nur, was weder in aktiver Datei, Archiv noch Friedhof steht. Ein kurzer Schlaf vor `os.write`
+    macht den Schreiber langsam und öffnet das Fenster zwischen Open und Write.
+    """
+    loeschen, schreiben = Path.unlink, os.write
+
+    def loeschen_mit_beleg(self, missing_ok=False):
+        try:
+            inhalt = self.read_bytes()
+        except FileNotFoundError:
+            inhalt = b""
+        fd = os.open(friedhof, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            schreiben(fd, inhalt)
+        finally:
+            os.close(fd)
+        loeschen(self, missing_ok=missing_ok)
+
+    def langsam_schreiben(fd, daten):
+        time.sleep(0.0005)
+        return schreiben(fd, daten)
+
+    Path.unlink = loeschen_mit_beleg
+    os.write = langsam_schreiben
+    grenzen = EskalationsGrenzen(max_bytes=1, max_archive=0, aufbewahrung_tage=30)
+    bestaetigt = [
+        f"{kennung}-{i}"
+        for i in range(anzahl)
+        if schreibe_eskalation(ziel, f"{kennung}-{i}", [], _abstain(), grenzen=grenzen)
+    ]
+    os.write = schreiben
+    Path(quittung).write_text("\n".join(bestaetigt), encoding="utf-8")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="die Sperre gibt es nur auf POSIX")
+def test_parallele_prozesse_mit_rotation_verlieren_keine_bestaetigte_zeile(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    friedhof = tmp_path / "friedhof.bin"
+    friedhof.touch()
+    kontext = multiprocessing.get_context("spawn")
+    prozesse = [
+        kontext.Process(target=_schreibe_als_prozess, args=(ziel, friedhof, tmp_path / f"q{k}", f"p{k}", 150))
+        for k in range(4)
+    ]
+    for p in prozesse:
+        p.start()
+    for p in prozesse:
+        p.join(timeout=120)
+    assert [p.exitcode for p in prozesse] == [0] * 4
+
+    bestaetigt = {f for k in range(4) for f in (tmp_path / f"q{k}").read_text(encoding="utf-8").split("\n") if f}
+    assert len(bestaetigt) == 600
+    assert friedhof.stat().st_size > 0
+    vorhanden = [ziel, friedhof] + [tmp_path / n for n in _archive(ziel)]
+    zeilen = b"".join(p.read_bytes() for p in vorhanden if p.exists()).decode("utf-8").splitlines()
+    assert bestaetigt - {json.loads(z)["frage"] for z in zeilen} == set()
+
+
+def test_sperrdatei_ist_versteckt_0600_und_wird_nie_rotiert_oder_verdraengt(tmp_path):
+    ziel = tmp_path / "eskalationen.jsonl"
+    grenzen = EskalationsGrenzen(max_bytes=1, max_archive=0, aufbewahrung_tage=30)
+
+    for i in range(3):
+        assert schreibe_eskalation(ziel, f"f{i}", [], _abstain(), grenzen=grenzen)
+
+    sperre = tmp_path / ".eskalationen.jsonl.lock"
+    assert stat.S_IMODE(sperre.stat().st_mode) == 0o600
+    assert _archive(ziel) == []
+    assert sorted(p.name for p in tmp_path.iterdir()) == [".eskalationen.jsonl.lock", "eskalationen.jsonl"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="flock gibt es nur auf POSIX")
+def test_gehaltene_sperre_laesst_den_schreiber_nicht_ewig_warten(tmp_path, monkeypatch, caplog):
+    import fcntl
+
+    import gate as gate_modul
+
+    monkeypatch.setattr(gate_modul, "SPERR_WARTEZEIT_S", 0.05)
+    ziel = tmp_path / "eskalationen.jsonl"
+    fd = os.open(tmp_path / ".eskalationen.jsonl.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        with caplog.at_level(logging.ERROR):
+            assert schreibe_eskalation(ziel, "f", [], _abstain()) is False
+    finally:
+        os.close(fd)
+
+    assert not ziel.exists()
+    assert "konnte nicht" in caplog.text
+
+
+def test_sperrdatei_als_symlink_wird_nicht_verfolgt(tmp_path):
+    fremd = tmp_path / "fremd.txt"
+    fremd.write_text("sicher")
+    (tmp_path / ".eskalationen.jsonl.lock").symlink_to(fremd)
+
+    assert schreibe_eskalation(tmp_path / "eskalationen.jsonl", "f", [], _abstain()) is False
+    assert fremd.read_text() == "sicher"
+
+
+def test_ohne_fcntl_bleibt_nur_die_prozesslokale_sperre(tmp_path, monkeypatch):
+    import gate as gate_modul
+
+    monkeypatch.setattr(gate_modul, "fcntl", None)
+    ziel = tmp_path / "eskalationen.jsonl"
+
+    assert schreibe_eskalation(ziel, "f", [], _abstain())
+    bereinige_eskalationen(ziel, EskalationsGrenzen())
+
+    assert [p.name for p in tmp_path.iterdir()] == ["eskalationen.jsonl"]
+
+
+def test_sonderdatei_und_fehlendes_verzeichnis_brauchen_keine_sperrdatei(tmp_path, monkeypatch, caplog):
+    import gate as gate_modul
+
+    gesperrt = []
+    attrappe = SimpleNamespace(LOCK_EX=2, LOCK_NB=4, flock=lambda fd, op: gesperrt.append(op))
+    monkeypatch.setattr(gate_modul, "fcntl", attrappe)
+
+    with caplog.at_level(logging.ERROR):
+        assert schreibe_eskalation(os.devnull, "f", [], _abstain())
+        bereinige_eskalationen(tmp_path / "fehlt" / "e.jsonl", EskalationsGrenzen())
+
+    assert gesperrt == []
+    assert caplog.text == ""
+    assert not (tmp_path / "fehlt").exists()
 
 
 JETZT = datetime(2026, 11, 4, tzinfo=timezone.utc)
