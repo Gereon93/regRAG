@@ -12,7 +12,7 @@ from itertools import pairwise
 from pathlib import Path
 
 import gueltigkeit
-from gate import SEGMENTE, UNBEKANNT, Kaskade, vorpruefung
+from gate import SEGMENTE, UNBEKANNT, AbstainReason, Kaskade, vorpruefung
 
 STANDARD_FAELLE = Path(__file__).parent / "evalset" / "v1.jsonl"
 
@@ -97,7 +97,7 @@ def top_score(nodes):
     return max((n.score for n in nodes), default=None)
 
 
-LEERES_RETRIEVAL = "LOW_RELEVANCE"  # mit Schwelle -inf meldet der Score-Gate nur noch leere Treffer
+LEERES_RETRIEVAL = AbstainReason.LOW_RELEVANCE.value  # mit Schwelle -inf meldet der Score-Gate nur noch leere Treffer
 
 
 def laufzeit_evidenz(nodes, stichtag):

@@ -678,6 +678,7 @@ def test_vorab_verweigerte_zeile_traegt_das_segment_aller_treffer():
     retriever = SimpleNamespace(retrieve=lambda frage: [fassung(0.9, "Alt", "gesetz", **ABGELAUFEN)])
     z = hole_laya_zeilen([fall("a", "answer", "gesetz")], retriever, laya, 0.62, stichtag=STICHTAG)[0]
     assert z["segment_laufzeit"] == "gesetz"
+    assert z["vorpruefung"] == "OUTDATED_SOURCE" and z["laya_roh"] is None
 
 
 def test_ein_lauf_bestimmt_den_stichtag_genau_einmal(chroma, monkeypatch):
