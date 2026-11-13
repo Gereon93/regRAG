@@ -1,10 +1,14 @@
+import json
 import sys
 import threading
 import time
 import types
+from datetime import date, datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+
+import gueltigkeit
 
 AUFRUFE = []
 
@@ -200,8 +204,8 @@ def test_dokument_liste_liefert_datei_und_titel(client, dokumente_verzeichnis):
 
     assert antwort.status_code == 200
     assert antwort.json() == [
-        {"datei": "a.md", "titel": "A-Titel"},
-        {"datei": "b.md", "titel": "B-Titel"},
+        {"datei": "a.md", "titel": "A-Titel", "gueltigkeit": "unbekannt"},
+        {"datei": "b.md", "titel": "B-Titel", "gueltigkeit": "unbekannt"},
     ]
 
 
@@ -286,5 +290,91 @@ def test_dokument_liste_uebersteht_abgelehntes_sidecar(client, dokumente_verzeic
     antwort = client.get("/documents")
 
     assert antwort.status_code == 200
-    assert {"datei": "kaputt.md", "titel": "kaputt"} in antwort.json()
-    assert {"datei": "heil.md", "titel": "Heiles Dokument"} in antwort.json()
+    assert {"datei": "kaputt.md", "titel": "kaputt", "gueltigkeit": "metadaten_ungueltig"} in antwort.json()
+    assert {"datei": "heil.md", "titel": "Heiles Dokument", "gueltigkeit": "unbekannt"} in antwort.json()
+
+
+def _lege_sidecar_an(verzeichnis, stamm, sidecar):
+    (verzeichnis / f"{stamm}.md").write_text("Inhalt", encoding="utf-8")
+    (verzeichnis / f"{stamm}.source.json").write_text(json.dumps(sidecar), encoding="utf-8")
+
+
+STICHTAG = date(2026, 6, 15)
+
+
+@pytest.mark.parametrize(
+    ("felder", "status"),
+    [
+        ({"gueltig_ab": "2026-01-01", "gueltig_bis": "2026-12-31"}, "gueltig"),
+        ({"gueltig_ab": "2026-06-15"}, "gueltig"),
+        ({"gueltig_bis": "2026-06-15"}, "gueltig"),
+        ({"gueltig_bis": "2026-06-14"}, "abgelaufen"),
+        ({"gueltig_ab": "2026-06-16"}, "noch_nicht_gueltig"),
+        ({"fassung": "2. Fassung"}, "unbekannt"),
+    ],
+)
+def test_dokument_eintrag_status_am_stichtag(main, tmp_path, felder, status):
+    _lege_sidecar_an(tmp_path, "a", {"titel": "A", **felder})
+
+    eintrag = main._dokument_eintrag(tmp_path / "a.md", STICHTAG)
+
+    assert eintrag == {"datei": "a.md", "titel": "A", **felder, "gueltigkeit": status}
+
+
+def test_dokument_eintrag_normalisiert_fassung_wie_der_index(main, tmp_path):
+    _lege_sidecar_an(tmp_path, "a", {"titel": "A", "fassung": "  2. Fassung "})
+
+    assert main._dokument_eintrag(tmp_path / "a.md", STICHTAG)["fassung"] == "2. Fassung"
+
+
+@pytest.mark.parametrize(
+    "sidecar",
+    [
+        {"titel": "A", "gueltig_ab": "2026-02-30"},
+        {"titel": "A", "gueltig_ab": "2026-12-31", "gueltig_bis": "2026-01-01"},
+        {"titel": "A", "fassung": "   "},
+    ],
+)
+def test_dokument_eintrag_mit_ungueltigem_sidecar_zeigt_titel_ohne_felder(main, tmp_path, sidecar):
+    """Wie rag._quelle_metadata: ein abgelehntes Feld nimmt das Dokument aus der Suche, die Liste zeigt es weiter."""
+    _lege_sidecar_an(tmp_path, "a", sidecar)
+
+    eintrag = main._dokument_eintrag(tmp_path / "a.md", STICHTAG)
+
+    assert eintrag == {"datei": "a.md", "titel": "A", "gueltigkeit": "metadaten_ungueltig"}
+
+
+def test_dokument_eintrag_ohne_sidecar_ist_unbekannt(main, tmp_path):
+    (tmp_path / "a.md").write_text("Inhalt", encoding="utf-8")
+
+    assert main._dokument_eintrag(tmp_path / "a.md", STICHTAG) == {
+        "datei": "a.md",
+        "titel": "a",
+        "gueltigkeit": "unbekannt",
+    }
+
+
+def test_dokument_liste_liefert_gueltigkeit_relativ_zu_heute(client, dokumente_verzeichnis):
+    _lege_sidecar_an(
+        dokumente_verzeichnis, "alt", {"titel": "Alt", "gueltig_bis": "2000-12-31", "fassung": "1. Fassung"}
+    )
+    _lege_sidecar_an(dokumente_verzeichnis, "kuenftig", {"titel": "Künftig", "gueltig_ab": "2999-01-01"})
+    _lege_sidecar_an(dokumente_verzeichnis, "neu", {"titel": "Neu", "gueltig_ab": "2000-01-01"})
+
+    antwort = client.get("/documents")
+
+    assert antwort.json() == [
+        {"datei": "alt.md", "titel": "Alt", "gueltig_bis": "2000-12-31", "fassung": "1. Fassung", "gueltigkeit": "abgelaufen"},
+        {"datei": "kuenftig.md", "titel": "Künftig", "gueltig_ab": "2999-01-01", "gueltigkeit": "noch_nicht_gueltig"},
+        {"datei": "neu.md", "titel": "Neu", "gueltig_ab": "2000-01-01", "gueltigkeit": "gueltig"},
+    ]
+
+
+def test_dokument_liste_nimmt_den_stichtag_aus_berlin(main, client, dokumente_verzeichnis, monkeypatch):
+    """23:30 UTC am 31.12. ist in Berlin schon der 1.1. — die Liste muss dasselbe Datum nehmen wie das Gate."""
+    _lege_sidecar_an(dokumente_verzeichnis, "a", {"titel": "A", "gueltig_ab": "2027-01-01"})
+    jetzt = datetime(2026, 12, 31, 23, 30, tzinfo=timezone.utc)
+    echt = gueltigkeit.heute_berlin
+    monkeypatch.setattr(main.gueltigkeit, "heute_berlin", lambda: echt(jetzt))
+
+    assert client.get("/documents").json()[0]["gueltigkeit"] == "gueltig"

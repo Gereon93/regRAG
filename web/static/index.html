@@ -12,7 +12,7 @@
     --ink-soft: #55514a;
     --rule: #d6cfbf;
     --accent: #1d3b8b;
-    --ochre: #9a6a1a;
+    --ochre: #84590f;
     --ochre-bg: #f0e4cb;
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
@@ -240,6 +240,54 @@
     justify-content: space-between;
     gap: 12px;
   }
+  .korpus .dok { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .korpus .angaben {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    align-items: baseline;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  .korpus .gk {
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0 6px;
+    color: var(--ink);
+  }
+  .korpus .gk.ok { border-color: var(--accent); }
+  .korpus .gk.warnung { background: var(--ochre-bg); border-color: var(--ochre); }
+  .erfassung {
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    margin: 0 0 12px;
+    padding: 10px 12px 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .erfassung legend {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 0 4px;
+  }
+  .erfassung .feld { display: flex; flex-direction: column; gap: 4px; }
+  .erfassung label { font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
+  .erfassung input {
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 7px 9px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    min-width: 0;
+  }
+  .erfassung input:focus { border-color: var(--accent); outline: none; }
+  .erfassung .erklaerung { grid-column: 1 / -1; font-family: var(--serif); font-style: italic; margin: 0; }
   .korpus .entfernen {
     background: none;
     border: none;
@@ -250,10 +298,9 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     cursor: pointer;
-    opacity: 0.6;
-    transition: opacity .2s, color .2s;
+    transition: color .2s;
   }
-  .korpus .entfernen:hover { opacity: 1; color: var(--ochre); }
+  .korpus .entfernen:hover { color: var(--ochre); }
   .korpus .entfernen:disabled { opacity: 0.3; cursor: default; }
   .korpus .zeile { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .korpus .status { font-family: var(--mono); font-size: 12px; }
@@ -290,10 +337,26 @@
   <section class="korpus">
     <h4>Indexierte Dokumente</h4>
     <ul id="dokumente"></ul>
+    <fieldset class="erfassung">
+      <legend>Gültigkeit der nächsten PDF (optional)</legend>
+      <div class="feld">
+        <label for="gueltigAb">Gültig ab</label>
+        <input type="date" id="gueltigAb">
+      </div>
+      <div class="feld">
+        <label for="gueltigBis">Gültig bis</label>
+        <input type="date" id="gueltigBis">
+      </div>
+      <div class="feld">
+        <label for="fassung">Fassung</label>
+        <input type="text" id="fassung" maxlength="100" placeholder="z. B. 2. Fassung" autocomplete="off">
+      </div>
+      <p class="erklaerung">Erster und letzter Anwendungstag, beide inklusive — nicht das Inkrafttreten. Leer lassen, wenn unbekannt.</p>
+    </fieldset>
     <div class="zeile">
       <label class="knopf" id="uploadKnopf" for="pdf">PDF hinzufügen</label>
       <input type="file" id="pdf" accept="application/pdf" hidden>
-      <span class="status" id="uploadStatus"></span>
+      <span class="status" id="uploadStatus" role="status"></span>
     </div>
     <div class="hinweis">
       Nur frei verwendbare Regulatorik hochladen (MaRisk, EBA-Guidelines). Keine urheberrechtlich
@@ -436,6 +499,8 @@ const dokumenteListe = document.getElementById('dokumente');
 const pdfFeld = document.getElementById('pdf');
 const uploadKnopf = document.getElementById('uploadKnopf');
 const uploadStatus = document.getElementById('uploadStatus');
+const gueltigkeitsFelder = { gueltig_ab: 'gueltigAb', gueltig_bis: 'gueltigBis', fassung: 'fassung' };
+const FELDNAMEN = { gueltig_ab: 'Gültig ab', gueltig_bis: 'Gültig bis', fassung: 'Fassung' };
 const STATUS_INTERVALL_MS = 2000;
 
 async function ladeDokumente() {
@@ -443,12 +508,41 @@ async function ladeDokumente() {
   const liste = await res.json();
   dokumenteListe.replaceChildren(...liste.map((d) => {
     const zeile = el('li');
-    zeile.appendChild(el('span', null, d.titel));
+    const dok = el('div', 'dok');
+    dok.appendChild(el('span', null, d.titel));
+    dok.appendChild(angaben(d));
+    zeile.appendChild(dok);
     const entfernenKnopf = el('button', 'entfernen', 'Entfernen');
     entfernenKnopf.addEventListener('click', () => entferne(d, entfernenKnopf));
     zeile.appendChild(entfernenKnopf);
     return zeile;
   }));
+}
+
+const GUELTIGKEIT = {
+  gueltig: ['gültig', 'ok'],
+  unbekannt: ['Gültigkeit unbekannt', ''],
+  noch_nicht_gueltig: ['noch nicht gültig', 'warnung'],
+  abgelaufen: ['abgelaufen', 'warnung'],
+  metadaten_ungueltig: ['Angaben ungültig — nicht durchsuchbar', 'warnung'],
+};
+
+function datumDe(iso) {
+  const [jahr, monat, tag] = iso.split('-');
+  return `${tag}.${monat}.${jahr}`;
+}
+
+function angaben(d) {
+  const box = el('div', 'angaben');
+  const [text, klasse] = GUELTIGKEIT[d.gueltigkeit] || [d.gueltigkeit, 'warnung'];
+  box.appendChild(el('span', 'gk' + (klasse ? ' ' + klasse : ''), text));
+  if (d.gueltig_ab || d.gueltig_bis) {
+    const von = d.gueltig_ab ? datumDe(d.gueltig_ab) : '…';
+    const bis = d.gueltig_bis ? datumDe(d.gueltig_bis) : '…';
+    box.appendChild(el('span', null, `${von} – ${bis}`));
+  }
+  if (d.fassung) box.appendChild(el('span', null, 'Fassung: ' + d.fassung));
+  return box;
 }
 
 async function entferne(dokument, entfernenKnopf) {
@@ -463,6 +557,13 @@ async function entferne(dokument, entfernenKnopf) {
   }
   setzeStatus(dokument.titel + ' wurde entfernt.', 'fertig');
   await ladeDokumente();
+}
+
+function uploadFehler(status, detail) {
+  if (typeof detail !== 'string') return `Upload abgelehnt (HTTP ${status}).`;
+  if (status !== 422) return detail;
+  const lesbar = detail.replace(/gueltig_ab|gueltig_bis|fassung/g, (feld) => `„${FELDNAMEN[feld]}“`);
+  return 'Gültigkeit abgelehnt: ' + lesbar + ' Bitte korrigieren und die PDF erneut wählen.';
 }
 
 function setzeStatus(text, klasse) {
@@ -491,16 +592,21 @@ pdfFeld.addEventListener('change', async () => {
   if (!datei) return;
   const daten = new FormData();
   daten.append('datei', datei);
+  for (const [name, id] of Object.entries(gueltigkeitsFelder)) {
+    const wert = document.getElementById(id).value;
+    if (wert) daten.append(name, wert);
+  }
   uploadKnopf.classList.add('aus');
   pdfFeld.disabled = true;
   setzeStatus('Wird hochgeladen …', 'laeuft');
 
   const res = await fetch('/upload', { method: 'POST', body: daten });
-  const antwort = await res.json();
+  const antwort = await res.json().catch(() => ({}));
   pdfFeld.value = '';
   if (!res.ok) {
-    setzeStatus(antwort.detail || 'Upload fehlgeschlagen.', 'fehler');
+    setzeStatus(uploadFehler(res.status, antwort.detail), 'fehler');
   } else {
+    for (const id of Object.values(gueltigkeitsFelder)) document.getElementById(id).value = '';
     await verfolge(antwort.job);
   }
   uploadKnopf.classList.remove('aus');

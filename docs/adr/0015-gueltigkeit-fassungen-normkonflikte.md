@@ -117,8 +117,10 @@ für diese Norm erzwingen. Das verweigert nur und ist nicht schlimmer als die of
   `LAYA_TIMEOUT`, quadratisch in `similarity_top_k`. Kein Cap im Code.
 - **Eval:** Report und Laya-Kalibrierung durchlaufen dieselbe Vorprüfung (`gate.vorpruefung`) am Stichtag des Laufs; der
   Report trägt `stichtag` ([#54](../../../../issues/54), ADR 0012, 0013).
-- Erfassung in der UI fehlt, nur API und Sidecar ([#51](../../../../issues/51)). Labels und Kalibrierung des
-  Konflikt-Judges: [#52](../../../../issues/52).
+- Die UI erfasst die drei Felder beim Upload und zeigt Status und Fassung je Dokument ([#51](../../../../issues/51)).
+  `GET /documents` prüft das Sidecar mit `normalisiere` und den Status mit `status_von` am Stichtag heute, dieselben
+  Funktionen wie Index und Gate; ein abgelehntes Sidecar erscheint als `metadaten_ungueltig` ohne Felder. Labels und
+  Kalibrierung des Konflikt-Judges: [#52](../../../../issues/52).
 - Zwischen Entscheidung und Schreiben des Datensatzes kann ein Mitternachtswechsel liegen. Status und Entscheidung weichen
   dann um einen Tag ab; der `stichtag` steht im Datensatz.
 - Prompt-Injection im Uploadtext kann den Konflikt-Judge Richtung "kein Konflikt" schieben.
