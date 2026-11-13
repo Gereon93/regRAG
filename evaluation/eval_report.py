@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import config
+import gueltigkeit
 from evaluation.evalset import (
     STANDARD_FAELLE,
     Kosten,
@@ -18,9 +19,11 @@ from evaluation.evalset import (
     eval_version,
     hole_zeilen,
     lade_faelle,
+    laufzeit_evidenz,
     schwellen_pro_segment,
     teile,
     top_score,
+    vorab_verweigert,
 )
 from evaluation.kalibrierung import ece, fitte_temperatur
 from gate import SEGMENTE, kalibriere, segment_von
@@ -39,8 +42,9 @@ MANIFEST_VERZEICHNIS = Path(__file__).parent / "manifest"
 LAYA_DEFINITION = (
     "Laya beurteilt, ob die gelieferte Evidenz die Antwort enthält; das Label y = 1 sagt, der Korpus beantworte "
     "die Frage (erwartet == answer). Verfehlt das Retrieval den richtigen Chunk, ist das Label für Laya falsch. "
-    "Laya wird nur bei Retrieval-Score >= MIN_RETRIEVAL_SCORE befragt; verworfene Fälle zählen als Eskalation. "
-    "Die Evidenz hängt vom Index-Stand ab (index_fingerprint)."
+    "Laya sieht wie im Laufzeitpfad nur die am Stichtag nutzbaren Fassungen und wird nur befragt, wenn Gültigkeit und "
+    "Fassung nicht verweigern und deren Retrieval-Score >= MIN_RETRIEVAL_SCORE ist; verworfene Fälle zählen als "
+    "Eskalation. Die Evidenz hängt vom Index-Stand (index_fingerprint) und vom Stichtag (stichtag) ab."
 )
 
 
@@ -52,8 +56,12 @@ def einseitige_segmente(zeilen):
     return [f"Segment '{s}': Calibration enthält nur '{next(iter(werte))}', Schwelle nicht belastbar." for s, werte in sorted(labels.items()) if len(werte) == 1]
 
 
-def erzeuge_bericht(faelle, retriever, kosten, fehlende_segmente_warnen=False):
-    """fehlende_segmente_warnen: Test-Segmente ohne Calibration-Fälle warnen statt abbrechen (Laya-Lauf, #42)."""
+def erzeuge_bericht(faelle, retriever, kosten, fehlende_segmente_warnen=False, stichtag=None):
+    """fehlende_segmente_warnen: Test-Segmente ohne Calibration-Fälle warnen statt abbrechen (Laya-Lauf, #42).
+
+    stichtag: Default heute in Europe/Berlin, einmal je Lauf bestimmt (#54).
+    """
+    stichtag = stichtag or gueltigkeit.heute_berlin()
     version = eval_version(faelle)
     splits = teile(faelle)
     leere = [name for name, fs in splits.items() if not fs]
@@ -62,9 +70,9 @@ def erzeuge_bericht(faelle, retriever, kosten, fehlende_segmente_warnen=False):
             f"Leere Splits {leere}: zu wenige Fälle für eine Kalibrierung ({len(faelle)}, Ziel >= {ZIEL_FALLZAHL}). "
             "Mehr Fälle in evaluation/evalset/v1.jsonl labeln."
         )
-    kalibrierung = hole_zeilen(splits["calibration"], retriever)
+    kalibrierung = hole_zeilen(splits["calibration"], retriever, stichtag)
     schwellen = schwellen_pro_segment(kalibrierung, kosten)
-    test = hole_zeilen(splits["test"], retriever)
+    test = hole_zeilen(splits["test"], retriever, stichtag)
     fehlend = sorted({z["segment"] for z in test} - set(schwellen))
     if fehlend and not fehlende_segmente_warnen:
         raise SystemExit(
@@ -82,6 +90,8 @@ def erzeuge_bericht(faelle, retriever, kosten, fehlende_segmente_warnen=False):
         *einseitige_segmente(kalibrierung),
     ]
     ergebnis["faelle"] = {name: len(fs) for name, fs in splits.items()}
+    ergebnis["stichtag"] = stichtag.isoformat()
+    ergebnis["vorab_verweigert"] = {"calibration": vorab_verweigert(kalibrierung), "test": vorab_verweigert(test)}
     ergebnis["zeitpunkt"] = datetime.now(timezone.utc).isoformat()
     return ergebnis
 
@@ -91,12 +101,13 @@ def normalisiere_revision(revision):
     return (revision or "").strip() or None
 
 
-def hole_laya_zeilen(faelle, retriever, laya_gate, min_retrieval_score):
-    """Wie hole_zeilen, plus Laufzeitsegment und Laya-Rohscore (nur bei bestandenem Guard, wie die Kaskade)."""
+def hole_laya_zeilen(faelle, retriever, laya_gate, min_retrieval_score, stichtag=None):
+    """Wie hole_zeilen, plus Laufzeitsegment und Laya-Rohscore (nur bei bestandener Vorprüfung, wie die Kaskade)."""
+    stichtag = stichtag or gueltigkeit.heute_berlin()
     zeilen = []
     for fall in faelle:
-        nodes = retriever.retrieve(fall["frage"])
-        top = top_score(nodes)
+        nodes, reason = laufzeit_evidenz(retriever.retrieve(fall["frage"]), stichtag)
+        top = None if reason else top_score(nodes)
         roh = None
         if top is not None and top >= min_retrieval_score:
             try:
@@ -114,6 +125,7 @@ def hole_laya_zeilen(faelle, retriever, laya_gate, min_retrieval_score):
                 "kategorie": fall["kategorie"],
                 "erwartet": fall["erwartet"],
                 "top": top,
+                "vorpruefung": reason,
                 "segment_laufzeit": segment_von(nodes),
                 "laya_roh": roh,
             }
@@ -168,20 +180,22 @@ def _ohne_nur_answer_segmente(schwellen, zeilen):
     return {segment: schwelle for segment, schwelle in schwellen.items() if segment in mit_abstain}
 
 
-def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revision):
+def erzeuge_laya_bericht(faelle, retriever, laya_gate, kosten, checkpoint_revision, stichtag=None):
     checkpoint_revision = normalisiere_revision(checkpoint_revision)
+    stichtag = stichtag or gueltigkeit.heute_berlin()
     retriever = _Zwischenspeicher(retriever)
-    ergebnis = erzeuge_bericht(faelle, retriever, kosten, fehlende_segmente_warnen=True)
+    ergebnis = erzeuge_bericht(faelle, retriever, kosten, fehlende_segmente_warnen=True, stichtag=stichtag)
     splits = teile(faelle)
     guard = config.MIN_RETRIEVAL_SCORE
-    kalibrierung = hole_laya_zeilen(splits["calibration"], retriever, laya_gate, guard)
-    test = hole_laya_zeilen(splits["test"], retriever, laya_gate, guard)
+    kalibrierung = hole_laya_zeilen(splits["calibration"], retriever, laya_gate, guard, stichtag)
+    test = hole_laya_zeilen(splits["test"], retriever, laya_gate, guard, stichtag)
 
     bewertet = [z for z in kalibrierung if z["laya_roh"] is not None]
     if not any(z["segment_laufzeit"] in SEGMENTE for z in bewertet):
         raise SystemExit(
-            "Kein Calibration-Segment hat einen Laya-Score (alle Fälle unter dem Retrieval-Guard oder "
-            "ohne eindeutiges Segment). Mehr Calibration-Fälle labeln oder REGRAG_MIN_SCORE prüfen."
+            "Kein Calibration-Segment hat einen Laya-Score (alle Fälle unter dem Retrieval-Guard, von Gültigkeit oder "
+            "Fassung verweigert oder ohne eindeutiges Segment). Mehr Calibration-Fälle labeln, REGRAG_MIN_SCORE oder "
+            "die Gültigkeitsmetadaten prüfen."
         )
     labels = [int(z["erwartet"] == "answer") for z in bewertet]
     temperatur, warnungen = fitte_temperatur([z["laya_roh"] for z in bewertet], labels)

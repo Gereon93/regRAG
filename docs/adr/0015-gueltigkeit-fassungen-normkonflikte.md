@@ -115,8 +115,8 @@ für diese Norm erzwingen. Das verweigert nur und ist nicht schlimmer als die of
   abgelöste Fassung zu löschen.
 - **Kosten:** Der Konflikt-Judge macht bis zu 3 zusätzliche Laya-Aufrufe je Anfrage auf dem ANSWER-Pfad, je bis
   `LAYA_TIMEOUT`, quadratisch in `similarity_top_k`. Kein Cap im Code.
-- **Eval:** `eval_report.hole_laya_zeilen` ruft `answerable_roh` auf ungefilterten Nodes und kalibriert auch auf abgelöster
-  Evidenz; `index_fingerprint` erfasst den Stichtag nicht ([#54](../../../../issues/54)).
+- **Eval:** Report und Laya-Kalibrierung durchlaufen dieselbe Vorprüfung (`gate.vorpruefung`) am Stichtag des Laufs; der
+  Report trägt `stichtag` ([#54](../../../../issues/54), ADR 0012, 0013).
 - Erfassung in der UI fehlt, nur API und Sidecar ([#51](../../../../issues/51)). Labels und Kalibrierung des
   Konflikt-Judges: [#52](../../../../issues/52).
 - Zwischen Entscheidung und Schreiben des Datensatzes kann ein Mitternachtswechsel liegen. Status und Entscheidung weichen

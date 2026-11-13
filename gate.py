@@ -175,6 +175,12 @@ class FassungsGate:
         return GateDecision(Outcome.ANSWER, (), GateScores())
 
 
+def vorpruefung(min_score, uhr=gueltigkeit.heute_berlin):
+    """Score, Gültigkeit, Score auf der eingeengten Evidenz, Fassung: Laufzeitpfad und Eval (docs/adr/0015, #54)."""
+    score_gate = RetrievalScoreGate(min_score)
+    return [score_gate, GueltigkeitsGate(uhr), score_gate, FassungsGate()]
+
+
 class Kaskade:
     """Führt Gates der Reihe nach aus; das erste ABSTAIN gewinnt, bei gleichem Score-Feld der frühere Gate.
 

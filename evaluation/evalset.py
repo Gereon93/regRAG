@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
 
-from gate import SEGMENTE, UNBEKANNT
+import gueltigkeit
+from gate import SEGMENTE, UNBEKANNT, Kaskade, vorpruefung
 
 STANDARD_FAELLE = Path(__file__).parent / "evalset" / "v1.jsonl"
 
@@ -96,19 +97,47 @@ def top_score(nodes):
     return max((n.score for n in nodes), default=None)
 
 
-def hole_zeilen(faelle, retriever):
+LEERES_RETRIEVAL = "LOW_RELEVANCE"  # mit Schwelle -inf meldet der Score-Gate nur noch leere Treffer
+
+
+def laufzeit_evidenz(nodes, stichtag):
+    """Was die Vorprüfung des Laufzeitpfads am Stichtag übrig lässt (ADR 0015, #54): (genutzte Nodes, Reason oder None).
+
+    Die Score-Schwelle steht auf -inf: Sie wird in der Eval erst gesucht bzw. vom Aufrufer als Guard angewandt. Der
+    Score-Gate verwirft so nur leere Treffer. Bei ABSTAIN sind die genutzten Nodes die bis dahin eingeengten, wie für
+    Segment und Metriken im Laufzeitpfad.
+    """
+    entscheidung = Kaskade(vorpruefung(-math.inf, lambda: stichtag)).entscheide("", nodes)
+    reason = entscheidung.reasons[0].value if entscheidung.verweigert else None
+    return entscheidung.genutzte_nodes(nodes), reason
+
+
+def hole_zeilen(faelle, retriever, stichtag=None):
+    """Bester Score der Evidenz, die die Laufzeit am Stichtag nutzt; None, wenn sie vorab verweigert."""
+    stichtag = stichtag or gueltigkeit.heute_berlin()
     zeilen = []
     for fall in faelle:
+        nodes, reason = laufzeit_evidenz(retriever.retrieve(fall["frage"]), stichtag)
         zeilen.append(
             {
                 "id": fall["id"],
                 "segment": fall["segment"],
                 "kategorie": fall["kategorie"],
                 "erwartet": fall["erwartet"],
-                "top": top_score(retriever.retrieve(fall["frage"])),
+                "top": None if reason else top_score(nodes),
+                "vorpruefung": reason,
             }
         )
     return zeilen
+
+
+def vorab_verweigert(zeilen):
+    """Fälle, die Gültigkeit oder Fassung vor jeder Schwelle verweigern, je Reason; leeres Retrieval zählt nicht."""
+    zaehler = defaultdict(int)
+    for z in zeilen:
+        if z["vorpruefung"] not in (None, LEERES_RETRIEVAL):
+            zaehler[z["vorpruefung"]] += 1
+    return dict(zaehler)
 
 
 def _beantwortet(zeile, schwelle, score_feld="top"):

@@ -9,15 +9,13 @@ import httpx
 
 from gate import (
     AbstainReason,
-    FassungsGate,
     GateDecision,
     GateScores,
-    GueltigkeitsGate,
     Kaskade,
     Outcome,
-    RetrievalScoreGate,
     kalibriere,
     segment_von,
+    vorpruefung,
 )
 from manifest import lade_manifest, warne_bei_anderem_index
 
@@ -198,8 +196,7 @@ def warne_wenn_nicht_lokal(url):
 
 
 def baue_gate(einstellungen, transport=None):
-    score_gate = RetrievalScoreGate(einstellungen.MIN_RETRIEVAL_SCORE)
-    vorpruefung = [score_gate, GueltigkeitsGate(), score_gate, FassungsGate()]
+    gates = vorpruefung(einstellungen.MIN_RETRIEVAL_SCORE)
     konflikt_schwelle = einstellungen.LAYA_KONFLIKT_SCHWELLE
     url = (einstellungen.LAYA_URL or "").strip()
     manifest_pfad = (einstellungen.GATE_MANIFEST or "").strip()
@@ -208,7 +205,7 @@ def baue_gate(einstellungen, transport=None):
             raise ValueError("REGRAG_GATE_MANIFEST ist gesetzt, aber REGRAG_LAYA_URL fehlt.")
         if konflikt_schwelle is not None:
             raise ValueError("REGRAG_LAYA_KONFLIKT_SCHWELLE ist gesetzt, aber REGRAG_LAYA_URL fehlt.")
-        return Kaskade(vorpruefung)
+        return Kaskade(gates)
     warne_wenn_nicht_lokal(url)
     client = SystemOneClient(url, einstellungen.LAYA_API_KEY, einstellungen.LAYA_TIMEOUT, transport)
     optionen = {
@@ -229,6 +226,6 @@ def baue_gate(einstellungen, transport=None):
     else:
         laya = LayaGate(client, lambda segment: einstellungen.LAYA_MIN_ANSWERABLE, **optionen)
     if konflikt_schwelle is None:
-        return Kaskade([*vorpruefung, laya])
+        return Kaskade([*gates, laya])
     log.warning("Konflikt-Judge mit unkalibrierter Schwelle %s eingeschaltet", konflikt_schwelle)
-    return Kaskade([*vorpruefung, laya, LayaKonfliktGate(laya, konflikt_schwelle)])
+    return Kaskade([*gates, laya, LayaKonfliktGate(laya, konflikt_schwelle)])

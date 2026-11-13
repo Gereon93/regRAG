@@ -1,5 +1,6 @@
 import json
 import math
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -243,7 +244,7 @@ def test_bericht_segment_ohne_schwelle_ist_fehler():
 
 
 def fester_retriever(scores):
-    return SimpleNamespace(retrieve=lambda frage: [SimpleNamespace(score=scores[frage])])
+    return SimpleNamespace(retrieve=lambda frage: [SimpleNamespace(score=scores[frage], metadata={})])
 
 
 def test_erzeuge_bericht_waehlt_schwelle_auf_calibration_und_misst_auf_test():
@@ -293,7 +294,9 @@ def test_hole_zeilen_markiert_leeres_retrieval_als_none():
 
 def test_hole_zeilen_nimmt_den_besten_score_wie_das_gate_und_traegt_die_kategorie():
     """calibrate.py nahm nodes[0].score; Gate und Report nehmen das Maximum (#38)."""
-    retriever = SimpleNamespace(retrieve=lambda frage: [SimpleNamespace(score=0.3), SimpleNamespace(score=0.8)])
+    retriever = SimpleNamespace(
+        retrieve=lambda frage: [SimpleNamespace(score=0.3, metadata={}), SimpleNamespace(score=0.8, metadata={})]
+    )
     z = hole_zeilen([fall("a", kategorie="grenzfall")], retriever)[0]
     assert z["top"] == 0.8
     assert z["kategorie"] == "grenzfall"
@@ -347,3 +350,74 @@ def test_bericht_fallback_bewertet_segment_ohne_schwelle():
     assert b["segmente"]["unbekannt"]["beantwortet"] == 0
     assert b["segmente"]["verordnung"]["beantwortet"] == 1
     assert b["schwellen"] == {"verordnung": 0.5}
+
+
+STICHTAG = date(2026, 6, 15)
+ABGELAUFEN = {"gueltig_bis": "2026-06-14"}
+GUELTIG = {"gueltig_ab": "2026-01-01"}
+
+
+def treffer(score, quelle="a.md", **metadata):
+    return SimpleNamespace(score=score, text=quelle, metadata={"quelle": quelle, **metadata})
+
+
+def test_hole_zeilen_nimmt_abgeloeste_evidenz_nicht_als_score():
+    """Der Laufzeitpfad sieht neben einer gültigen Fassung nur diese; der Score kommt von ihr (#54)."""
+    retriever = SimpleNamespace(retrieve=lambda frage: [treffer(0.9, **ABGELAUFEN), treffer(0.4, "b.md", **GUELTIG)])
+    z = hole_zeilen([fall("a")], retriever, stichtag=STICHTAG)[0]
+    assert z["top"] == 0.4
+    assert z["vorpruefung"] is None
+
+
+@pytest.mark.parametrize(
+    ("nodes", "reason"),
+    [
+        ([treffer(0.9, **ABGELAUFEN)], "OUTDATED_SOURCE"),
+        ([treffer(0.9, fassung="2022", **GUELTIG), treffer(0.8, fassung="2025", **GUELTIG)], "AMBIGUOUS_VERSION"),
+    ],
+)
+def test_hole_zeilen_vorab_verweigerte_faelle_haben_keinen_score(nodes, reason):
+    z = hole_zeilen([fall("a")], SimpleNamespace(retrieve=lambda frage: nodes), stichtag=STICHTAG)[0]
+    assert z["top"] is None
+    assert z["vorpruefung"] == reason
+
+
+def test_hole_zeilen_stichtag_entscheidet_ueber_die_fassung():
+    retriever = SimpleNamespace(retrieve=lambda frage: [treffer(0.9, **ABGELAUFEN)])
+    assert hole_zeilen([fall("a")], retriever, stichtag=date(2026, 6, 14))[0]["top"] == 0.9
+    assert hole_zeilen([fall("a")], retriever, stichtag=STICHTAG)[0]["top"] is None
+
+
+def test_hole_zeilen_default_stichtag_ist_heute_in_berlin(monkeypatch):
+    import gueltigkeit
+
+    monkeypatch.setattr(gueltigkeit, "heute_berlin", lambda: STICHTAG)
+    retriever = SimpleNamespace(retrieve=lambda frage: [treffer(0.9, **ABGELAUFEN)])
+    assert hole_zeilen([fall("a")], retriever)[0]["vorpruefung"] == "OUTDATED_SOURCE"
+
+
+def gemischter_retriever(faelle):
+    """Jeder dritte answer-Fall findet nur eine abgelaufene Fassung."""
+    veraltet = {f["frage"] for f in faelle if f["erwartet"] == "answer"}
+    veraltet = set(sorted(veraltet)[::3])
+
+    def retrieve(frage):
+        if frage in veraltet:
+            return [treffer(0.9, **ABGELAUFEN)]
+        return [treffer(0.9 if frage.startswith("Frage a") else 0.2, **GUELTIG)]
+
+    return SimpleNamespace(retrieve=retrieve), veraltet
+
+
+def test_erzeuge_bericht_haelt_stichtag_und_vorab_verweigerte_fest():
+    faelle = [fall(f"{art}{i}", erwartet=e) for i in range(60) for art, e in (("a", "answer"), ("n", "abstain"))]
+    retriever, veraltet = gemischter_retriever(faelle)
+    ergebnis = erzeuge_bericht(faelle, retriever, KOSTEN, stichtag=STICHTAG)
+    assert ergebnis["stichtag"] == "2026-06-15"
+    splits = teile(faelle)
+    for name in ("calibration", "test"):
+        erwartet_n = sum(f["frage"] in veraltet for f in splits[name])
+        assert ergebnis["vorab_verweigert"][name] == ({"OUTDATED_SOURCE": erwartet_n} if erwartet_n else {})
+    assert sum(ergebnis["vorab_verweigert"]["test"].values()) > 0
+    assert ergebnis["gesamt"]["falschantworten"] == 0
+    assert ergebnis["gesamt"]["eskaliert"] >= ergebnis["vorab_verweigert"]["test"]["OUTDATED_SOURCE"]

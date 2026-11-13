@@ -75,6 +75,12 @@ Das ist gewollt.
   und Checkpoints und dem ECE-Bericht (5 gleich breite Bins, auf dem Test-Split, vor und nach Kalibrierung).
 - Temperatur und Schwellen werden nur auf Calibration-Zeilen mit Laya-Score gewählt, nie auf Train oder Test.
   Vom Guard verworfene Fälle zählen im Bericht als Eskalation, beeinflussen die Laya-Schwelle aber nicht.
+- **Gültigkeit vor Laya (#54):** Die Eval durchläuft dieselbe Vorprüfung wie `baue_gate` (`gate.vorpruefung`: Score,
+  Gültigkeit, Score, Fassung; [0015](0015-gueltigkeit-fassungen-normkonflikte.md)). Laya bekommt nur die am Stichtag
+  nutzbaren Fassungen, `segment_laufzeit` und der Guard-Score beziehen sich auf sie. Verweigert die Vorprüfung
+  (`OUTDATED_SOURCE`, `AMBIGUOUS_VERSION`), wird Laya nicht gefragt; der Fall wird behandelt wie einer unter dem Guard
+  (Eskalation, kein Einfluss auf Temperatur und Schwellen). Ganz herausnehmen hätten wir ihn auch können, dann zeigte
+  der Report aber eine Eskalationsrate, die die Laufzeit nicht hat.
 
 ### Gate-Manifest
 
@@ -186,7 +192,11 @@ Im Report ist `y = 1` genau dann, wenn `erwartet == "answer"`: "der Korpus beant
 aber "die **gelieferte Evidenz** enthält die Antwort". Verfehlt das Retrieval den richtigen Chunk, ist das Label
 für Laya falsch, und Temperatur wie Schwelle lernen Retrieval-Fehler mit. Das steht im Report-Feld `definition`.
 Weil die Evidenz vom Index-Stand abhängt, speichern Report und Manifest `index_fingerprint` (SHA-256 über
-den kanonischen Inhalt von `chroma/fingerprint.json`, siehe Index-Bindung).
+den kanonischen Inhalt von `chroma/fingerprint.json`, siehe Index-Bindung). Weil sie auch vom Stichtag der
+Gültigkeitsprüfung abhängt, trägt der Report `stichtag` (#54). Das Manifest bekommt kein neues Feld und kein
+Schema 3: Das Gate liest den Stichtag nicht, und ein Bump machte jedes bestehende Manifest ungültig, ohne dass die
+Laufzeit etwas damit anfängt. Die Herkunft bleibt über `eval_version`, `erzeugt` und `index_fingerprint` an den
+Report gebunden.
 
 ### Vergleich Baseline gegen Fine-Tuned
 
@@ -220,8 +230,11 @@ Der Report des aktuellen (zero-shot) Checkpoints ist die Baseline. Der Vergleich
 
 - Die Index-Bindung wird nur **beim Start** geprüft und führt nur zu einer WARNING (Begründung unter Index-Bindung).
   Uploads und Löschungen im laufenden Betrieb ändern den Index, ohne dass erneut gewarnt wird; erst der nächste Start
-  meldet die Abweichung. Der Fingerprint erfasst den Index-Inhalt, nicht den Stichtag der Gültigkeitsprüfung
-  ([0015](0015-gueltigkeit-fassungen-normkonflikte.md), #54).
+  meldet die Abweichung. Der Fingerprint erfasst den Index-Inhalt, nicht den Stichtag der Gültigkeitsprüfung; den
+  trägt nur der Report ([0015](0015-gueltigkeit-fassungen-normkonflikte.md), #54). Ein Manifest, das heute kalibriert
+  wurde, sieht nach dem Ablauf einer Fassung andere Evidenz als bei der Kalibrierung, ohne dass gewarnt wird.
+- Der Dateiname des Reports enthält den Stichtag nicht: Läufe an verschiedenen Tagen mit gleicher `eval_version` und
+  gleichem Checkpoint überschreiben sich.
 - Der Report bricht ab, wenn ein TEST-Segment keine Calibration-Fälle hat (z. B. das Eval-Segment `ausserhalb`),
   obwohl der Laya-Pfad dieses Segment gar nicht braucht.
 - Gleiche `eval_version` mit anderer Revision überschreibt das eingecheckte Manifest (`git diff` macht es sichtbar).

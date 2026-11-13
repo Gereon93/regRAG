@@ -3,6 +3,7 @@ import json
 import random
 import re
 import sys
+from datetime import date
 from types import SimpleNamespace
 
 import httpx
@@ -258,8 +259,8 @@ def test_ohne_index_fingerprint_kein_manifest(chroma):
 
 def test_laya_report_enthaelt_den_31_report_unveraendert(chroma):
     s = Szenario()
-    erwartet = erzeuge_bericht(s.faelle, s.retriever, KOSTEN)
-    b, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None)
+    erwartet = erzeuge_bericht(s.faelle, s.retriever, KOSTEN, stichtag=STICHTAG)
+    b, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None, stichtag=STICHTAG)
     rest = {k: v for k, v in b.items() if k not in ("laya", "min_retrieval_score")}
     erwartet["zeitpunkt"] = rest["zeitpunkt"]
     assert json.dumps(rest, sort_keys=True) == json.dumps(erwartet, sort_keys=True)
@@ -589,3 +590,106 @@ def test_main_mit_laya_meldet_test_segment_ohne_calibration(tmp_path, monkeypatc
     eval_report.main(["--checkpoint-revision", "r1"])
     assert "nur_test" in capsys.readouterr().err
     assert len(list((tmp_path / "manifest").glob("gate-manifest-*.json"))) == 1
+
+
+STICHTAG = date(2026, 6, 15)
+ABGELAUFEN = {"gueltig_bis": "2026-06-14"}
+GUELTIG = {"gueltig_ab": "2026-01-01"}
+
+
+def fassung(score, text, segment="verordnung", quelle="a.md", **gueltig):
+    return SimpleNamespace(score=score, text=text, metadata={"segment": segment, "quelle": quelle, **gueltig})
+
+
+def mitschreibender_laya(prob=0.8):
+    evidenzen = []
+
+    def handler(request):
+        evidenzen.append(json.loads(request.content)["state"]["evidenz"])
+        return httpx.Response(200, json={"answers": {"answerable": {"noul": prob}}, "routing": {"model": "m"}})
+
+    client = SystemOneClient("http://laya.test", transport=httpx.MockTransport(handler))
+    return LayaGate(client, lambda s: 0.5, modell="m", modell_streng=True), evidenzen
+
+
+def test_laya_sieht_nur_die_am_stichtag_gueltige_fassung():
+    """Wie im Laufzeitpfad: neben einer gültigen Fassung fällt die abgelöste aus der Evidenz (#54)."""
+    nodes = [fassung(0.9, "Alt", "gesetz", **ABGELAUFEN), fassung(0.8, "Neu", "verordnung", "b.md", **GUELTIG)]
+    laya, evidenzen = mitschreibender_laya()
+    retriever = SimpleNamespace(retrieve=lambda frage: nodes)
+    z = hole_laya_zeilen([fall("a", "answer", "verordnung")], retriever, laya, 0.62, stichtag=STICHTAG)[0]
+    assert evidenzen == ["Neu"]
+    assert z["segment_laufzeit"] == "verordnung"
+    assert z["top"] == 0.8 and z["laya_roh"] == 0.8 and z["vorpruefung"] is None
+
+
+@pytest.mark.parametrize(
+    ("nodes", "reason"),
+    [
+        ([fassung(0.9, "Alt", **ABGELAUFEN)], "OUTDATED_SOURCE"),
+        ([fassung(0.9, "A", fassung="1", **GUELTIG), fassung(0.9, "B", fassung="2", **GUELTIG)], "AMBIGUOUS_VERSION"),
+    ],
+)
+def test_vorab_verweigerte_faelle_fragen_laya_nicht(nodes, reason):
+    laya, evidenzen = mitschreibender_laya()
+    retriever = SimpleNamespace(retrieve=lambda frage: nodes)
+    z = hole_laya_zeilen([fall("a", "answer", "verordnung")], retriever, laya, 0.62, stichtag=STICHTAG)[0]
+    assert evidenzen == []
+    assert z["laya_roh"] is None and z["top"] is None
+    assert z["vorpruefung"] == reason
+
+
+def test_score_der_abgeloesten_fassung_hebt_nicht_ueber_den_guard():
+    nodes = [fassung(0.9, "Alt", **ABGELAUFEN), fassung(0.3, "Neu", quelle="b.md", **GUELTIG)]
+    laya, evidenzen = mitschreibender_laya()
+    retriever = SimpleNamespace(retrieve=lambda frage: nodes)
+    z = hole_laya_zeilen([fall("a", "answer", "verordnung")], retriever, laya, 0.62, stichtag=STICHTAG)[0]
+    assert evidenzen == []
+    assert z["top"] == 0.3 and z["laya_roh"] is None
+
+
+def test_laya_report_haelt_stichtag_fest_und_kalibriert_nicht_auf_abgeloester_evidenz(chroma):
+    s = Szenario()
+    veraltet = {f["frage"] for f in s.faelle if f["id"].startswith("va")}
+    for frage in veraltet:
+        s.treffer[frage] = [fassung(0.9, "Alt", **ABGELAUFEN)]
+    b, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None, stichtag=STICHTAG)
+    assert b["stichtag"] == "2026-06-15"
+    assert not veraltet & set(s.aufrufe)
+    splits = teile(s.faelle)
+    for name in ("calibration", "test"):
+        n = sum(f["frage"] in veraltet for f in splits[name])
+        assert b["vorab_verweigert"][name] == ({"OUTDATED_SOURCE": n} if n else {})
+    assert "Stichtag" in b["laya"]["definition"]
+
+
+def test_laya_report_default_stichtag_ist_heute_in_berlin(chroma, monkeypatch):
+    import gueltigkeit
+
+    monkeypatch.setattr(gueltigkeit, "heute_berlin", lambda: STICHTAG)
+    s = Szenario()
+    b, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None)
+    assert b["stichtag"] == "2026-06-15"
+
+
+def test_vorab_verweigerte_zeile_traegt_das_segment_aller_treffer():
+    """Wie Metriken und Eskalationsdatensatz der Laufzeit: ohne Einengung zählen alle Treffer."""
+    laya, _ = mitschreibender_laya()
+    retriever = SimpleNamespace(retrieve=lambda frage: [fassung(0.9, "Alt", "gesetz", **ABGELAUFEN)])
+    z = hole_laya_zeilen([fall("a", "answer", "gesetz")], retriever, laya, 0.62, stichtag=STICHTAG)[0]
+    assert z["segment_laufzeit"] == "gesetz"
+
+
+def test_ein_lauf_bestimmt_den_stichtag_genau_einmal(chroma, monkeypatch):
+    """Ein Mitternachtswechsel im Lauf darf keine zwei Stichtage mischen."""
+    import gueltigkeit
+
+    tage = iter([STICHTAG, date(2026, 6, 14), date(2026, 6, 14)])
+    monkeypatch.setattr(gueltigkeit, "heute_berlin", lambda: next(tage))
+    s = Szenario()
+    veraltet = {f["frage"] for f in s.faelle if f["id"].startswith("va")}
+    for frage in veraltet:
+        s.treffer[frage] = [fassung(0.9, "Alt", **ABGELAUFEN)]
+    b, _ = erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None)
+    assert b["stichtag"] == "2026-06-15"
+    assert not veraltet & set(s.aufrufe)
