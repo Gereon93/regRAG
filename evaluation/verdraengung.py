@@ -5,7 +5,7 @@ Aufruf: python -m evaluation.verdraengung [--faktor N] [--stichtag YYYY-MM-DD] [
 Je Frage ein Kandidatenabruf mit `top_k * faktor`: "vorher" ist dessen Top-k, "nachher" die Auswahl von
 `gueltigkeit.waehle_treffer`. Beide Seiten sehen also dieselben Kandidaten. Ein zweiter Abruf mit `top_k` misst nur
 die Latenz (Reihenfolge wechselt je Frage, beide enthalten das Query-Embedding) und meldet, ob sein Top-k abweicht.
-Der Gate ist `baue_gate` ohne Laya, damit die Messung deterministisch ist und am übergebenen Stichtag läuft.
+Der Gate ist `gate.vorpruefung`, also `baue_gate` ohne Laya, damit die Messung deterministisch ist und am übergebenen Stichtag läuft.
 Ohne datierte Fassungen im Index bleibt `verdraengt` bei 0.
 """
 
@@ -20,16 +20,15 @@ import config
 import gueltigkeit
 from evaluation.embedding_latency import nearest_rank_p95
 from evaluation.evalset import STANDARD_FAELLE, lade_faelle
-from gate import FassungsGate, GueltigkeitsGate, Kaskade, RetrievalScoreGate
+from gate import Kaskade, vorpruefung
 
 TOP_K_WIE_AGENT = 3
 FLAGS = ("verdraengt", "gueltige_unter_kandidaten", "gueltige_in_auswahl", "top_k_abweichend")
 
 
 def baue_messgate(min_score, stichtag):
-    """Reihenfolge wie `laya.baue_gate` ohne Laya: Score, Gültigkeit, Score, Fassung (ADR 0015)."""
-    score = RetrievalScoreGate(min_score)
-    return Kaskade([score, GueltigkeitsGate(uhr=lambda: stichtag), score, FassungsGate()])
+    """Die Vorprüfung aus `laya.baue_gate`, ohne Laya und fest am Stichtag."""
+    return Kaskade(vorpruefung(min_score, uhr=lambda: stichtag))
 
 
 def _status(nodes, stichtag):

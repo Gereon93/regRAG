@@ -111,8 +111,8 @@ def test_retrieve_und_ground_pruefen_mit_dem_stichtag_gegen_das_echte_gate(agent
 
 
 def test_retriever_holt_mit_ueberabruf_und_kuerzt_auf_drei(agent):
-    import gueltigkeit
+    import retrieval
 
-    assert isinstance(agent.retriever, gueltigkeit.UeberabrufRetriever)
+    assert isinstance(agent.retriever, retrieval.UeberabrufRetriever)
     assert agent.retriever.top_k == 3
     sys.modules["rag"].index.as_retriever.assert_called_once_with(similarity_top_k=3 * config.UEBERABRUF_FAKTOR)

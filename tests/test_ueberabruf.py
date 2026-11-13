@@ -16,6 +16,7 @@ import pytest
 
 import config
 import gueltigkeit
+import retrieval
 from evaluation import verdraengung
 from evaluation.verdraengung import baue_messgate, miss
 from gate import AbstainReason, Outcome
@@ -78,7 +79,7 @@ def _gate(min_score=MIN_SCORE):
 
 
 def _ueberabruf(index=None, faktor=3):
-    return gueltigkeit.UeberabrufRetriever(index or FixtureIndex(), top_k=3, faktor=faktor, uhr=lambda: STICHTAG)
+    return retrieval.UeberabrufRetriever(index or FixtureIndex(), top_k=3, faktor=faktor, uhr=lambda: STICHTAG)
 
 
 def n(score, **metadata):
@@ -133,14 +134,14 @@ def test_ungueltige_und_kuenftige_fassungen_verdraengen_ebenso(nicht_nutzbar):
 def test_retriever_holt_top_k_mal_faktor_kandidaten():
     index = FixtureIndex()
 
-    gueltigkeit.UeberabrufRetriever(index, top_k=3, faktor=3).retrieve(FRAGE)
+    retrieval.UeberabrufRetriever(index, top_k=3, faktor=3).retrieve(FRAGE)
 
     assert index.abrufe == [9]
 
 
 def test_retriever_bestimmt_den_stichtag_je_abruf():
     tage = iter([date(2026, 6, 14), STICHTAG])
-    retriever = gueltigkeit.UeberabrufRetriever(FixtureIndex(), top_k=3, faktor=3, uhr=lambda: next(tage))
+    retriever = retrieval.UeberabrufRetriever(FixtureIndex(), top_k=3, faktor=3, uhr=lambda: next(tage))
 
     am_vortag, am_stichtag = retriever.retrieve(FRAGE), retriever.retrieve(FRAGE)
 
@@ -159,7 +160,7 @@ def test_faktor_eins_ist_das_heutige_verhalten():
 @pytest.mark.parametrize("faktor", [0, -1])
 def test_faktor_unter_eins_ist_ein_fehler(faktor):
     with pytest.raises(ValueError, match="faktor"):
-        gueltigkeit.UeberabrufRetriever(FixtureIndex(), top_k=3, faktor=faktor)
+        retrieval.UeberabrufRetriever(FixtureIndex(), top_k=3, faktor=faktor)
 
 
 def test_fixture_bei_top_k_3_verdraengt_die_alte_fassung_die_gueltige():

@@ -114,7 +114,8 @@ graph TD
 | `agent.py` | Ablaufsteuerung, Schwellwert als bedingte Kante, Prompt, LLM-Aufruf | Wie retrievt wird |
 | `web/main.py` | HTTP: Chat mit SSE (Antwort gepuffert bis nach der Prüfung), Upload, Job-Status, Dokumentliste | Wie indexiert oder retrievt wird |
 | `grounding.py` | Marker-Prompt, Zerlegung in Aussagen, `zahlen_judge`, Verwerfen nach der Generierung ([ADR 0014](adr/0014-claim-level-grounding.md)); im Graphen der Knoten `ground` | Retrieval, LLM-Aufruf |
-| `gueltigkeit.py` | Sidecar-Felder, Validierung, Status am Stichtag ([ADR 0015](adr/0015-gueltigkeit-fassungen-normkonflikte.md)) | Gate-Entscheidung, Retrieval |
+| `gueltigkeit.py` | Sidecar-Felder, Validierung, Status am Stichtag, Verdrängungsregel `waehle_treffer` ([ADR 0015](adr/0015-gueltigkeit-fassungen-normkonflikte.md)) | Gate-Entscheidung, Retrieval |
+| `retrieval.py` | `UeberabrufRetriever`: holt `3 × REGRAG_UEBERABRUF_FAKTOR` Kandidaten und wählt mit `waehle_treffer` (#53) | Gate-Entscheidung, LLM |
 | `gate.py`, `laya.py`, `manifest.py`, `metrics.py` | Gate-Port, Score-Guard, Laya-Adapter mit Segmentschwellen und Manifest, prozesslokale Eskalationszähler für `GET /metrics` ([ADR 0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md)) | Retrieval, LLM |
 | `evaluation/` | Versioniertes Eval-Set (`evalset/v1.jsonl`), Splits, Kostenfunktion, Report je Segment und Kategorie ([ADR 0012](adr/0012-eval-set-splits-kostenfunktion-report.md)), Score-Trennung als Diagnose (`calibrate`), Guard-Trennschärfe messen, Faithfulness bewerten | Den Produktionspfad — liest nur mit |
 

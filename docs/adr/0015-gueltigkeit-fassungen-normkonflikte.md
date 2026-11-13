@@ -73,7 +73,7 @@ Score, Gültigkeit, Score, Fassung, Laya `answerable`, Konflikt-Judge.
 
 ### Überabruf gegen Verdrängung ([#53](../../../../issues/53))
 
-- `agent.retriever` ist ein `gueltigkeit.UeberabrufRetriever`: Er holt `top_k × REGRAG_UEBERABRUF_FAKTOR`
+- `agent.retriever` ist ein `retrieval.UeberabrufRetriever`: Er holt `top_k × REGRAG_UEBERABRUF_FAKTOR`
   Kandidaten (`top_k=3`), `gueltigkeit.waehle_treffer` wählt daraus. `/chat` und `evaluation/run.py` nutzen denselben
   Retriever.
 - **Überabruf greift nur bei Verdrängung**, also wenn im Top-k ein nicht nutzbarer Treffer und kein gültiger liegt
