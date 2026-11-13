@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import re
+import stat
 import threading
 import time
 from contextlib import contextmanager
@@ -290,9 +291,17 @@ def grenzen_aus(einstellungen):
     )
 
 
-# Rotation, Löschen und Append laufen nie parallel: im Prozess per Lock, über Prozesse per flock (ADR 0010).
 _ESKALATIONS_SPERRE = threading.Lock()
 SPERR_WARTEZEIT_S = 5
+SPERR_POLL_INTERVALL_S = 0.005
+
+
+def _ist_sonderdatei(ziel):
+    """Ein einziger `stat`: eine gerade wegrotierte Datei ist keine Sonderdatei, sondern fehlt (PR #67)."""
+    try:
+        return not stat.S_ISREG(os.stat(ziel).st_mode)
+    except FileNotFoundError:
+        return False
 
 
 @contextmanager
@@ -303,7 +312,7 @@ def _sperre(ziel):
     länger als `SPERR_WARTEZEIT_S` hält, lässt den Aufruf mit `TimeoutError` scheitern statt ewig zu warten.
     """
     with _ESKALATIONS_SPERRE:
-        if fcntl is None or not ziel.parent.is_dir() or (ziel.exists() and not ziel.is_file()):
+        if fcntl is None or not ziel.parent.is_dir() or _ist_sonderdatei(ziel):
             yield
             return
         sperrdatei = ziel.with_name(f".{ziel.name}.lock")
@@ -317,7 +326,7 @@ def _sperre(ziel):
                 except BlockingIOError:
                     if time.monotonic() >= frist:
                         raise TimeoutError(f"{sperrdatei} länger als {SPERR_WARTEZEIT_S} s gesperrt") from None
-                    time.sleep(0.005)
+                    time.sleep(SPERR_POLL_INTERVALL_S)
             yield
         finally:
             os.close(fd)
@@ -367,7 +376,7 @@ def _rotiere(ziel, grenzen, jetzt):
 
 def _bereinige(ziel, grenzen, jetzt):
     """Rotiert die aktive Datei bei Größe oder halber Frist, löscht Archive über Frist oder Anzahl."""
-    if ziel.exists() and not ziel.is_file():
+    if _ist_sonderdatei(ziel):
         return
     _rotiere(ziel, grenzen, jetzt)
     frist = jetzt - timedelta(days=grenzen.aufbewahrung_tage)

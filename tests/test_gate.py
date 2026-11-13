@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import logging
 import multiprocessing
@@ -643,6 +644,11 @@ def test_verzeichnis_mit_archivnamen_bricht_die_bereinigung_nicht_ab(tmp_path):
     assert not alt.exists()
 
 
+NUR_MIT_FLOCK = pytest.mark.skipif(
+    importlib.util.find_spec("fcntl") is None, reason="ohne fcntl keine prozessübergreifende Sperre"
+)
+
+
 def _schreibe_als_prozess(ziel, friedhof, quittung, kennung, anzahl):
     """Kindprozess: schreibt `anzahl` Datensätze und quittiert jede Frage, für die `True` kam.
 
@@ -680,7 +686,7 @@ def _schreibe_als_prozess(ziel, friedhof, quittung, kennung, anzahl):
     Path(quittung).write_text("\n".join(bestaetigt), encoding="utf-8")
 
 
-@pytest.mark.skipif(os.name != "posix", reason="die Sperre gibt es nur auf POSIX")
+@NUR_MIT_FLOCK
 def test_parallele_prozesse_mit_rotation_verlieren_keine_bestaetigte_zeile(tmp_path):
     ziel = tmp_path / "eskalationen.jsonl"
     friedhof = tmp_path / "friedhof.bin"
@@ -704,7 +710,7 @@ def test_parallele_prozesse_mit_rotation_verlieren_keine_bestaetigte_zeile(tmp_p
     assert bestaetigt - {json.loads(z)["frage"] for z in zeilen} == set()
 
 
-@pytest.mark.skipif(os.name != "posix", reason="flock gibt es nur auf POSIX")
+@NUR_MIT_FLOCK
 def test_sperrdatei_ist_versteckt_0600_und_wird_nie_rotiert_oder_verdraengt(tmp_path):
     ziel = tmp_path / "eskalationen.jsonl"
     grenzen = EskalationsGrenzen(max_bytes=1, max_archive=0, aufbewahrung_tage=30)
@@ -718,7 +724,7 @@ def test_sperrdatei_ist_versteckt_0600_und_wird_nie_rotiert_oder_verdraengt(tmp_
     assert sorted(p.name for p in tmp_path.iterdir()) == [".eskalationen.jsonl.lock", "eskalationen.jsonl"]
 
 
-@pytest.mark.skipif(os.name != "posix", reason="flock gibt es nur auf POSIX")
+@NUR_MIT_FLOCK
 def test_gehaltene_sperre_laesst_den_schreiber_nicht_ewig_warten(tmp_path, monkeypatch, caplog):
     import fcntl
 
@@ -738,7 +744,7 @@ def test_gehaltene_sperre_laesst_den_schreiber_nicht_ewig_warten(tmp_path, monke
     assert "konnte nicht" in caplog.text
 
 
-@pytest.mark.skipif(os.name != "posix", reason="flock gibt es nur auf POSIX")
+@NUR_MIT_FLOCK
 def test_sperrdatei_als_symlink_wird_nicht_verfolgt(tmp_path):
     fremd = tmp_path / "fremd.txt"
     fremd.write_text("sicher")
@@ -758,6 +764,24 @@ def test_ohne_fcntl_bleibt_nur_die_prozesslokale_sperre(tmp_path, monkeypatch):
     bereinige_eskalationen(ziel, EskalationsGrenzen())
 
     assert [p.name for p in tmp_path.iterdir()] == ["eskalationen.jsonl"]
+
+
+def _datei_war_eben_noch_da(self):
+    """Simuliert einen fremden Prozess, der zwischen `exists()` und `is_file()` wegrotiert (Codex, PR #67)."""
+    return True
+
+
+def test_datei_die_waehrend_der_pruefung_wegrotiert_wird_bekommt_trotzdem_flock(tmp_path, monkeypatch):
+    import gate as gate_modul
+
+    gesperrt = []
+    attrappe = SimpleNamespace(LOCK_EX=2, LOCK_NB=4, flock=lambda fd, op: gesperrt.append(op))
+    monkeypatch.setattr(gate_modul, "fcntl", attrappe)
+    monkeypatch.setattr(Path, "exists", _datei_war_eben_noch_da)
+
+    assert schreibe_eskalation(tmp_path / "eskalationen.jsonl", "f", [], _abstain())
+
+    assert gesperrt == [6]
 
 
 def test_sonderdatei_und_fehlendes_verzeichnis_brauchen_keine_sperrdatei(tmp_path, monkeypatch, caplog):
