@@ -320,7 +320,7 @@ Pfade würden garantiert auseinanderlaufen — einer davon still.
 | Kaltstart im Container (DORA, 351k Zeichen) | 360 s | `docker compose up` |
 | Neustart ohne Korpusänderung (DORA + NIS2) | 31 s | `docker compose restart` |
 | Upload NIS2 (1.3 MB PDF) bis `ready` | ~250 s | `POST /upload` → `GET /jobs/{id}` |
-| Retrieval, `similarity_top_k=3` (vor dem Überabruf, #53; mit 9 Kandidaten nicht gemessen) | 0.5 s | — |
+| Retrieval, `similarity_top_k=3` (vor dem Überabruf, #53; mit `3 × Faktor` Kandidaten nicht gemessen) | 0.5 s | — |
 | Score eines guten Treffers (On-Topic) | 0.67–0.73 | — |
 | Kosten pro Anfrage (lokal) | 0 € | — |
 
