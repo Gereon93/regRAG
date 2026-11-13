@@ -121,7 +121,10 @@ class GateDecision:
 
 class Gate(Protocol):
     def entscheide(self, frage, nodes, stichtag=None) -> GateDecision:
-        """`stichtag` ist der Tag, gegen den Gültigkeit geprüft wird; `None` heißt heute (docs/adr/0015)."""
+        """`stichtag` ist der Tag, gegen den Gültigkeit geprüft wird; `None` heißt heute (docs/adr/0015).
+
+        Er kommt positional: Gates, die ihn nicht brauchen, nennen ihn `_stichtag`.
+        """
         ...
 
 
@@ -131,7 +134,7 @@ class RetrievalScoreGate:
     def __init__(self, min_score):
         self.min_score = min_score
 
-    def entscheide(self, frage, nodes, stichtag=None):
+    def entscheide(self, frage, nodes, _stichtag=None):
         bester = max((n.score for n in nodes), default=None)
         scores = GateScores(relevance=bester)
         if bester is None or not bester >= self.min_score:
@@ -162,7 +165,7 @@ class FassungsGate:
     def __init__(self, kennung=gueltigkeit.fassungs_kennung):
         self.kennung = kennung
 
-    def entscheide(self, _frage, nodes, stichtag=None):
+    def entscheide(self, _frage, nodes, _stichtag=None):
         kennungen = {}
         for n in nodes:
             quelle = (n.metadata.get("quelle") or "").strip().casefold()
@@ -187,7 +190,7 @@ class Kaskade:
         scores = GateScores()
         evidenz = None
         for gate in self.gates:
-            entscheidung = gate.entscheide(frage, nodes, stichtag=stichtag)
+            entscheidung = gate.entscheide(frage, nodes, stichtag)
             scores = _fuehre_zusammen(scores, entscheidung.scores)
             if entscheidung.verweigert:
                 return GateDecision(entscheidung.outcome, entscheidung.reasons, scores, evidenz)
@@ -405,7 +408,7 @@ def zaehle_verwurf(entscheidung, nodes):
 
 def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes, grenzen=None, stichtag=None):
     """`stichtag=None` prüft gegen heute; ein gesetzter Stichtag steht auch im Eskalationsdatensatz."""
-    entscheidung = gate.entscheide(frage, nodes, stichtag=stichtag)
+    entscheidung = gate.entscheide(frage, nodes, stichtag)
     log.info(
         "Gate: %s reasons=%s relevance=%s answerable=%s konflikt=%s",
         entscheidung.outcome.value,

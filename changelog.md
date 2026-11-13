@@ -4,7 +4,7 @@
 ### Neu
 - **Stichtag pro Anfrage:** `POST /chat` nimmt optional `stichtag` (`YYYY-MM-DD`, sonst 422), die CLI `--stichtag`, die UI ein Datumsfeld neben der Frage; der Eintrag im Verlauf nennt den Stichtag. Gültigkeit wird dann gegen diesen Tag statt gegen heute geprüft, der Eskalationsdatensatz trägt ihn als `stichtag` (#50, ADR 0015).
 ### Geändert
-- Gate-Port `entscheide(frage, nodes, stichtag=None)`; eigene Gate-Implementierungen müssen das Argument annehmen, `Kaskade` reicht es weiter (#50).
+- Gate-Port `entscheide(frage, nodes, stichtag=None)`; eigene Gate-Implementierungen müssen das Argument annehmen, `Kaskade` reicht es positional weiter (#50).
 - `python agent.py` nimmt die Frage als Argument; ohne Argument bleibt es die DORA-Beispielfrage (#50).
 ### Hinweis
 - **Offen:** Ein Datum im Fragetext wird nicht als Stichtag erkannt (#63).

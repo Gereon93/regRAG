@@ -8,3 +8,5 @@ exclude:
   - name: PyTypeHintsInspection
     paths:
       - gate.py
+      - agent.py
+      - web/main.py

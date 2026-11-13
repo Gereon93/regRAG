@@ -35,8 +35,8 @@ schon in den Fingerprint ein ([0006](0006-inkrementeller-index-merge-statt-voll-
   Import gebaut, damit fehlende Zeitzonendaten den Start brechen, nicht die Anfrage; `tzdata` steht deshalb in
   `requirements.txt`.
 - **Stichtag pro Anfrage** ([#50](../../../../issues/50)): Der Port ist `entscheide(frage, nodes, stichtag=None)`, `None`
-  heißt heute. Jede Gate-Implementierung nimmt das Argument an, nur `GueltigkeitsGate` nutzt es, `Kaskade` reicht es an
-  jeden Gate weiter. `entscheide_und_eskaliere` und `pruefe_antwort_und_eskaliere` geben es an Gate und Datensatz;
+  heißt heute. Jede Gate-Implementierung nimmt das Argument an, nur `GueltigkeitsGate` nutzt es, `Kaskade` reicht es
+  positional an jeden Gate weiter (wer es nicht braucht, nennt es `_stichtag`). `entscheide_und_eskaliere` und `pruefe_antwort_und_eskaliere` geben es an Gate und Datensatz;
   `stichtag` im Eskalationsdatensatz ist dann der angefragte Tag, der Gültigkeitsstatus der Evidenz gilt für ihn.
   Eingang: `POST /chat` Feld `stichtag`, CLI `python agent.py "Frage" --stichtag YYYY-MM-DD`, Datumsfeld in der UI.
   Validiert wird mit `gueltigkeit.parse_datum` wie die Sidecar-Felder, Unsinn ist 422 bzw. Exitcode 2. Künftige Tage
@@ -126,4 +126,5 @@ für diese Norm erzwingen. Das verweigert nur und ist nicht schlimmer als die of
 ## Qodana: `PyTypeHintsInspection` in `gate.py`
 
 Der Report zeigt `SDKs.json` mit leeren `roots`: Der Linter kennt kein Python 3.12 und meldet `float | None` in den
-Dataclass-Feldern als ungültig. Die Inspektion ist deshalb nur für `gate.py` abgeschaltet (`qodana.yaml`), nicht global.
+Dataclass-Feldern als ungültig. Die Inspektion ist deshalb nur für `gate.py` abgeschaltet (`qodana.yaml`), nicht global; seit #50 auch für `agent.py` und
+`web/main.py`, die mit `date | None` denselben Fehlalarm auslösen.

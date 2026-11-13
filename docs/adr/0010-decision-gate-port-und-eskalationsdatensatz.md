@@ -12,7 +12,8 @@ eine Verweigerung hinterließ weder Begründung noch Spur.
 ## Entscheidung
 
 - `gate.py` (nur Standardbibliothek) definiert `GateDecision(outcome, reasons, scores)`,
-  `AbstainReason` und den Port `Gate.entscheide(frage, nodes)`. ABSTAIN ohne Reason ist
+  `AbstainReason` und den Port `Gate.entscheide(frage, nodes)` (seit #50 `entscheide(frage, nodes, stichtag=None)`,
+  siehe [ADR 0015](0015-gueltigkeit-fassungen-normkonflikte.md)). ABSTAIN ohne Reason ist
   im Konstruktor unmöglich.
 - Der bisherige Score-Guard ist der erste Adapter (`RetrievalScoreGate`, Reason `LOW_RELEVANCE`).
   Entscheidung unverändert: ABSTAIN genau bei `score < MIN_RETRIEVAL_SCORE`; der Gate nimmt das
