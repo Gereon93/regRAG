@@ -217,7 +217,9 @@ def _datensatz_zusatz(antwort, befund):
     }
 
 
-def pruefe_antwort_und_eskaliere(eskalations_datei, frage, nodes, antwort, vorherige, grenzen=None, judge=zahlen_judge):
+def pruefe_antwort_und_eskaliere(
+    eskalations_datei, frage, nodes, antwort, vorherige, grenzen=None, judge=zahlen_judge, stichtag=None
+):
     """`nodes` sind alle abgerufenen Treffer: Marker beziehen sich auf die genutzten, der Datensatz führt alle (ADR 0015)."""
     genutzt = vorherige.genutzte_nodes(nodes)
     befund = pruefe_antwort(antwort, genutzt, judge)
@@ -234,6 +236,12 @@ def pruefe_antwort_und_eskaliere(eskalations_datei, frage, nodes, antwort, vorhe
     )
     gate.zaehle_verwurf(entscheidung, genutzt)
     vorgemerkt = gate.schreibe_eskalation(
-        eskalations_datei, frage, nodes, entscheidung, grenzen, zusatz=_datensatz_zusatz(antwort, befund)
+        eskalations_datei,
+        frage,
+        nodes,
+        entscheidung,
+        grenzen,
+        zusatz=_datensatz_zusatz(antwort, befund),
+        stichtag=stichtag,
     )
     return Pruefung(entscheidung, vorgemerkt)

@@ -110,7 +110,7 @@ Damit ist die Quelle nachvollziehbar reproduzierbar. Wiederverwendung gemäß Be
 ```bash
 python convert.py   # PDF -> docs_md/CELEX_32022R2554_DE_TXT.md
 python rag.py       # Mini-RAG: Antwort + Quellen-Scores
-python agent.py     # LangGraph-Agent mit Abstain-Pfad
+python agent.py     # LangGraph-Agent mit Abstain-Pfad; optional "Frage" --stichtag YYYY-MM-DD
 ```
 
 Der Vektor-Index wird beim ersten Lauf gebaut (~5 min) und danach aus `chroma/` geladen (12 s).
@@ -158,8 +158,9 @@ Details und Grenzen: [ADR 0015](docs/adr/0015-gueltigkeit-fassungen-normkonflikt
 - **Ohne Angaben** gilt ein Dokument als `unbekannt`: Es bleibt nutzbar, ist aber kein Beleg für Aktualität. Liegt daneben
   eine abgelaufene Fassung und keine gültige, verweigert das Gate mit `OUTDATED_SOURCE`, auch wenn die abgelaufene
   Fassung zu einer anderen Quelle gehört (#58). Wer Altfassungen datiert, sollte deshalb auch die geltenden datieren.
-- **Frühere Rechtslage:** Es gibt nur den Stichtag heute. Fragen zu einem früheren Stand werden aus der heute gültigen
-  Fassung beantwortet.
+- **Frühere Rechtslage:** Optionaler Stichtag statt heute: `POST /chat` mit `{"frage": "…", "stichtag": "2024-06-01"}`,
+  `python agent.py "Frage" --stichtag 2024-06-01` oder das Datumsfeld neben der Frage in der UI. Er steht im
+  Eskalationsdatensatz. Ein Datum im Fragetext wird nicht ausgewertet (#63): Ohne Stichtag gilt die heute gültige Fassung.
 - **Normkonflikte** erkennt nur der experimentelle Konflikt-Judge (`REGRAG_LAYA_KONFLIKT_SCHWELLE`, braucht Laya, kein
   gemessener Wert). Ohne ihn werden widersprechende Normen nicht erkannt.
 

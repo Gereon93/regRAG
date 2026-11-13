@@ -58,11 +58,11 @@ def _strom(gate, eskalationen):
     llm = FakeLLM()
     treffer = []
 
-    def pruefe(frage, nodes):
-        return entscheide_und_eskaliere(gate, eskalationen, frage, nodes)
+    def pruefe(frage, nodes, stichtag=None):
+        return entscheide_und_eskaliere(gate, eskalationen, frage, nodes, stichtag=stichtag)
 
-    def pruefe_grounding(frage, nodes, antwort, vorherige):
-        return grounding.pruefe_antwort_und_eskaliere(eskalationen, frage, nodes, antwort, vorherige)
+    def pruefe_grounding(frage, nodes, antwort, vorherige, stichtag=None):
+        return grounding.pruefe_antwort_und_eskaliere(eskalationen, frage, nodes, antwort, vorherige, stichtag=stichtag)
 
     kontexte = []
     prompt = SimpleNamespace(format_messages=lambda **kw: kontexte.append(kw["kontext"]) or [])
@@ -89,11 +89,11 @@ def _strom(gate, eskalationen):
 
     main = importlib.import_module("web.main")
 
-    def lauf(frage, nodes):
+    def lauf(frage, nodes, stichtag=None):
         treffer[:] = nodes
 
         async def sammle():
-            return [e async for e in main._antwort_strom(frage)]
+            return [e async for e in main._antwort_strom(frage, stichtag)]
 
         events = asyncio.run(sammle())
         return [json.loads(e.removeprefix("data: ")) for e in events]
@@ -604,3 +604,64 @@ def test_bestandsdokument_ohne_angaben_antwortet_wie_bisher(korpus_strom):
 
         assert [e["type"] for e in events] == ["status", "token", "sources", "done"]
         assert not strom.eskalationen.exists()
+
+
+def _sse_events(antwort):
+    return [json.loads(z.removeprefix("data: ")) for z in antwort.text.splitlines() if z.startswith("data: ")]
+
+
+def test_stichtag_der_anfrage_antwortet_aus_der_damaligen_fassung(korpus_strom):
+    alt, neu = node(0.8, "alter Text", **ABGELOEST), node(0.7, "neuer Text", **GUELTIG)
+
+    with korpus_strom() as strom:
+        events = strom.lauf("Frage?", [alt, neu], stichtag=date(2026, 6, 14))
+
+        assert [e["type"] for e in events] == ["status", "token", "sources", "done"]
+        assert strom.kontexte == ["[1] alter Text"]
+
+
+def test_chat_nimmt_stichtag_im_body_an(korpus_strom):
+    alt, neu = node(0.8, "alter Text", **ABGELOEST), node(0.7, "neuer Text", **GUELTIG)
+
+    with korpus_strom() as strom:
+        strom.lauf("Vorab?", [alt, neu])
+        antwort = TestClient(strom.main.app).post("/chat", json={"frage": "Frage?", "stichtag": "2026-06-14"})
+
+        assert antwort.status_code == 200
+        assert [e["type"] for e in _sse_events(antwort)] == ["status", "token", "sources", "done"]
+        assert strom.kontexte == ["[1] neuer Text", "[1] alter Text"]
+
+
+def test_chat_ohne_stichtag_oder_mit_null_prueft_gegen_heute(korpus_strom):
+    alt, neu = node(0.8, "alter Text", **ABGELOEST), node(0.7, "neuer Text", **GUELTIG)
+
+    with korpus_strom() as strom:
+        strom.lauf("Vorab?", [alt, neu])
+        client = TestClient(strom.main.app)
+        ohne = client.post("/chat", json={"frage": "Frage?"})
+        mit_null = client.post("/chat", json={"frage": "Frage?", "stichtag": None})
+
+        assert ohne.status_code == mit_null.status_code == 200
+        assert strom.kontexte == ["[1] neuer Text"] * 3
+
+
+def test_stichtag_der_anfrage_landet_im_eskalationsdatensatz(korpus_strom):
+    with korpus_strom() as strom:
+        strom.lauf("Vorab?", [node(0.8, **GUELTIG)])
+        antwort = TestClient(strom.main.app).post("/chat", json={"frage": "Frage?", "stichtag": "2026-06-14"})
+
+        assert [e["type"] for e in _sse_events(antwort)] == ["abstain", "sources", "done"]
+        satz = _datensatz(strom)
+        assert satz["reasons"] == ["OUTDATED_SOURCE"]
+        assert satz["stichtag"] == "2026-06-14"
+        assert satz["evidenz"][0]["gueltigkeit"] == "noch_nicht_gueltig"
+
+
+@pytest.mark.parametrize("stichtag", ["2026-13-01", "2026-02-30", "20260614", "2026-W24-1", "14.06.2026", "", "gestern", 20260614])
+def test_chat_lehnt_unsinnigen_stichtag_mit_422_ab(strom, stichtag):
+    antwort = TestClient(strom.main.app).post("/chat", json={"frage": "Frage?", "stichtag": stichtag})
+
+    assert antwort.status_code == 422
+    assert "stichtag" in antwort.text
+    assert strom.llm.aufrufe == 0
+    assert not strom.eskalationen.exists()

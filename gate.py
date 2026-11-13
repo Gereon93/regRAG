@@ -120,7 +120,9 @@ class GateDecision:
 
 
 class Gate(Protocol):
-    def entscheide(self, frage, nodes) -> GateDecision: ...
+    def entscheide(self, frage, nodes, stichtag=None) -> GateDecision:
+        """`stichtag` ist der Tag, gegen den Gültigkeit geprüft wird; `None` heißt heute (docs/adr/0015)."""
+        ...
 
 
 class RetrievalScoreGate:
@@ -129,7 +131,7 @@ class RetrievalScoreGate:
     def __init__(self, min_score):
         self.min_score = min_score
 
-    def entscheide(self, frage, nodes):
+    def entscheide(self, frage, nodes, stichtag=None):
         bester = max((n.score for n in nodes), default=None)
         scores = GateScores(relevance=bester)
         if bester is None or not bester >= self.min_score:
@@ -143,8 +145,8 @@ class GueltigkeitsGate:
     def __init__(self, uhr=gueltigkeit.heute_berlin):
         self.uhr = uhr
 
-    def entscheide(self, _frage, nodes):
-        stichtag = self.uhr()
+    def entscheide(self, _frage, nodes, stichtag=None):
+        stichtag = stichtag or self.uhr()
         status = [gueltigkeit.status_von(n.metadata, stichtag) for n in nodes]
         nutzbar = tuple(n for n, s in zip(nodes, status, strict=True) if s in gueltigkeit.NUTZBAR)
         if len(nutzbar) == len(status):
@@ -160,7 +162,7 @@ class FassungsGate:
     def __init__(self, kennung=gueltigkeit.fassungs_kennung):
         self.kennung = kennung
 
-    def entscheide(self, _frage, nodes):
+    def entscheide(self, _frage, nodes, stichtag=None):
         kennungen = {}
         for n in nodes:
             quelle = (n.metadata.get("quelle") or "").strip().casefold()
@@ -181,11 +183,11 @@ class Kaskade:
         if not self.gates:
             raise ValueError("Eine Kaskade braucht mindestens einen Gate.")
 
-    def entscheide(self, frage, nodes):
+    def entscheide(self, frage, nodes, stichtag=None):
         scores = GateScores()
         evidenz = None
         for gate in self.gates:
-            entscheidung = gate.entscheide(frage, nodes)
+            entscheidung = gate.entscheide(frage, nodes, stichtag=stichtag)
             scores = _fuehre_zusammen(scores, entscheidung.scores)
             if entscheidung.verweigert:
                 return GateDecision(entscheidung.outcome, entscheidung.reasons, scores, evidenz)
@@ -225,13 +227,13 @@ def _evidenz_eintrag(node, stichtag):
     }
 
 
-def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None, zusatz=None):
+def eskalationsdatensatz(frage, nodes, entscheidung, jetzt=None, zusatz=None, stichtag=None):
     if not entscheidung.verweigert:
         raise ValueError("Eskalationsdatensatz gibt es nur bei ABSTAIN.")
     jetzt = jetzt or datetime.now(timezone.utc)
     if jetzt.utcoffset() != timedelta(0):
         raise ValueError("Zeitstempel muss tz-aware UTC sein.")
-    stichtag = gueltigkeit.heute_berlin(jetzt)
+    stichtag = stichtag or gueltigkeit.heute_berlin(jetzt)
     return {
         "zeitpunkt": jetzt.isoformat(),
         "stichtag": stichtag.isoformat(),
@@ -351,11 +353,12 @@ def bereinige_eskalationen(ziel, grenzen):
             log.exception("Bereinigung des Eskalationsdatensatzes %s fehlgeschlagen", ziel)
 
 
-def schreibe_eskalation(ziel, frage, nodes, entscheidung, grenzen=None, zusatz=None):
+def schreibe_eskalation(ziel, frage, nodes, entscheidung, grenzen=None, zusatz=None, stichtag=None):
     """Hängt den Datensatz als JSONL-Zeile an und meldet, ob das gelang. Ein Fehler kippt die Verweigerung nicht."""
     grenzen = grenzen or EskalationsGrenzen()
     try:
-        zeile = json.dumps(eskalationsdatensatz(frage, nodes, entscheidung, zusatz=zusatz), ensure_ascii=False) + "\n"
+        satz = eskalationsdatensatz(frage, nodes, entscheidung, zusatz=zusatz, stichtag=stichtag)
+        zeile = json.dumps(satz, ensure_ascii=False) + "\n"
         ziel = Path(ziel)
         ziel.parent.mkdir(parents=True, exist_ok=True)
         with _ESKALATIONS_SPERRE:
@@ -400,8 +403,9 @@ def zaehle_verwurf(entscheidung, nodes):
         log.exception("Metriken konnten nicht gezaehlt werden")
 
 
-def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes, grenzen=None):
-    entscheidung = gate.entscheide(frage, nodes)
+def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes, grenzen=None, stichtag=None):
+    """`stichtag=None` prüft gegen heute; ein gesetzter Stichtag steht auch im Eskalationsdatensatz."""
+    entscheidung = gate.entscheide(frage, nodes, stichtag=stichtag)
     log.info(
         "Gate: %s reasons=%s relevance=%s answerable=%s konflikt=%s",
         entscheidung.outcome.value,
@@ -412,6 +416,6 @@ def entscheide_und_eskaliere(gate, eskalations_datei, frage, nodes, grenzen=None
     )
     _zaehle(entscheidung, nodes)
     vorgemerkt = entscheidung.verweigert and schreibe_eskalation(
-        eskalations_datei, frage, nodes, entscheidung, grenzen
+        eskalations_datei, frage, nodes, entscheidung, grenzen, stichtag=stichtag
     )
     return Pruefung(entscheidung, vorgemerkt)

@@ -325,6 +325,16 @@ def test_eingeengte_entscheidung_prueft_gegen_genutzte_und_eskaliert_alle_treffe
     assert satz["segment"] == "verordnung"
 
 
+def test_verwurf_traegt_den_stichtag_der_anfrage(tmp_path):
+    from datetime import date
+
+    ziel = tmp_path / "e.jsonl"
+
+    pruefe_antwort_und_eskaliere(ziel, "F?", nodes(), "Ohne Marker.", ANSWER, stichtag=date(2024, 6, 1))
+
+    assert json.loads(ziel.read_text(encoding="utf-8"))["stichtag"] == "2024-06-01"
+
+
 def test_datensatz_begrenzt_antwort_und_fehlstellen(tmp_path):
     ziel = tmp_path / "e.jsonl"
     lang = " ".join(f"Satz{i} {'x' * 300}." for i in range(30))

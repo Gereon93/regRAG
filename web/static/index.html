@@ -184,6 +184,16 @@
     transition: border-color .2s;
   }
   input[type=text]:focus { border-color: var(--accent); }
+  input[type=date] {
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+  }
+  input[type=date]:focus { border-color: var(--accent); outline: none; }
   button {
     background: var(--accent);
     color: var(--paper);
@@ -294,6 +304,8 @@
   <form id="form">
     <label class="frage-label" for="frage">Frage</label>
     <input type="text" id="frage" placeholder="Welche Anforderungen stellt DORA an das IKT-Risikomanagement?" autocomplete="off">
+    <label class="frage-label" for="stichtag">Stichtag</label>
+    <input type="date" id="stichtag" title="Gültigkeit an diesem Tag prüfen; leer heißt heute">
     <button type="submit" id="senden">Fragen</button>
   </form>
 </div>
@@ -302,6 +314,7 @@ const log = document.getElementById('log');
 const form = document.getElementById('form');
 const feld = document.getElementById('frage');
 const knopf = document.getElementById('senden');
+const stichtagFeld = document.getElementById('stichtag');
 
 function el(tag, cls, txt) {
   const e = document.createElement(tag);
@@ -327,10 +340,10 @@ function quellenBlock(quellen) {
   return box;
 }
 
-async function fragen(text) {
+async function fragen(text, stichtag) {
   document.getElementById('leer')?.remove();
   const eintrag = el('div', 'eintrag');
-  eintrag.appendChild(el('div', 'frage', text));
+  eintrag.appendChild(el('div', 'frage', stichtag ? `${text} · Stichtag ${stichtag}` : text));
   const antwort = el('div', 'antwort');
   const caret = el('span', 'caret');
   antwort.appendChild(caret);
@@ -341,7 +354,7 @@ async function fragen(text) {
   const res = await fetch('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ frage: text }),
+    body: JSON.stringify({ frage: text, stichtag: stichtag || null }),
   });
   if (!res.ok) {
     const fehler = await res.json().catch(() => null);
@@ -349,7 +362,7 @@ async function fragen(text) {
     let text = typeof fehler?.detail === 'string'
       ? fehler.detail
       : res.status === 422
-        ? 'Die Frage ist leer oder zu lang (höchstens 2000 Zeichen).'
+        ? 'Die Frage ist leer oder zu lang (höchstens 2000 Zeichen), oder der Stichtag ist kein Datum.'
         : `Anfrage abgelehnt (HTTP ${res.status}).`;
     if (res.status === 429 && warten) text += ` Bitte in ${warten} Sekunden erneut fragen.`;
     caret.remove();
@@ -411,7 +424,7 @@ form.addEventListener('submit', async (e) => {
   knopf.disabled = true;
   feld.disabled = true;
   try {
-    await fragen(text);
+    await fragen(text, stichtagFeld.value);
   } finally {
     knopf.disabled = false;
     feld.disabled = false;

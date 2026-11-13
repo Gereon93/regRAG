@@ -110,7 +110,7 @@ class LayaGate:
             raise JudgeFehler
         return wahrscheinlichkeit
 
-    def entscheide(self, frage, nodes):
+    def entscheide(self, frage, nodes, stichtag=None):
         try:
             wahrscheinlichkeit = self.answerable_roh(frage, nodes)
         except JudgeFehler:
@@ -158,7 +158,7 @@ class LayaKonfliktGate:
         self.laya = laya
         self.schwelle = schwelle
 
-    def entscheide(self, frage, nodes):
+    def entscheide(self, frage, nodes, stichtag=None):
         hoechster = None
         for a, b in combinations(nodes, 2):
             if a.metadata.get("file_name") == b.metadata.get("file_name"):
