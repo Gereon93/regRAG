@@ -71,15 +71,18 @@ def status_von(metadata, stichtag):
     return GUELTIG
 
 
+def ist_verdraengt(status_top_k):
+    """Im Top-k ein nicht nutzbarer Treffer und kein gültiger: der Fall, in dem heute `OUTDATED_SOURCE` folgt (#53)."""
+    return GUELTIG not in status_top_k and any(s not in NUTZBAR for s in status_top_k)
+
+
 def waehle_treffer(kandidaten, top_k, stichtag):
     """Top-k; nur wenn abgelöste Treffer die gültige Fassung daraus verdrängen, länger (docs/adr/0015, #53).
 
-    Verdrängt heißt: im Top-k ein nicht nutzbarer Treffer und kein gültiger, also heute `OUTDATED_SOURCE`.
     Dann das kürzeste Präfix mit `top_k` nutzbaren Treffern; die nicht nutzbaren davor bleiben für Gate und Prüfer.
     """
     status = [status_von(n.metadata, stichtag) for n in kandidaten]
-    top = status[:top_k]
-    if GUELTIG in top or all(s in NUTZBAR for s in top):
+    if not ist_verdraengt(status[:top_k]):
         return kandidaten[:top_k]
     nutzbar = 0
     for ende, s in enumerate(status, start=1):

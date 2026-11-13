@@ -58,10 +58,7 @@ def _zeile(frage, treffer, dauer, top_k, gate, stichtag):
     kandidaten = treffer["kandidaten"]
     vorher = kandidaten[:top_k]
     nachher = gueltigkeit.waehle_treffer(kandidaten, top_k, stichtag)
-    status_vorher = _status(vorher, stichtag)
-    verdraengt = gueltigkeit.GUELTIG not in status_vorher and any(
-        s not in gueltigkeit.NUTZBAR for s in status_vorher
-    )
+    verdraengt = gueltigkeit.ist_verdraengt(_status(vorher, stichtag))
     return {
         "frage": frage,
         "top_score": kandidaten[0].score if kandidaten else None,

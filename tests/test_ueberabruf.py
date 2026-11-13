@@ -278,3 +278,14 @@ def test_main_liest_fragen_datei_und_gibt_json_aus(tmp_path, monkeypatch, capsys
     assert bericht["zusammenfassung"]["gueltige_in_auswahl"] == 1
     assert bericht["zusammenfassung"]["faktor"] == 2
     assert sorted(set(index.abrufe)) == [3, 6]
+
+
+def test_messung_gueltige_hinter_dem_k_ten_nutzbaren_ist_nicht_behoben():
+    kandidaten = [n(0.9, **ALT), n(0.85, **FREMD), n(0.84, **FREMD), n(0.83, **FREMD), n(0.8, **NEU)]
+    fest = SimpleNamespace(retrieve=lambda frage: kandidaten)
+
+    bericht = miss([FRAGE], fest, fest, 3, _gate(), STICHTAG, _zeitgeber([0] * 4))
+
+    zeile = bericht["zeilen"][0]
+    assert (zeile["verdraengt"], zeile["gueltige_unter_kandidaten"], zeile["gueltige_in_auswahl"]) == (True, True, False)
+    assert zeile["nachher"]["reasons"] == ["OUTDATED_SOURCE"]
