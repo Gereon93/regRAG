@@ -42,13 +42,10 @@ def _md_dateien():
 
 def _quelle_metadata(pfad):
     p = Path(pfad)
-    sidecar = p.with_suffix(".source.json")
     try:
-        daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
-        if not isinstance(daten, dict):
-            raise gueltigkeit.MetadatenFehler("Sidecar ist kein Objekt.")
+        daten = gueltigkeit.lies_sidecar(p)
         gueltig = gueltigkeit.normalisiere(daten)
-    except (json.JSONDecodeError, gueltigkeit.MetadatenFehler) as e:
+    except gueltigkeit.MetadatenFehler as e:
         raise gueltigkeit.MetadatenFehler(f"{p.name}: {e}") from e
     return {
         "file_name": p.name,

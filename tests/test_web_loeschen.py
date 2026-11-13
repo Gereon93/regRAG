@@ -281,11 +281,11 @@ def test_job_reicht_metadaten_an_die_konvertierung(main, monkeypatch, dokumente_
     assert main.JOBS["j"]["status"] == "ready"
 
 
-@pytest.mark.parametrize("inhalt", ["{kaputt", "[1, 2]"])
+@pytest.mark.parametrize("inhalt", [b"{kaputt", b"[1, 2]", '{"titel": "Ä"}'.encode("latin-1")])
 def test_dokument_liste_uebersteht_abgelehntes_sidecar(client, dokumente_verzeichnis, inhalt):
     _lege_dokument_an(dokumente_verzeichnis, "heil", "Heiles Dokument")
     (dokumente_verzeichnis / "kaputt.md").write_text("Text", encoding="utf-8")
-    (dokumente_verzeichnis / "kaputt.source.json").write_text(inhalt, encoding="utf-8")
+    (dokumente_verzeichnis / "kaputt.source.json").write_bytes(inhalt)
 
     antwort = client.get("/documents")
 
@@ -378,3 +378,13 @@ def test_dokument_liste_nimmt_den_stichtag_aus_berlin(main, client, dokumente_ve
     monkeypatch.setattr(main.gueltigkeit, "heute_berlin", lambda: echt(jetzt))
 
     assert client.get("/documents").json()[0]["gueltigkeit"] == "gueltig"
+
+
+def test_anzeige_skript_wird_als_javascript_ausgeliefert_und_eingebunden(client):
+    skript = client.get("/anzeige.js")
+    seite = client.get("/").text
+
+    assert skript.status_code == 200
+    assert "javascript" in skript.headers["content-type"]
+    assert "uploadFehler" in skript.text
+    assert seite.index('<script src="/anzeige.js"></script>') < seite.index("<script>")

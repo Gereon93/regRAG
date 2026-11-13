@@ -194,15 +194,12 @@ def job_status(job_id: str):
 
 
 def _dokument_eintrag(md, stichtag):
-    """Prüft wie rag._quelle_metadata. Ein abgelehntes Sidecar darf die Liste nicht kippen: Das Dokument fehlt in der
-    Suche, steht hier aber weiter, als `metadaten_ungueltig` und ohne Felder."""
-    sidecar = md.with_suffix(".source.json")
+    """Liest und prüft wie rag._quelle_metadata. Ein abgelehntes Sidecar darf die Liste nicht kippen: Das Dokument fehlt
+    in der Suche, steht hier aber weiter, als `metadaten_ungueltig` und ohne Felder."""
     ungueltig = {"datei": md.name, "titel": md.stem, "gueltigkeit": gueltigkeit.METADATEN_UNGUELTIG}
     try:
-        daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
-    except ValueError:
-        return ungueltig
-    if not isinstance(daten, dict):
+        daten = gueltigkeit.lies_sidecar(md)
+    except gueltigkeit.MetadatenFehler:
         return ungueltig
     titel = daten.get("titel", md.stem)
     try:
@@ -247,3 +244,8 @@ def metriken():
 @app.get("/")
 def startseite():
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/anzeige.js")
+def anzeige_skript():
+    return FileResponse(STATIC / "anzeige.js", media_type="text/javascript")

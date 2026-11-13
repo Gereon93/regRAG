@@ -372,6 +372,7 @@
     <button type="submit" id="senden">Fragen</button>
   </form>
 </div>
+<script src="/anzeige.js"></script>
 <script>
 const log = document.getElementById('log');
 const form = document.getElementById('form');
@@ -500,7 +501,6 @@ const pdfFeld = document.getElementById('pdf');
 const uploadKnopf = document.getElementById('uploadKnopf');
 const uploadStatus = document.getElementById('uploadStatus');
 const gueltigkeitsFelder = { gueltig_ab: 'gueltigAb', gueltig_bis: 'gueltigBis', fassung: 'fassung' };
-const FELDNAMEN = { gueltig_ab: 'Gültig ab', gueltig_bis: 'Gültig bis', fassung: 'Fassung' };
 const STATUS_INTERVALL_MS = 2000;
 
 async function ladeDokumente() {
@@ -519,29 +519,12 @@ async function ladeDokumente() {
   }));
 }
 
-const GUELTIGKEIT = {
-  gueltig: ['gültig', 'ok'],
-  unbekannt: ['Gültigkeit unbekannt', ''],
-  noch_nicht_gueltig: ['noch nicht gültig', 'warnung'],
-  abgelaufen: ['abgelaufen', 'warnung'],
-  metadaten_ungueltig: ['Angaben ungültig — nicht durchsuchbar', 'warnung'],
-};
-
-function datumDe(iso) {
-  const [jahr, monat, tag] = iso.split('-');
-  return `${tag}.${monat}.${jahr}`;
-}
-
 function angaben(d) {
   const box = el('div', 'angaben');
-  const [text, klasse] = GUELTIGKEIT[d.gueltigkeit] || [d.gueltigkeit, 'warnung'];
-  box.appendChild(el('span', 'gk' + (klasse ? ' ' + klasse : ''), text));
-  if (d.gueltig_ab || d.gueltig_bis) {
-    const von = d.gueltig_ab ? datumDe(d.gueltig_ab) : '…';
-    const bis = d.gueltig_bis ? datumDe(d.gueltig_bis) : '…';
-    box.appendChild(el('span', null, `${von} – ${bis}`));
-  }
-  if (d.fassung) box.appendChild(el('span', null, 'Fassung: ' + d.fassung));
+  const { status, zeitraum, fassung } = Anzeige.gueltigkeitsAngaben(d);
+  box.appendChild(el('span', 'gk' + (status.klasse ? ' ' + status.klasse : ''), status.text));
+  if (zeitraum) box.appendChild(el('span', null, zeitraum));
+  if (fassung) box.appendChild(el('span', null, fassung));
   return box;
 }
 
@@ -557,13 +540,6 @@ async function entferne(dokument, entfernenKnopf) {
   }
   setzeStatus(dokument.titel + ' wurde entfernt.', 'fertig');
   await ladeDokumente();
-}
-
-function uploadFehler(status, detail) {
-  if (typeof detail !== 'string') return `Upload abgelehnt (HTTP ${status}).`;
-  if (status !== 422) return detail;
-  const lesbar = detail.replace(/gueltig_ab|gueltig_bis|fassung/g, (feld) => `„${FELDNAMEN[feld]}“`);
-  return 'Gültigkeit abgelehnt: ' + lesbar + ' Bitte korrigieren und die PDF erneut wählen.';
 }
 
 function setzeStatus(text, klasse) {
@@ -592,10 +568,9 @@ pdfFeld.addEventListener('change', async () => {
   if (!datei) return;
   const daten = new FormData();
   daten.append('datei', datei);
-  for (const [name, id] of Object.entries(gueltigkeitsFelder)) {
-    const wert = document.getElementById(id).value;
-    if (wert) daten.append(name, wert);
-  }
+  const werte = {};
+  for (const [name, id] of Object.entries(gueltigkeitsFelder)) werte[name] = document.getElementById(id).value;
+  for (const [name, wert] of Anzeige.gesetzteFelder(werte)) daten.append(name, wert);
   uploadKnopf.classList.add('aus');
   pdfFeld.disabled = true;
   setzeStatus('Wird hochgeladen …', 'laeuft');
@@ -604,7 +579,7 @@ pdfFeld.addEventListener('change', async () => {
   const antwort = await res.json().catch(() => ({}));
   pdfFeld.value = '';
   if (!res.ok) {
-    setzeStatus(uploadFehler(res.status, antwort.detail), 'fehler');
+    setzeStatus(Anzeige.uploadFehler(res.status, antwort.detail), 'fehler');
   } else {
     for (const id of Object.values(gueltigkeitsFelder)) document.getElementById(id).value = '';
     await verfolge(antwort.job);

@@ -102,3 +102,32 @@ def test_heute_berlin_nimmt_die_aktuelle_uhr_in_berliner_zeit(monkeypatch):
     monkeypatch.setattr(gueltigkeit, "datetime", FesteUhr)
 
     assert heute_berlin() == date(2026, 7, 1)
+
+
+def test_lies_sidecar_ohne_datei_ist_leer(tmp_path):
+    assert gueltigkeit.lies_sidecar(tmp_path / "a.md") == {}
+
+
+def test_lies_sidecar_liefert_das_objekt_unveraendert(tmp_path):
+    (tmp_path / "a.source.json").write_text('{"titel": "Ä", "fassung": " 2 "}', encoding="utf-8")
+
+    assert gueltigkeit.lies_sidecar(tmp_path / "a.md") == {"titel": "Ä", "fassung": " 2 "}
+
+
+@pytest.mark.parametrize(
+    "inhalt",
+    [b"{kaputt", b'["liste"]', b'"text"', '{"titel": "Ä"}'.encode("latin-1"), b"\xef\xbb\xbf{}"],
+    ids=["json", "liste", "string", "kein-utf8", "bom"],
+)
+def test_lies_sidecar_wirft_bei_jedem_lesefehler_metadatenfehler(tmp_path, inhalt):
+    (tmp_path / "a.source.json").write_bytes(inhalt)
+
+    with pytest.raises(MetadatenFehler):
+        gueltigkeit.lies_sidecar(tmp_path / "a.md")
+
+
+def test_lies_sidecar_wirft_metadatenfehler_wenn_die_datei_nicht_lesbar_ist(tmp_path):
+    (tmp_path / "a.source.json").mkdir()
+
+    with pytest.raises(MetadatenFehler):
+        gueltigkeit.lies_sidecar(tmp_path / "a.md")
