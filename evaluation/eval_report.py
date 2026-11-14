@@ -36,6 +36,7 @@ from manifest import (
     pruefe_ueberschreibbar,
     schreibe_manifest,
 )
+from retrieval import TOP_K, UeberabrufRetriever
 
 ZIEL_FALLZAHL = 200
 MANIFEST_VERZEICHNIS = Path(__file__).parent / "manifest"
@@ -311,10 +312,13 @@ def main(argv=None):
     if len(faelle) < ZIEL_FALLZAHL:
         print(f"WARNUNG: {len(faelle)} Fälle, Ziel sind >= {ZIEL_FALLZAHL}. Werte sind nicht belastbar.", file=sys.stderr)
     kosten = Kosten(config.KOSTEN_FALSCHANTWORT, config.KOSTEN_ESKALATION)
-    retriever = index.as_retriever(similarity_top_k=3)
+    stichtag = gueltigkeit.heute_berlin()
+    retriever = UeberabrufRetriever(index, TOP_K, config.UEBERABRUF_FAKTOR, uhr=lambda: stichtag)
     manifest = None
     if config.LAYA_URL:
-        ergebnis, manifest = erzeuge_laya_bericht(faelle, retriever, baue_laya_gate(), kosten, args.checkpoint_revision)
+        ergebnis, manifest = erzeuge_laya_bericht(
+            faelle, retriever, baue_laya_gate(), kosten, args.checkpoint_revision, stichtag=stichtag
+        )
         laya = ergebnis["laya"]
         if not normalisiere_revision(args.checkpoint_revision):
             print("Hinweis: ohne --checkpoint-revision wird kein Gate-Manifest geschrieben.", file=sys.stderr)
@@ -328,7 +332,7 @@ def main(argv=None):
         for warnung in laya["warnungen"]:
             print(f"WARNUNG (Laya): {warnung}", file=sys.stderr)
     else:
-        ergebnis = erzeuge_bericht(faelle, retriever, kosten)
+        ergebnis = erzeuge_bericht(faelle, retriever, kosten, stichtag=stichtag)
     if manifest:
         manifest_ziel(manifest, MANIFEST_VERZEICHNIS)
     datei = schreibe(ergebnis, config.EVAL_BERICHT_VERZEICHNIS)

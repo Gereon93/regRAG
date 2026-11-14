@@ -22,6 +22,19 @@ CHAT_MAX_PRO_MINUTE = int(os.getenv("REGRAG_CHAT_MAX_PRO_MINUTE", "10"))
 if CHAT_MAX_PRO_MINUTE < 1:
     raise ValueError("REGRAG_CHAT_MAX_PRO_MINUTE muss mindestens 1 sein.")
 
+
+def _ueberabruf_faktor(roh):
+    try:
+        faktor = int(roh)
+    except ValueError:
+        faktor = 0
+    if faktor < 1:
+        raise ValueError("REGRAG_UEBERABRUF_FAKTOR muss eine Ganzzahl >= 1 sein.")
+    return faktor
+
+
+UEBERABRUF_FAKTOR = _ueberabruf_faktor(os.getenv("REGRAG_UEBERABRUF_FAKTOR", "3"))
+
 LAYA_URL = os.getenv("REGRAG_LAYA_URL", "").strip()
 LAYA_API_KEY = os.getenv("REGRAG_LAYA_API_KEY", "")
 LAYA_TIMEOUT = float(os.getenv("REGRAG_LAYA_TIMEOUT", "30"))

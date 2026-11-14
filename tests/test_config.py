@@ -182,3 +182,15 @@ def test_ungueltige_konflikt_schwelle_faellt_beim_import_auf(geladen, monkeypatc
     with pytest.raises(ValueError, match="KONFLIKT_SCHWELLE"):
         geladen(REGRAG_LAYA_KONFLIKT_SCHWELLE=wert)
     monkeypatch.delenv("REGRAG_LAYA_KONFLIKT_SCHWELLE")
+
+
+def test_ueberabruf_faktor_hat_default_und_override(geladen):
+    assert geladen().UEBERABRUF_FAKTOR == 3
+    assert geladen(REGRAG_UEBERABRUF_FAKTOR="1").UEBERABRUF_FAKTOR == 1
+
+
+@pytest.mark.parametrize("wert", ["0", "-1", "abc", "1.5"])
+def test_ungueltiger_ueberabruf_faktor_faellt_beim_import_auf(geladen, monkeypatch, wert):
+    with pytest.raises(ValueError, match="UEBERABRUF_FAKTOR"):
+        geladen(REGRAG_UEBERABRUF_FAKTOR=wert)
+    monkeypatch.delenv("REGRAG_UEBERABRUF_FAKTOR")

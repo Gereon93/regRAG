@@ -219,6 +219,7 @@ Zwei Volumes: `chroma` trägt die Vektoren, `docs_md` den Korpus. Beide zusammen
 python -m evaluation.calibrate       # Score-Trennung über das Eval-Set (Diagnose, keine Schwellenwahl)
 python -m evaluation.run             # Guard-Entscheidungen (14/14) + Faithfulness
 python -m evaluation.befolgung       # Wie oft das lokale Modell das Markerformat einhält (LM Studio + Index)
+python -m evaluation.verdraengung    # Verdrängung durch abgelöste Fassungen, Überabruf, Abruflatenz (Index mit datierten Fassungen)
 python -m evaluation.baseline_pypdf  # zweiter Korpus: naive pypdf-Extraktion zum Vergleich
 ```
 
@@ -262,7 +263,7 @@ Im Container geht derselbe Lauf über `docker compose run --rm regrag python -m 
 | Kaltstart (Index bauen, 351k Zeichen) | 5:04 min lokal, 6:00 min im Container |
 | Warmstart (Index laden) | 12.2 s lokal, 31 s im Container (DORA + NIS2) |
 | Upload eines zweiten Dokuments (NIS2, 1.3 MB) bis `ready` | ~250 s — nur das neue Dokument wird embeddet |
-| Retrieval (`similarity_top_k=3`) | 0.5 s |
+| Retrieval (`similarity_top_k=3`, gemessen vor dem Überabruf; mit `3 × REGRAG_UEBERABRUF_FAKTOR` Kandidaten nicht gemessen) | 0.5 s |
 | Query-Embedding (CPU, 10 Threads, Median/p95; zwei Läufe) | 226–241 ms / 581–669 ms |
 | Query-Embedding (CPU, `OMP_NUM_THREADS=8`, Median/p95; zwei Läufe) | 179–180 ms / 502–526 ms |
 | Query-Embedding (lokal auf M4, MPS, Median/p95) | 28 ms / 52 ms |
