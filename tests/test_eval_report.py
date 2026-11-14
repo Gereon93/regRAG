@@ -313,7 +313,7 @@ def test_main_verdrahtet_kosten_und_retriever_aus_der_config(tmp_path, monkeypat
     eval_report.main([])
     bericht = json.loads(next((tmp_path / "reports").glob("bericht-*.json")).read_text())
     assert bericht["kosten"] == {"falschantwort": 7.0, "eskalation": 2.0}
-    assert top_k == [3]
+    assert top_k == [3 * config.UEBERABRUF_FAKTOR]
     assert set(bericht["kategorien"]) == {"k"}
 
 

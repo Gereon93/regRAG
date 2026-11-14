@@ -15,6 +15,7 @@ from evaluation.evalset import (
     lade_faelle,
     vorab_verweigert,
 )
+from retrieval import TOP_K, UeberabrufRetriever
 
 
 def _spanne(werte):
@@ -51,7 +52,8 @@ def main():
     faelle = lade_faelle(STANDARD_FAELLE)
     stichtag = gueltigkeit.heute_berlin()
     print(f"Stichtag: {stichtag.isoformat()}")
-    zeilen = hole_zeilen(faelle, index.as_retriever(similarity_top_k=3), stichtag)
+    retriever = UeberabrufRetriever(index, TOP_K, config.UEBERABRUF_FAKTOR, uhr=lambda: stichtag)
+    zeilen = hole_zeilen(faelle, retriever, stichtag)
     fragen = {f["id"]: f["frage"] for f in faelle}
     for z in sorted(zeilen, key=lambda z: -1.0 if z["top"] is None else z["top"], reverse=True):
         print(f"{_zahl(z['top'])}  {z['erwartet']:8s}  {z['kategorie']:16s}  {fragen[z['id']][:60]}")
