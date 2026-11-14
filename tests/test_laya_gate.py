@@ -429,3 +429,17 @@ def test_manifest_kaskade_bleibt_und_bekommt_den_konflikt_judge(tmp_path):
 
     assert [type(g) for g in gate.gates] == [*VORPRUEFUNG, LayaGate, LayaKonfliktGate]
     assert gate.gates[-1].laya.modell_streng is True
+
+
+def test_vorpruefung_ist_die_eine_reihenfolge_fuer_betrieb_und_messung():
+    from datetime import date
+
+    from gate import vorpruefung
+
+    tag = date(2026, 6, 15)
+    gates = vorpruefung(0.62, uhr=lambda: tag)
+
+    assert [type(g) for g in gates] == VORPRUEFUNG
+    assert gates[0].min_score == 0.62
+    assert gates[1].uhr() == tag
+    assert [type(g) for g in baue_gate(einstellungen()).gates] == [type(g) for g in gates]

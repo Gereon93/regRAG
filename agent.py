@@ -19,8 +19,9 @@ from gate import (
 from grounding import SYSTEM_PROMPT, baue_kontext, pruefe_antwort_und_eskaliere
 from laya import baue_gate
 from rag import index
+from retrieval import TOP_K, UeberabrufRetriever
 
-retriever = index.as_retriever(similarity_top_k=3)
+retriever = UeberabrufRetriever(index, top_k=TOP_K, faktor=config.UEBERABRUF_FAKTOR)
 gate = baue_gate(config)
 ESKALATIONS_GRENZEN = grenzen_aus(config)
 
@@ -61,7 +62,7 @@ def pruefe_grounding(frage, nodes, antwort, vorherige, stichtag=None):
 
 
 def retrieve(s):
-    s["treffer"] = retriever.retrieve(s["frage"])
+    s["treffer"] = retriever.retrieve(s["frage"], s.get("stichtag"))
     pruefung = pruefe(s["frage"], s["treffer"], s.get("stichtag"))
     s["nodes"] = pruefung.entscheidung.genutzte_nodes(s["treffer"])
     s["entscheidung"] = pruefung.entscheidung

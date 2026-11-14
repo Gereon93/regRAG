@@ -66,7 +66,8 @@ def _strom(gate, eskalationen):
 
     kontexte = []
     prompt = SimpleNamespace(format_messages=lambda **kw: kontexte.append(kw["kontext"]) or [])
-    retriever = SimpleNamespace(retrieve=lambda frage: treffer)
+    abrufe = []
+    retriever = SimpleNamespace(retrieve=lambda frage, stichtag=None: abrufe.append(stichtag) or treffer)
     stubs = {
         "rag": {},
         "convert": {"pdf_nach_markdown": lambda *a, **k: None},
@@ -99,7 +100,9 @@ def _strom(gate, eskalationen):
         return [json.loads(e.removeprefix("data: ")) for e in events]
 
     try:
-        yield SimpleNamespace(lauf=lauf, llm=llm, eskalationen=eskalationen, main=main, kontexte=kontexte)
+        yield SimpleNamespace(
+            lauf=lauf, llm=llm, eskalationen=eskalationen, main=main, kontexte=kontexte, abrufe=abrufe
+        )
     finally:
         for name, vorher in alt.items():
             if vorher is None:
@@ -665,3 +668,11 @@ def test_chat_lehnt_unsinnigen_stichtag_mit_422_ab(strom, stichtag):
     assert "stichtag" in antwort.text
     assert strom.llm.aufrufe == 0
     assert not strom.eskalationen.exists()
+
+
+def test_chat_gibt_den_stichtag_der_anfrage_an_den_retriever(korpus_strom):
+    with korpus_strom() as strom:
+        strom.lauf("Frage?", [node(0.8, **GUELTIG)], stichtag=date(2026, 6, 14))
+        strom.lauf("Frage?", [node(0.8, **GUELTIG)])
+
+        assert strom.abrufe == [date(2026, 6, 14), None]

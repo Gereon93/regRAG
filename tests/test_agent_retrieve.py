@@ -30,7 +30,7 @@ def test_retrieve_laesst_nur_die_genutzten_nodes_im_zustand(agent, monkeypatch):
     alt, neu = SimpleNamespace(), SimpleNamespace()
     entscheidung = GateDecision(Outcome.ANSWER, (), GateScores(), (neu,))
     monkeypatch.setattr(agent, "pruefe", lambda frage, nodes, stichtag=None: SimpleNamespace(entscheidung=entscheidung, vorgemerkt=False))
-    monkeypatch.setattr(agent, "retriever", SimpleNamespace(retrieve=lambda frage: [alt, neu]))
+    monkeypatch.setattr(agent, "retriever", SimpleNamespace(retrieve=lambda frage, stichtag=None: [alt, neu]))
 
     zustand = agent.retrieve({"frage": "f"})
 
@@ -42,7 +42,7 @@ def test_ground_eskaliert_mit_allen_abgerufenen_treffern(agent, monkeypatch):
     entscheidung = GateDecision(Outcome.ANSWER, (), GateScores(), (neu,))
     gesehen = []
     monkeypatch.setattr(agent, "pruefe", lambda frage, nodes, stichtag=None: SimpleNamespace(entscheidung=entscheidung, vorgemerkt=False))
-    monkeypatch.setattr(agent, "retriever", SimpleNamespace(retrieve=lambda frage: [alt, neu]))
+    monkeypatch.setattr(agent, "retriever", SimpleNamespace(retrieve=lambda frage, stichtag=None: [alt, neu]))
     monkeypatch.setattr(
         agent,
         "pruefe_grounding",
@@ -98,7 +98,7 @@ def _fassung(text, **gueltigkeit):
 def test_retrieve_und_ground_pruefen_mit_dem_stichtag_gegen_das_echte_gate(agent, monkeypatch):
     alt, neu = _fassung("alt", gueltig_bis="2025-01-16"), _fassung("neu", gueltig_ab="2025-01-17")
     monkeypatch.setattr(agent, "gate", Kaskade([GueltigkeitsGate(uhr=lambda: date(2026, 1, 1))]))
-    monkeypatch.setattr(agent, "retriever", SimpleNamespace(retrieve=lambda frage: [alt, neu]))
+    monkeypatch.setattr(agent, "retriever", SimpleNamespace(retrieve=lambda frage, stichtag=None: [alt, neu]))
 
     zustand = agent.retrieve({"frage": "f", "stichtag": date(2024, 6, 1)})
     zustand.update(antwort="Ohne Beleg.", llm_fehler=False)
@@ -108,3 +108,22 @@ def test_retrieve_und_ground_pruefen_mit_dem_stichtag_gegen_das_echte_gate(agent
     satz = json.loads(Path(config.ESKALATION_DATEI).read_text(encoding="utf-8"))
     assert satz["reasons"] == ["UNGROUNDED_CLAIM"]
     assert satz["stichtag"] == "2024-06-01"
+
+
+def test_retriever_holt_mit_ueberabruf_und_kuerzt_auf_drei(agent):
+    import retrieval
+
+    assert isinstance(agent.retriever, retrieval.UeberabrufRetriever)
+    assert agent.retriever.top_k == 3
+    sys.modules["rag"].index.as_retriever.assert_called_once_with(similarity_top_k=3 * config.UEBERABRUF_FAKTOR)
+
+
+def test_retrieve_gibt_den_stichtag_der_anfrage_an_den_retriever(agent, monkeypatch):
+    abrufe = []
+    retriever = SimpleNamespace(retrieve=lambda frage, stichtag=None: abrufe.append(stichtag) or [])
+    monkeypatch.setattr(agent, "retriever", retriever)
+
+    agent.retrieve({"frage": "f", "stichtag": date(2024, 6, 1)})
+    agent.retrieve({"frage": "f"})
+
+    assert abrufe == [date(2024, 6, 1), None]

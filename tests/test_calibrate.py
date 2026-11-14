@@ -81,3 +81,28 @@ def test_diagnose_trennt_vorab_verweigerte_von_faellen_ohne_treffer():
     d = diagnose(zeilen, KOSTEN)
     assert d["ohne_treffer"] == 1
     assert d["vorab_verweigert"] == {"OUTDATED_SOURCE": 1, "AMBIGUOUS_VERSION": 1}
+
+
+def test_main_misst_mit_demselben_ueberabruf_wie_der_betrieb(monkeypatch, capsys):
+    """Verdrängte Fälle sieht die Diagnose wie das Gate: mit Überabruf am Stichtag des Laufs (#53)."""
+    faelle = [{"id": "a", "frage": "A?", "erwartet": "answer", "segment": "verordnung", "kategorie": "beantwortbar"}]
+    alt = {"gueltig_bis": "2026-06-14", "quelle": "Q", "file_name": "alt.md"}
+    neu = {"gueltig_ab": "2026-06-15", "quelle": "Q", "file_name": "neu.md"}
+    kandidaten = [SimpleNamespace(score=0.9 - i / 100, metadata=alt) for i in range(3)]
+    kandidaten.append(SimpleNamespace(score=0.7, metadata=neu))
+    top_k = []
+    index = SimpleNamespace(
+        as_retriever=lambda similarity_top_k: top_k.append(similarity_top_k)
+        or SimpleNamespace(retrieve=lambda frage: kandidaten[:similarity_top_k])
+    )
+    monkeypatch.setitem(sys.modules, "rag", SimpleNamespace(index=index))
+    monkeypatch.setattr(calibrate, "lade_faelle", lambda pfad: faelle)
+    monkeypatch.setattr(config, "UEBERABRUF_FAKTOR", 3)
+    monkeypatch.setattr(gueltigkeit, "heute_berlin", lambda: date(2026, 6, 15))
+
+    calibrate.main()
+
+    assert top_k == [9]
+    out = capsys.readouterr().out
+    assert "0.700  answer" in out
+    assert "Vorab verweigert" not in out

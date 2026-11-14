@@ -86,7 +86,7 @@ def _sse(obj):
 
 
 async def _antwort_strom(frage, stichtag=None):
-    treffer = retriever.retrieve(frage)
+    treffer = retriever.retrieve(frage, stichtag)
 
     pruefung = await asyncio.to_thread(pruefe, frage, treffer, stichtag)
     nodes = pruefung.entscheidung.genutzte_nodes(treffer)
