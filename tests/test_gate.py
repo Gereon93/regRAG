@@ -263,9 +263,11 @@ class FesterGate:
     def __init__(self, entscheidung):
         self.entscheidung = entscheidung
         self.aufrufe = 0
+        self.stichtag = None
 
-    def entscheide(self, frage, nodes):
+    def entscheide(self, frage, nodes, stichtag=None):
         self.aufrufe += 1
+        self.stichtag = stichtag
         return self.entscheidung
 
 
@@ -770,7 +772,7 @@ class SiehtNodes:
         self.entscheidung = entscheidung
         self.gesehen = None
 
-    def entscheide(self, frage, nodes):
+    def entscheide(self, frage, nodes, stichtag=None):
         self.gesehen = nodes
         return self.entscheidung
 
@@ -903,3 +905,60 @@ def test_gemischte_reasons_erscheinen_generisch_in_den_metriken(tmp_path, monkey
     entscheide_und_eskaliere(gueltigkeits_gate(), tmp_path / "e.jsonl", "f", [fassung(**ABGELAUFEN)])
 
     assert metrics.METRIKEN.schnappschuss()["eskalationen_nach_reason"] == {"OUTDATED_SOURCE": 1}
+
+
+def _nie():
+    raise AssertionError("Mit Stichtag aus der Anfrage darf die Uhr nicht gefragt werden.")
+
+
+def test_stichtag_der_anfrage_ersetzt_die_uhr():
+    alt = fassung(gueltig_bis="2025-01-16")
+
+    entscheidung = GueltigkeitsGate(uhr=_nie).entscheide("f", [alt], stichtag=date(2025, 1, 16))
+
+    assert entscheidung.outcome is Outcome.ANSWER
+
+
+def test_stichtag_der_anfrage_waehlt_die_damalige_fassung():
+    alt, neu = fassung(gueltig_bis="2025-01-16"), fassung(file_name="b.md", gueltig_ab="2025-01-17")
+
+    damals = gueltigkeits_gate().entscheide("f", [alt, neu], stichtag=date(2024, 6, 1))
+    heute = gueltigkeits_gate().entscheide("f", [alt, neu])
+
+    assert damals.evidenz == (alt,)
+    assert heute.evidenz == (neu,)
+
+
+def test_kaskade_reicht_den_stichtag_an_jeden_gate():
+    erster, zweiter = FesterGate(ANTWORT), FesterGate(ANTWORT)
+
+    Kaskade([erster, zweiter]).entscheide("f", [], stichtag=date(2024, 6, 1))
+
+    assert erster.stichtag == zweiter.stichtag == date(2024, 6, 1)
+
+
+def test_echte_kaskade_nimmt_den_stichtag_an():
+    alt = fassung(gueltig_bis="2025-01-16")
+
+    assert echte_kaskade().entscheide("f", [alt]).reasons == (AbstainReason.OUTDATED_SOURCE,)
+    assert echte_kaskade().entscheide("f", [alt], stichtag=date(2025, 1, 16)).outcome is Outcome.ANSWER
+
+
+def test_datensatz_traegt_den_stichtag_der_anfrage():
+    alt = fassung(gueltig_bis="2025-01-16")
+    entscheidung = GateDecision(Outcome.ABSTAIN, (AbstainReason.NOT_ANSWERABLE,), GateScores())
+
+    satz = eskalationsdatensatz("f", [alt], entscheidung, JETZT, stichtag=date(2025, 1, 16))
+
+    assert satz["stichtag"] == "2025-01-16"
+    assert satz["evidenz"][0]["gueltigkeit"] == "gueltig"
+
+
+def test_entscheide_und_eskaliere_reicht_den_stichtag_an_gate_und_datensatz(tmp_path):
+    gate = FesterGate(abstain_entscheidung(AbstainReason.NOT_ANSWERABLE))
+    ziel = tmp_path / "e.jsonl"
+
+    entscheide_und_eskaliere(gate, ziel, "f", [], stichtag=date(2024, 6, 1))
+
+    assert gate.stichtag == date(2024, 6, 1)
+    assert json.loads(ziel.read_text(encoding="utf-8"))["stichtag"] == "2024-06-01"

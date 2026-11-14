@@ -1,3 +1,5 @@
+import argparse
+from datetime import date
 from typing import TypedDict
 
 import openai
@@ -6,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 import config
+import gueltigkeit
 from gate import (
     GateDecision,
     abstain_antwort,
@@ -31,8 +34,12 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 
-class S(TypedDict):
+BEISPIEL_FRAGE = "Welche Anforderungen stellt DORA an das IKT-Risikomanagement?"
+
+
+class S(TypedDict, total=False):
     frage: str
+    stichtag: date | None
     treffer: list
     nodes: list
     entscheidung: GateDecision
@@ -41,19 +48,21 @@ class S(TypedDict):
     llm_fehler: bool
 
 
-def pruefe(frage, nodes):
-    return entscheide_und_eskaliere(gate, config.ESKALATION_DATEI, frage, nodes, ESKALATIONS_GRENZEN)
+def pruefe(frage, nodes, stichtag=None):
+    return entscheide_und_eskaliere(
+        gate, config.ESKALATION_DATEI, frage, nodes, ESKALATIONS_GRENZEN, stichtag=stichtag
+    )
 
 
-def pruefe_grounding(frage, nodes, antwort, vorherige):
+def pruefe_grounding(frage, nodes, antwort, vorherige, stichtag=None):
     return pruefe_antwort_und_eskaliere(
-        config.ESKALATION_DATEI, frage, nodes, antwort, vorherige, ESKALATIONS_GRENZEN
+        config.ESKALATION_DATEI, frage, nodes, antwort, vorherige, ESKALATIONS_GRENZEN, stichtag=stichtag
     )
 
 
 def retrieve(s):
     s["treffer"] = retriever.retrieve(s["frage"])
-    pruefung = pruefe(s["frage"], s["treffer"])
+    pruefung = pruefe(s["frage"], s["treffer"], s.get("stichtag"))
     s["nodes"] = pruefung.entscheidung.genutzte_nodes(s["treffer"])
     s["entscheidung"] = pruefung.entscheidung
     s["vorgemerkt"] = pruefung.vorgemerkt
@@ -84,7 +93,7 @@ def answer(s):
 def ground(s):
     if s["llm_fehler"]:
         return s
-    pruefung = pruefe_grounding(s["frage"], s["treffer"], s["antwort"], s["entscheidung"])
+    pruefung = pruefe_grounding(s["frage"], s["treffer"], s["antwort"], s["entscheidung"], s.get("stichtag"))
     if pruefung.verweigert:
         s["entscheidung"] = pruefung.entscheidung
         s["vorgemerkt"] = pruefung.vorgemerkt
@@ -109,10 +118,34 @@ def _baue_graph():
 
 app = _baue_graph()
 
-if __name__ == "__main__":
+
+def _stichtag(wert):
+    try:
+        return gueltigkeit.parse_datum(wert, "--stichtag")
+    except gueltigkeit.MetadatenFehler as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+
+
+def lies_argumente(argv=None):
+    parser = argparse.ArgumentParser(description="Eine Frage an den Korpus, mit Abstain-Pfad.")
+    parser.add_argument("frage", nargs="?", default=BEISPIEL_FRAGE)
+    parser.add_argument(
+        "--stichtag", type=_stichtag, default=None, help="YYYY-MM-DD; Gültigkeit an diesem Tag statt heute (ADR 0015)"
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    argumente = lies_argumente(argv)
     aktiviere_score_log()
-    out = app.invoke({"frage": "Welche Anforderungen stellt DORA an das IKT-Risikomanagement?"})
+    out = app.invoke({"frage": argumente.frage, "stichtag": argumente.stichtag})
+    if argumente.stichtag:
+        print(f"Stichtag: {argumente.stichtag.isoformat()}")
     print(out["antwort"])
     print("\n--- Quellen ---")
     for i, n in enumerate(out["nodes"], start=1):
         print(f"[{i}]", round(n.score, 2), n.metadata.get("file_name"))
+
+
+if __name__ == "__main__":
+    main()

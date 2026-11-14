@@ -6,15 +6,17 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
+from datetime import date
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import config
 import dokumente
+import gueltigkeit
 import metrics
 import rag
 from agent import llm, prompt, pruefe, pruefe_grounding, retriever
@@ -59,6 +61,13 @@ KEIN_JOBSTART_WAEHREND_GELOESCHT_WIRD = threading.Lock()
 
 class Frage(BaseModel):
     frage: str = Field(min_length=1, max_length=MAX_FRAGE_ZEICHEN)
+    stichtag: date | None = None
+
+    @field_validator("stichtag", mode="before")
+    @classmethod
+    def _nur_iso_datum(cls, wert):
+        """Wie die Sidecar-Felder streng `YYYY-MM-DD`; Pydantic nähme sonst auch Zeitstempel an (ADR 0015)."""
+        return None if wert is None else gueltigkeit.parse_datum(wert, "stichtag")
 
 
 def _quellen(nodes):
@@ -76,10 +85,10 @@ def _sse(obj):
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
-async def _antwort_strom(frage):
+async def _antwort_strom(frage, stichtag=None):
     treffer = retriever.retrieve(frage)
 
-    pruefung = await asyncio.to_thread(pruefe, frage, treffer)
+    pruefung = await asyncio.to_thread(pruefe, frage, treffer, stichtag)
     nodes = pruefung.entscheidung.genutzte_nodes(treffer)
     quellen = _quellen(nodes)
     if pruefung.verweigert:
@@ -92,7 +101,7 @@ async def _antwort_strom(frage):
     try:
         nachrichten = prompt.format_messages(kontext=baue_kontext(nodes), frage=frage)
         antwort = "".join([c.content async for c in llm.astream(nachrichten) if c.content])
-        geprueft = await asyncio.to_thread(pruefe_grounding, frage, treffer, antwort, pruefung.entscheidung)
+        geprueft = await asyncio.to_thread(pruefe_grounding, frage, treffer, antwort, pruefung.entscheidung, stichtag)
     except Exception as e:
         log.exception("Antwort konnte nicht erzeugt oder geprüft werden")
         yield _sse({"type": "error", "text": f"Antwort konnte nicht erzeugt werden ({type(e).__name__}) — bitte erneut versuchen."})
@@ -108,7 +117,7 @@ async def _antwort_strom(frage):
 
 @app.post("/chat")
 async def chat(f: Frage):
-    return StreamingResponse(_antwort_strom(f.frage), media_type="text/event-stream")
+    return StreamingResponse(_antwort_strom(f.frage, f.stichtag), media_type="text/event-stream")
 
 
 def _entferne_fragmente(md_pfad):

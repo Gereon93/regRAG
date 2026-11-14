@@ -34,6 +34,17 @@ schon in den Fingerprint ein ([0006](0006-inkrementeller-index-merge-statt-voll-
 - Stichtag ist heute in Europe/Berlin, je Entscheidung genau einmal bestimmt, nie prozessweit fixiert. `BERLIN` wird beim
   Import gebaut, damit fehlende Zeitzonendaten den Start brechen, nicht die Anfrage; `tzdata` steht deshalb in
   `requirements.txt`.
+- **Stichtag pro Anfrage** ([#50](../../../../issues/50)): Der Port ist `entscheide(frage, nodes, stichtag=None)`, `None`
+  heißt heute. Jede Gate-Implementierung nimmt das Argument an, nur `GueltigkeitsGate` nutzt es, `Kaskade` reicht es
+  positional an jeden Gate weiter (wer es nicht braucht, nennt es `_stichtag`). `entscheide_und_eskaliere` und `pruefe_antwort_und_eskaliere` geben es an Gate und Datensatz;
+  `stichtag` im Eskalationsdatensatz ist dann der angefragte Tag, der Gültigkeitsstatus der Evidenz gilt für ihn.
+  Eingang: `POST /chat` Feld `stichtag`, CLI `python agent.py "Frage" --stichtag YYYY-MM-DD`, Datumsfeld in der UI.
+  Validiert wird mit `gueltigkeit.parse_datum` wie die Sidecar-Felder, Unsinn ist 422 bzw. Exitcode 2. Künftige Tage
+  sind zulässig ("was gilt ab 2027"). Ein optionales Argument statt eines Kontextobjekts, weil nur ein Wert durchgereicht
+  wird und der Default das bisherige Verhalten exakt erhält.
+- **Kein Stichtag aus dem Fragetext:** Welches Datum einer Frage der Stichtag ist, ist oft nicht entscheidbar ("seit",
+  "bis", zwei Daten, nur ein Jahr), und ein stiller Fehlgriff wählt die falsche Fassung. Der Stichtag kommt nur explizit;
+  Erkennung mit sichtbarer Rückmeldung ist [#63](../../../../issues/63).
 - `gueltig` ist nutzbar. `unbekannt` ist nutzbar, **gilt aber nicht als gültige Fassung.** Liegt ein nicht nutzbarer
   Treffer vor und kein `gueltig`-Treffer, ist die Entscheidung `OUTDATED_SOURCE`, auch neben `unbekannt`-Treffern. Das
   kostet Antworten und ist gewollt (Falschantwort ≫ Eskalation). Liegen nur nutzbare Treffer vor, läuft alles wie vor #30.
@@ -95,8 +106,8 @@ für diese Norm erzwingen. Das verweigert nur und ist nicht schlimmer als die of
 
 ## Konsequenzen
 
-- **Frühere Rechtslage:** Fragen danach werden aus der heute gültigen Fassung beantwortet
-  ([#50](../../../../issues/50)).
+- **Frühere Rechtslage:** Nur mit explizitem Stichtag (#50). Ohne ihn wird eine Frage nach einem früheren Stand aus der
+  heute gültigen Fassung beantwortet, auch wenn sie ein Datum nennt ([#63](../../../../issues/63)).
 - Ohne gepflegte `gueltig_ab`/`gueltig_bis` bleibt alles `unbekannt`, der Filter wirkt nie. `unbekannt` ist kein Beleg für
   Aktualität.
 - **Verdrängung:** Abgelöste und gültige Fassung sind fast textgleich. Bei `k=3` können alle Treffer aus der abgelösten
@@ -115,4 +126,5 @@ für diese Norm erzwingen. Das verweigert nur und ist nicht schlimmer als die of
 ## Qodana: `PyTypeHintsInspection` in `gate.py`
 
 Der Report zeigt `SDKs.json` mit leeren `roots`: Der Linter kennt kein Python 3.12 und meldet `float | None` in den
-Dataclass-Feldern als ungültig. Die Inspektion ist deshalb nur für `gate.py` abgeschaltet (`qodana.yaml`), nicht global.
+Dataclass-Feldern als ungültig. Die Inspektion ist deshalb nur für `gate.py` abgeschaltet (`qodana.yaml`), nicht global; seit #50 auch für `agent.py` und
+`web/main.py`, die mit `date | None` denselben Fehlalarm auslösen.
