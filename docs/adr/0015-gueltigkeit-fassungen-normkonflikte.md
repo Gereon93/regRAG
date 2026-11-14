@@ -74,8 +74,9 @@ Score, Gültigkeit, Score, Fassung, Laya `answerable`, Konflikt-Judge.
 ### Überabruf gegen Verdrängung ([#53](../../../../issues/53))
 
 - `agent.retriever` ist ein `retrieval.UeberabrufRetriever`: Er holt `top_k × REGRAG_UEBERABRUF_FAKTOR`
-  Kandidaten (`top_k=3`), `gueltigkeit.waehle_treffer` wählt daraus. `/chat` und `evaluation/run.py` nutzen denselben
-  Retriever.
+  Kandidaten (`retrieval.TOP_K=3`), `gueltigkeit.waehle_treffer` wählt daraus. `/chat`, die CLI und
+  `evaluation/run.py` nutzen denselben Retriever, `evaluation.eval_report` und `evaluation.calibrate` denselben Typ:
+  Report und Diagnose sehen die Evidenz, die das Gate sieht.
 - **Überabruf greift nur bei Verdrängung**, also wenn im Top-k ein nicht nutzbarer Treffer und kein gültiger liegt
   (heute `OUTDATED_SOURCE`). Dann gilt das kürzeste Präfix der Kandidaten mit `top_k` nutzbaren Treffern; die nicht
   nutzbaren davor bleiben drin. Sonst bleibt es exakt beim Top-k. Ein Top-k mit gültiger Fassung neben einer
@@ -96,11 +97,14 @@ Score, Gültigkeit, Score, Fassung, Laya `answerable`, Konflikt-Judge.
   (Default: Eval-Set), wie oft das Top-k verdrängt ist, wie oft die gültige Fassung unter den Kandidaten und wie oft in
   der Auswahl liegt; dazu Entscheidungswechsel, besten nutzbaren Score vorher und nachher und die Abruflatenz mit
   `top_k` und mit `top_k × Faktor`. Vorher und nachher stammen aus demselben Kandidatenabruf, damit die ANN-Näherung
-  nicht als Effekt zählt. Der Gate läuft ohne Laya, deterministisch und am übergebenen Stichtag.
-- Der Retriever bestimmt den Stichtag selbst, getrennt vom `GueltigkeitsGate`. Um Mitternacht können beide um einen
-  Tag abweichen; dann wählt der Retriever nach dem Vortag.
-- Laya sieht neue Evidenz nur in Fällen, die heute als `OUTDATED_SOURCE` nie bis Laya kommen. Auf solchen Fällen ist
-  nichts kalibriert (#54).
+  nicht als Effekt zählt; die Latenzabrufe wechseln je Frage die Reihenfolge, beide enthalten das Query-Embedding. Der
+  Gate läuft ohne Laya, deterministisch und am übergebenen Stichtag.
+- **Stichtag:** Der Retriever wählt am Stichtag der Anfrage (`/chat`, CLI `--stichtag`, [#50](../../../../issues/50)),
+  denselben bekommt das Gate. Ohne Stichtag bestimmen Retriever und `GueltigkeitsGate` "heute" je für sich; um
+  Mitternacht können beide um einen Tag abweichen, dann wählt der Retriever nach dem Vortag. Report und Diagnose legen
+  den Stichtag einmal je Lauf fest und geben ihn beiden ([#70](../../../../issues/70)).
+- Laya sieht neue Evidenz nur in Fällen, die ohne Überabruf `OUTDATED_SOURCE` wären. Der Laya-Report nutzt denselben
+  Retriever; ob es solche Fälle im Eval-Set gibt, hängt an datierten Fassungen im Index.
 - **Verworfen: Chroma-`where`-Filter.** Er machte abgelöste Treffer unsichtbar: `OUTDATED_SOURCE` wäre nicht mehr
   erkennbar, der Prüfer sähe die Fundstelle nicht, und eine Frage nur zur Altfassung würde aus fremden Treffern
   beantwortet (das Risiko aus [#58](../../../../issues/58)). Fehlende Felder (nie `None`) sind in `where` zudem nicht

@@ -1,12 +1,7 @@
-"""Verdrängung durch abgelöste Fassungen messen (Issue #53, ADR 0015).
+"""Verdrängung durch abgelöste Fassungen messen (Issue #53).
 
 Aufruf: python -m evaluation.verdraengung [--faktor N] [--stichtag YYYY-MM-DD] [--fragen DATEI]
-
-Je Frage ein Kandidatenabruf mit `top_k * faktor`: "vorher" ist dessen Top-k, "nachher" die Auswahl von
-`gueltigkeit.waehle_treffer`. Beide Seiten sehen also dieselben Kandidaten. Ein zweiter Abruf mit `top_k` misst nur
-die Latenz (Reihenfolge wechselt je Frage, beide enthalten das Query-Embedding) und meldet, ob sein Top-k abweicht.
-Der Gate ist `gate.vorpruefung`, also `baue_gate` ohne Laya, damit die Messung deterministisch ist und am übergebenen Stichtag läuft.
-Ohne datierte Fassungen im Index bleibt `verdraengt` bei 0.
+Was gemessen wird und warum so: ADR 0015, Abschnitt "Überabruf gegen Verdrängung".
 """
 
 import argparse
@@ -21,13 +16,13 @@ import gueltigkeit
 from evaluation.embedding_latency import nearest_rank_p95
 from evaluation.evalset import STANDARD_FAELLE, lade_faelle
 from gate import Kaskade, vorpruefung
+from retrieval import TOP_K
 
-TOP_K_WIE_AGENT = 3
 FLAGS = ("verdraengt", "gueltige_unter_kandidaten", "gueltige_in_auswahl", "top_k_abweichend")
 
 
 def baue_messgate(min_score, stichtag):
-    """Die Vorprüfung aus `laya.baue_gate`, ohne Laya und fest am Stichtag."""
+    """Die Vorprüfung aus `laya.baue_gate` (`gate.vorpruefung`), ohne Laya und fest am Stichtag."""
     return Kaskade(vorpruefung(min_score, uhr=lambda: stichtag))
 
 
@@ -134,9 +129,9 @@ def main(argv=None):
     fragen = _lies_fragen(args.fragen) if args.fragen else [f["frage"] for f in lade_faelle(STANDARD_FAELLE)]
     bericht = miss(
         fragen,
-        index.as_retriever(similarity_top_k=TOP_K_WIE_AGENT),
-        index.as_retriever(similarity_top_k=TOP_K_WIE_AGENT * args.faktor),
-        TOP_K_WIE_AGENT,
+        index.as_retriever(similarity_top_k=TOP_K),
+        index.as_retriever(similarity_top_k=TOP_K * args.faktor),
+        TOP_K,
         baue_messgate(config.MIN_RETRIEVAL_SCORE, stichtag),
         stichtag,
     )

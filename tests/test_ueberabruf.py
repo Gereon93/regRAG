@@ -78,8 +78,8 @@ def _gate(min_score=MIN_SCORE):
     return baue_messgate(min_score, STICHTAG)
 
 
-def _ueberabruf(index=None, faktor=3):
-    return retrieval.UeberabrufRetriever(index or FixtureIndex(), top_k=3, faktor=faktor, uhr=lambda: STICHTAG)
+def _ueberabruf(index=None, faktor=3, uhr=lambda: STICHTAG):
+    return retrieval.UeberabrufRetriever(index or FixtureIndex(), top_k=3, faktor=faktor, uhr=uhr)
 
 
 def n(score, **metadata):
@@ -290,3 +290,26 @@ def test_messung_gueltige_hinter_dem_k_ten_nutzbaren_ist_nicht_behoben():
     zeile = bericht["zeilen"][0]
     assert (zeile["verdraengt"], zeile["gueltige_unter_kandidaten"], zeile["gueltige_in_auswahl"]) == (True, True, False)
     assert zeile["nachher"]["reasons"] == ["OUTDATED_SOURCE"]
+
+
+def test_anfrage_stichtag_in_der_vergangenheit_behebt_verdraengung_die_heute_nicht_besteht():
+    """Die gut passende Fassung gilt erst ab heute; am vergangenen Stichtag verdrängt sie die damals gültige (#70)."""
+    neu_vorn = tuple((text, NEU) for text, _ in ALTE_FASSUNG)
+    alt_hinten = tuple((text, ALT) for text, _ in NEUE_FASSUNG)
+    retriever = _ueberabruf(FixtureIndex(neu_vorn + alt_hinten + FREMDER_TEXT))
+    damals = date(2026, 6, 14)
+
+    heute = retriever.retrieve(FRAGE)
+    am_stichtag = retriever.retrieve(FRAGE, damals)
+
+    assert len(heute) == 3
+    entscheidung = baue_messgate(MIN_SCORE, damals).entscheide(FRAGE, am_stichtag)
+    assert entscheidung.outcome is Outcome.ANSWER
+    assert {x.metadata["file_name"] for x in entscheidung.genutzte_nodes(am_stichtag)} == {"alt.md"}
+
+
+def test_ohne_anfrage_stichtag_gilt_die_uhr():
+    retriever = _ueberabruf(uhr=lambda: date(2026, 6, 14))
+
+    assert len(retriever.retrieve(FRAGE)) == 3
+    assert len(retriever.retrieve(FRAGE, None)) == 3
