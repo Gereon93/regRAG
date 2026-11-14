@@ -24,3 +24,12 @@ jobs:
 
       - name: Tests
         run: python -m pytest -q tests
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci
+
+      - name: Web-UI (Labels, Anzeige-Logik)
+        run: npm run check:a11y && npm run test:ui

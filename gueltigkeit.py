@@ -1,5 +1,6 @@
 """Gültigkeitsmetadaten und Stichtag (ADR 0015) — nur Standardbibliothek, damit die CI es testen kann."""
 
+import json
 import re
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
@@ -53,6 +54,18 @@ def normalisiere(roh):
     if roh.get("fassung") is not None:
         felder["fassung"] = _pruefe_fassung(roh["fassung"])
     return felder
+
+
+def lies_sidecar(md_pfad):
+    """Das eine Lesen des Sidecars für Index und Dokumentliste; jeder Lesefehler ist ein MetadatenFehler."""
+    sidecar = md_pfad.with_suffix(".source.json")
+    try:
+        daten = json.loads(sidecar.read_text(encoding="utf-8")) if sidecar.exists() else {}
+    except (OSError, ValueError) as e:
+        raise MetadatenFehler(f"Sidecar nicht lesbar: {e}") from e
+    if not isinstance(daten, dict):
+        raise MetadatenFehler("Sidecar ist kein Objekt.")
+    return daten
 
 
 def status_von(metadata, stichtag):

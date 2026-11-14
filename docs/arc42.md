@@ -112,7 +112,7 @@ graph TD
 | `convert.py` | PDF nach Markdown wandeln (`pymupdf4llm`), Quellen-Sidecar schreiben | Embeddings, LLM |
 | `rag.py` | Embedding-Modell, Index laden, Dokumente inkrementell mergen | Den Ablauf, das LLM |
 | `agent.py` | Ablaufsteuerung, Schwellwert als bedingte Kante, Prompt, LLM-Aufruf | Wie retrievt wird |
-| `web/main.py` | HTTP: Chat mit SSE (Antwort gepuffert bis nach der Prüfung), Upload, Job-Status, Dokumentliste | Wie indexiert oder retrievt wird |
+| `web/main.py` | HTTP: Chat mit SSE (Antwort gepuffert bis nach der Prüfung), Upload, Job-Status, Dokumentliste mit Gültigkeitsstatus | Wie indexiert oder retrievt wird |
 | `grounding.py` | Marker-Prompt, Zerlegung in Aussagen, `zahlen_judge`, Verwerfen nach der Generierung ([ADR 0014](adr/0014-claim-level-grounding.md)); im Graphen der Knoten `ground` | Retrieval, LLM-Aufruf |
 | `gueltigkeit.py` | Sidecar-Felder, Validierung, Status am Stichtag ([ADR 0015](adr/0015-gueltigkeit-fassungen-normkonflikte.md)) | Gate-Entscheidung, Retrieval |
 | `gate.py`, `laya.py`, `manifest.py`, `metrics.py` | Gate-Port, Score-Guard, Laya-Adapter mit Segmentschwellen und Manifest, prozesslokale Eskalationszähler für `GET /metrics` ([ADR 0013](adr/0013-laya-kalibrierung-segmentschwellen-manifest.md)) | Retrieval, LLM |
