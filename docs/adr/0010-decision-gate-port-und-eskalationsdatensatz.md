@@ -62,14 +62,38 @@ Fragen können personenbezogen sein; die Datei ist deshalb in Größe und Alter 
 - **Archiv-Erkennung:** Nur Namen im Muster `<name>.<YYYYmmddTHHMMSSffffffZ>.<pid>` zählen. Fremde Dateien
   (`.bak`, Editor-Kopien) bleiben unangetastet. Sonderdateien wie `/dev/null` (Evaluation) werden nie rotiert.
 - **Zeitstempel:** Ein Zeitstempel ohne Zeitzone gilt als UTC; ein unlesbarer Datensatz verhindert nie den Append.
-- **Mehrere Prozesse:** Innerhalb eines Prozesses serialisiert ein Lock Rotation und Append. Mehrere
-  Prozesse (z. B. CLI parallel zum Server) können gleichzeitig rotieren. Das ist akzeptiert: keine Zeile
-  geht verloren, im ungünstigen Fall entsteht eine früh rotierte kleine Datei oder ein geloggter Rotationsfehler.
-  Ein `flock` wäre nur auf POSIX verfügbar und brächte eine zusätzliche Datei im Volume.
+- **Mehrere Prozesse (Issue #46):** Rotation, Löschen von Archiven und Open+Write einer Zeile laufen unter
+  einer Sperre, die bis nach `os.write` gehalten wird: im Prozess ein `threading.Lock`, über Prozesse
+  `fcntl.flock` auf der Sperrdatei `.<name>.lock` (z. B. `chroma/.eskalationen.jsonl.lock`). Vorher konnte
+  ein Prozess die Datei rotieren und das Archiv löschen, während ein anderer schon geöffnet hatte; dessen
+  Zeile landete im gelöschten Inode, gemeldet wurde trotzdem "vorgemerkt".
+  - *Warum nicht ohne Sperre:* Nur rotieren und erst in einem späteren Aufruf löschen verschiebt den Race nur
+    (ein dritter Aufruf löscht, während der langsame Schreiber noch offen hat). Nach dem Write per
+    `st_nlink == 0` prüfen und neu schreiben erkennt ein späteres Löschen nicht und erzeugt Duplikate.
+  - *Sperrdatei:* versteckt, leer, Modus `0600`, wird nie gelöscht (das Löschen wäre selbst ein Race).
+    Sie trifft weder das Archivmuster noch den Löschweg unten. Angelegt mit `O_NOFOLLOW`: ein Symlink an
+    ihrer Stelle lässt das Schreiben scheitern, statt fremde Dateien zu öffnen.
+  - *Wartezeit:* Hält ein anderer Prozess die Sperre länger als `gate.SPERR_WARTEZEIT_S` (5 s, z. B. eine per
+    Debugger angehaltene CLI), scheitert der Aufruf: geloggt, keine Vormerkung, die Verweigerung bleibt.
+    Die Frist gilt je Aufruf ab dem Prozess-Lock: Threads, die dahinter anstehen, warten im schlechtesten
+    Fall ein Vielfaches davon, aber nicht unbegrenzt.
+  - *Plattform:* `flock` gibt es nur auf POSIX (Linux-Container, macOS). Ohne `fcntl` (Windows) bleibt nur die
+    prozesslokale Sperre und der Mehrprozess-Race wie vor #46; das ist akzeptiert, weil dort nichts betrieben
+    wird. Auf Netzlaufwerken (NFS, SMB) ist `flock` nicht verlässlich; das Volume ist lokal.
+  - *Wann es zählt:* `docker-compose.yml` nutzt das Named Volume `chroma`; eine CLI auf dem Host schreibt in
+    ihr eigenes `./chroma`. Geteilt ist die Datei bei `docker exec … python agent.py` und lokal (Server und CLI
+    aus demselben Checkout).
+  - *Grenzen:* Ein Kindprozess, der bei gehaltener Sperre geforkt wird, erbt sie bis zum Schließen des
+    Descriptors (im Code wird nicht geforkt). Schreiben zwei Benutzer (UIDs) in dasselbe Verzeichnis, gehört
+    die Sperrdatei dem ersten; der zweite scheitert mit geloggtem `PermissionError`, wie schon bei der
+    aktiven Datei (`0600`).
+  - *Test:* `test_parallele_prozesse_mit_rotation_verlieren_keine_bestaetigte_zeile` (vier Prozesse,
+    Rotation und Verdrängung bei jedem Aufruf): jedes `True` steht in aktiver Datei, Archiv oder unter den
+    regulär verdrängten Zeilen.
 - **Rotations- und Bereinigungsfehler** (`OSError`) werden geloggt und kippen weder Append noch Verweigerung.
 - **Längenlimit:** `Frage.frage` ist auf 2000 Zeichen (Unicode-Zeichen, nicht Bytes) und mindestens ein
   Zeichen begrenzt; Verstöße liefern 422 statt stillem Abschneiden. Die UI prüft vor dem Senden mit `[...text].length` (Zeichen, nicht UTF-16-Einheiten wie `maxlength`).
-- **Manueller Löschweg:** Server stoppen, dann `rm chroma/eskalationen.jsonl chroma/eskalationen.jsonl.[0-9]*Z.[0-9]*` (das Muster trifft nur Archive, keine `.bak`-Kopien).
+- **Manueller Löschweg:** Server stoppen, dann `rm chroma/eskalationen.jsonl chroma/eskalationen.jsonl.[0-9]*Z.[0-9]*` (das Muster trifft nur Archive, keine `.bak`-Kopien und nicht die Sperrdatei `.eskalationen.jsonl.lock`, die keine Daten enthält und stehen bleiben darf).
   Einzelne Personen entfernt man bei gestopptem Server mit einem `jq`-Filter auf die Zeilen in der aktiven Datei
   und in jedem Archiv. Der Filter muss die ganze Zeile treffen, nicht nur `frage`: `antwort` und
   `aussagen_ohne_beleg` können die Frage wiederholen.

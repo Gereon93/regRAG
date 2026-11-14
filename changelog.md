@@ -4,6 +4,9 @@
 ### Neu
 - **Stichtag pro Anfrage:** `POST /chat` nimmt optional `stichtag` (`YYYY-MM-DD`, sonst 422), die CLI `--stichtag`, die UI ein Datumsfeld neben der Frage; der Eintrag im Verlauf nennt den Stichtag. Gültigkeit wird dann gegen diesen Tag statt gegen heute geprüft, der Eskalationsdatensatz trägt ihn als `stichtag` (#50, ADR 0015).
 - Der Report trägt `stichtag` (heute in Europe/Berlin, einmal je Lauf) und `vorab_verweigert` je Split; `calibrate` gibt den Stichtag aus und zählt solche Fälle getrennt von "Ohne Treffer" (#54).
+### Fix
+- **Eskalationsdatei prozessübergreifend gesperrt:** Rotation, Löschen von Archiven und Append laufen unter `flock` auf der versteckten Sperrdatei `.<name>.lock` (z. B. `chroma/.eskalationen.jsonl.lock`). Vorher konnte ein zweiter Prozess (CLI neben dem Server) die Datei rotieren und löschen, während ein Datensatz hineingeschrieben wurde; die Antwort versprach dann eine Vormerkung, die es nicht gab (#46, ADR 0010).
+- Wird die Sperre länger als 5 s gehalten, scheitert das Schreiben geloggt und die Antwort verspricht keine Vormerkung. Ohne `fcntl` (Windows) gilt nur die prozesslokale Sperre wie bisher (#46).
 ### Geändert
 - Gate-Port `entscheide(frage, nodes, stichtag=None)`; eigene Gate-Implementierungen müssen das Argument annehmen, `Kaskade` reicht es positional weiter (#50).
 - `python agent.py` nimmt die Frage als Argument; ohne Argument bleibt es die DORA-Beispielfrage (#50).
