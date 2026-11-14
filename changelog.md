@@ -12,6 +12,8 @@
 - `python agent.py` nimmt die Frage als Argument; ohne Argument bleibt es die DORA-Beispielfrage (#50).
 - **Eval mit Gültigkeit:** `eval_report` und `calibrate` durchlaufen dieselbe Vorprüfung wie das Gate (`gate.vorpruefung`: Score, Gültigkeit, Score, Fassung). Laya bekommt nur die am Stichtag nutzbaren Fassungen, der Retrieval-Score kommt von ihnen. Fälle mit `OUTDATED_SOURCE`/`AMBIGUOUS_VERSION` fragen Laya nicht, zählen als Eskalation und gehen nicht in Temperatur und Schwellen ein (#54, ADR 0012, 0013).
 ### Fix
+- **Eskalationsdatei prozessübergreifend gesperrt:** Rotation, Löschen von Archiven und Append laufen unter `flock` auf der versteckten Sperrdatei `.<name>.lock` (z. B. `chroma/.eskalationen.jsonl.lock`). Vorher konnte ein zweiter Prozess (CLI neben dem Server) die Datei rotieren und löschen, während ein Datensatz hineingeschrieben wurde; die Antwort versprach dann eine Vormerkung, die es nicht gab (#46, ADR 0010).
+- Wird die Sperre länger als 5 s gehalten, scheitert das Schreiben geloggt und die Antwort verspricht keine Vormerkung. Ohne `fcntl` (Windows) gilt nur die prozesslokale Sperre wie bisher (#46).
 - Ein Sidecar ohne gültiges UTF-8 nimmt nur dieses Dokument aus der Suche, statt den Indexstart abzubrechen. Ein nicht lesbares Sidecar bricht den Start weiter ab, weil `dokumente.datei_hash` es vorher liest. Index und Dokumentliste lesen es über dieselbe Funktion `gueltigkeit.lies_sidecar` (#51).
 - Kontrast: `--ochre` im hellen Schema dunkler (Fehlermeldungen, Abstain-Marke), „Entfernen“ ohne Transparenz; beides fiel unter WCAG AA (#51).
 ### Hinweis
