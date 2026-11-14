@@ -44,6 +44,15 @@ getrennte Splits und eine Version, auf die sich ein Schwellwert zurückführen l
   `eval_report` bricht dort mit Handlungshinweis ab. Das ist gewollt, statt Normfassungen über Splits
   zu verteilen; ein Test hält das fest.
 - Ein Fall ohne Retrieval-Treffer wird wie im `RetrievalScoreGate` immer verweigert, unabhängig von der Schwelle.
+- **Gültigkeit (#54):** `hole_zeilen` nimmt den Score der Treffer, die der Laufzeitpfad am Stichtag nutzt
+  (`evalset.laufzeit_evidenz`, dieselbe `gate.vorpruefung` wie `baue_gate`, Score-Schwelle −∞, weil sie hier erst
+  gesucht wird). Neben einer gültigen Fassung zählt eine abgelöste nicht mehr; verweigern Gültigkeit oder Fassung
+  (`OUTDATED_SOURCE`, `AMBIGUOUS_VERSION`), hat der Fall keinen Score und eskaliert wie ein Fall ohne Treffer. Jede
+  Zeile trägt `vorpruefung`, der Report zählt solche Fälle je Split in `vorab_verweigert` und trägt den `stichtag`.
+  Der Stichtag ist heute in Europe/Berlin und wird je Lauf einmal bestimmt; Tests injizieren ihn.
+  Abweichung zur Laufzeit nur im Reason: Liegt ein veralteter Fall auch unter dem Score-Guard, meldet die Laufzeit
+  zuerst `LOW_RELEVANCE`; der Report zählt ihn unter `vorab_verweigert`, weil die Schwelle hier noch offen ist.
+  Ergebnis und Kosten sind gleich (Eskalation). `calibrate.py` meldet solche Fälle getrennt von "Ohne Treffer".
 - `evaluation/calibrate.py` (ADR 0005) ist abgelöst (#38): Es nutzt dieselbe Score-Ermittlung (`hole_zeilen`,
   bester Score wie im Gate) und dieselbe Kostenfunktion, aber über alle Fälle ohne Split. Das ist eine Diagnose
   für Korpus-Vergleiche (ADR 0001), keine Schwellenwahl.

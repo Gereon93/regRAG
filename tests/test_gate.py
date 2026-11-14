@@ -33,6 +33,7 @@ from gate import (
     normalisiere_segment,
     schreibe_eskalation,
     segment_von,
+    vorpruefung,
 )
 
 
@@ -818,8 +819,7 @@ def test_genutzte_nodes_folgt_der_evidenz():
 
 
 def echte_kaskade():
-    score = RetrievalScoreGate(0.62)
-    return Kaskade([score, gueltigkeits_gate(), score, FassungsGate()])
+    return Kaskade(vorpruefung(0.62, uhr=lambda: STICHTAG))
 
 
 def test_themenfremd_und_abgelaufen_meldet_low_relevance():

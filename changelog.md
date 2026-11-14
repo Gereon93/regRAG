@@ -3,11 +3,14 @@
 ## 2026-11-13
 ### Neu
 - **Stichtag pro Anfrage:** `POST /chat` nimmt optional `stichtag` (`YYYY-MM-DD`, sonst 422), die CLI `--stichtag`, die UI ein Datumsfeld neben der Frage; der Eintrag im Verlauf nennt den Stichtag. Gültigkeit wird dann gegen diesen Tag statt gegen heute geprüft, der Eskalationsdatensatz trägt ihn als `stichtag` (#50, ADR 0015).
+- Der Report trägt `stichtag` (heute in Europe/Berlin, einmal je Lauf) und `vorab_verweigert` je Split; `calibrate` gibt den Stichtag aus und zählt solche Fälle getrennt von "Ohne Treffer" (#54).
 ### Geändert
 - Gate-Port `entscheide(frage, nodes, stichtag=None)`; eigene Gate-Implementierungen müssen das Argument annehmen, `Kaskade` reicht es positional weiter (#50).
 - `python agent.py` nimmt die Frage als Argument; ohne Argument bleibt es die DORA-Beispielfrage (#50).
+- **Eval mit Gültigkeit:** `eval_report` und `calibrate` durchlaufen dieselbe Vorprüfung wie das Gate (`gate.vorpruefung`: Score, Gültigkeit, Score, Fassung). Laya bekommt nur die am Stichtag nutzbaren Fassungen, der Retrieval-Score kommt von ihnen. Fälle mit `OUTDATED_SOURCE`/`AMBIGUOUS_VERSION` fragen Laya nicht, zählen als Eskalation und gehen nicht in Temperatur und Schwellen ein (#54, ADR 0012, 0013).
 ### Hinweis
 - **Offen:** Ein Datum im Fragetext wird nicht als Stichtag erkannt (#63).
+- Reports vor und nach #54 sind nur vergleichbar, wenn der Index keine Gültigkeitsdaten und keine abweichenden `fassung` je Quelle trägt. Das Manifest-Schema bleibt 2.
 
 ## 2026-11-12
 ### Neu

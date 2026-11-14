@@ -75,6 +75,11 @@ wählt Schwellen pro Segment über die Kostenfunktion auf dem Calibration-Split 
 Test-Split Falschantwortrate, Eskalationsrate und Coverage mit 95%-Intervall, je Segment und je Kategorie. **Das Set hat erst 14 Fälle**;
 Ziel sind >= 200, deren Labels der Maintainer liefert. Bis dahin sind die Werte nicht belastbar.
 
+Report und Laya-Kalibrierung sehen dieselbe Evidenz wie das Gate: Score, Gültigkeit und Fassung am `stichtag` (heute in
+Europe/Berlin, einmal je Lauf, steht im Report). Fälle, die Gültigkeit oder Fassung vorab verweigern, zählen als
+Eskalation, fragen Laya nicht und stehen je Split in `vorab_verweigert`. Der Dateiname des Reports enthält den Stichtag
+nicht: Läufe an verschiedenen Tagen mit gleicher `eval_version` und gleichem Checkpoint überschreiben sich.
+
 ## Setup
 
 ```bash
