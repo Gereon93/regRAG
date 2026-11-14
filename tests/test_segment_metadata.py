@@ -220,6 +220,14 @@ def test_kaputter_sidecar_wirft_metadatenfehler_mit_dateiname(rag, tmp_path, inh
         rag._quelle_metadata(md)
 
 
+def test_sidecar_ohne_utf8_wirft_metadatenfehler_statt_den_start_zu_kippen(rag, tmp_path):
+    md = _dokument(tmp_path, None)
+    md.with_suffix(".source.json").write_bytes('{"titel": "Ä"}'.encode("latin-1"))
+
+    with pytest.raises(MetadatenFehler, match="dok.md"):
+        rag._quelle_metadata(md)
+
+
 @pytest.fixture
 def start(rag, tmp_path, monkeypatch):
     verzeichnis = tmp_path / "docs"

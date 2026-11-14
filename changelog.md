@@ -4,10 +4,16 @@
 ### Neu
 - **Stichtag pro Anfrage:** `POST /chat` nimmt optional `stichtag` (`YYYY-MM-DD`, sonst 422), die CLI `--stichtag`, die UI ein Datumsfeld neben der Frage; der Eintrag im Verlauf nennt den Stichtag. Gültigkeit wird dann gegen diesen Tag statt gegen heute geprüft, der Eskalationsdatensatz trägt ihn als `stichtag` (#50, ADR 0015).
 - Der Report trägt `stichtag` (heute in Europe/Berlin, einmal je Lauf) und `vorab_verweigert` je Split; `calibrate` gibt den Stichtag aus und zählt solche Fälle getrennt von "Ohne Treffer" (#54).
+- **Gültigkeit in der Web-UI:** Das Upload-Formular erfasst `gueltig_ab`, `gueltig_bis` und `fassung`; eine 422 zeigt die Meldung der API mit den Feldnamen der UI. Die Dokumentliste zeigt Status, Zeitraum und Fassung (#51, ADR 0015).
+- `GET /documents` liefert je Dokument die gesetzten Gültigkeitsfelder und `gueltigkeit` am Stichtag heute (Europe/Berlin); ein abgelehntes Sidecar erscheint als `metadaten_ungueltig` (#51).
+- CI führt `npm run check:a11y` und `npm run test:ui` aus (Node 22); `tests/ui` testet die Anzeige-Logik in `web/static/anzeige.js` (#51).
 ### Geändert
 - Gate-Port `entscheide(frage, nodes, stichtag=None)`; eigene Gate-Implementierungen müssen das Argument annehmen, `Kaskade` reicht es positional weiter (#50).
 - `python agent.py` nimmt die Frage als Argument; ohne Argument bleibt es die DORA-Beispielfrage (#50).
 - **Eval mit Gültigkeit:** `eval_report` und `calibrate` durchlaufen dieselbe Vorprüfung wie das Gate (`gate.vorpruefung`: Score, Gültigkeit, Score, Fassung). Laya bekommt nur die am Stichtag nutzbaren Fassungen, der Retrieval-Score kommt von ihnen. Fälle mit `OUTDATED_SOURCE`/`AMBIGUOUS_VERSION` fragen Laya nicht, zählen als Eskalation und gehen nicht in Temperatur und Schwellen ein (#54, ADR 0012, 0013).
+### Fix
+- Ein Sidecar ohne gültiges UTF-8 nimmt nur dieses Dokument aus der Suche, statt den Indexstart abzubrechen. Ein nicht lesbares Sidecar bricht den Start weiter ab, weil `dokumente.datei_hash` es vorher liest. Index und Dokumentliste lesen es über dieselbe Funktion `gueltigkeit.lies_sidecar` (#51).
+- Kontrast: `--ochre` im hellen Schema dunkler (Fehlermeldungen, Abstain-Marke), „Entfernen“ ohne Transparenz; beides fiel unter WCAG AA (#51).
 ### Hinweis
 - **Offen:** Ein Datum im Fragetext wird nicht als Stichtag erkannt (#63).
 - Reports vor und nach #54 sind nur vergleichbar, wenn der Index keine Gültigkeitsdaten und keine abweichenden `fassung` je Quelle trägt. Das Manifest-Schema bleibt 2.

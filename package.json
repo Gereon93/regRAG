@@ -5,7 +5,8 @@
   },
   "scripts": {
     "check:a11y": "html-validate web/static/index.html && npm run test:a11y",
-    "test:a11y": "node --test tests/a11y/*.test.cjs"
+    "test:a11y": "node --test tests/a11y/*.test.cjs",
+    "test:ui": "node --test tests/ui/*.test.cjs"
   },
   "devDependencies": {
     "html-validate": "11.16.1"

@@ -193,22 +193,26 @@ def job_status(job_id: str):
     return job
 
 
-def _titel(md):
-    """Ein abgelehntes Sidecar (rag._quelle_metadata) darf die Liste nicht kippen; es bleibt der Dateiname."""
-    sidecar = md.with_suffix(".source.json")
+def _dokument_eintrag(md, stichtag):
+    """Liest und prüft wie rag._quelle_metadata. Ein abgelehntes Sidecar darf die Liste nicht kippen: Das Dokument fehlt
+    in der Suche, steht hier aber weiter, als `metadaten_ungueltig` und ohne Felder."""
+    ungueltig = {"datei": md.name, "titel": md.stem, "gueltigkeit": gueltigkeit.METADATEN_UNGUELTIG}
     try:
-        daten = json.loads(sidecar.read_text()) if sidecar.exists() else {}
-    except ValueError:
-        return md.stem
-    return daten.get("titel", md.stem) if isinstance(daten, dict) else md.stem
+        daten = gueltigkeit.lies_sidecar(md)
+    except gueltigkeit.MetadatenFehler:
+        return ungueltig
+    titel = daten.get("titel", md.stem)
+    try:
+        felder = gueltigkeit.normalisiere(daten)
+    except gueltigkeit.MetadatenFehler:
+        return {**ungueltig, "titel": titel}
+    return {"datei": md.name, "titel": titel, **felder, "gueltigkeit": gueltigkeit.status_von(felder, stichtag)}
 
 
 @app.get("/documents")
 def dokument_liste():
-    liste = []
-    for md in sorted(DOKUMENTE.glob("*.md")) if DOKUMENTE.is_dir() else []:
-        liste.append({"datei": md.name, "titel": _titel(md)})
-    return liste
+    stichtag = gueltigkeit.heute_berlin()
+    return [_dokument_eintrag(md, stichtag) for md in (sorted(DOKUMENTE.glob("*.md")) if DOKUMENTE.is_dir() else [])]
 
 
 def _irgendeine_indexierung_laeuft():
@@ -240,3 +244,8 @@ def metriken():
 @app.get("/")
 def startseite():
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/anzeige.js")
+def anzeige_skript():
+    return FileResponse(STATIC / "anzeige.js", media_type="text/javascript")

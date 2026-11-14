@@ -153,11 +153,15 @@ Details und Grenzen: [ADR 0015](docs/adr/0015-gueltigkeit-fassungen-normkonflikt
 - **Sidecar** `<datei>.source.json`, alle Felder optional: `gueltig_ab` (erster Anwendungstag, nicht das Inkrafttreten),
   `gueltig_bis` (letzter Anwendungstag), beide `YYYY-MM-DD` und inklusive, sowie `fassung` (Freitext, 1 bis 100 Zeichen).
 - **Upload:** `curl -F datei=@neu.pdf -F gueltig_ab=2026-01-01 -F fassung="2. Fassung" http://localhost:8000/upload`.
-  Ein ungültiger Wert liefert 422. Die UI bietet die Felder nicht an, `segment` ist per Upload nicht setzbar.
+  Ein ungültiger Wert liefert 422. Die UI bietet die drei Felder über der Schaltfläche „PDF hinzufügen“ an und zeigt die
+  422-Meldung; `segment` ist per Upload nicht setzbar.
 - **Neustart:** Eine Sidecar-Änderung wirkt erst nach dem nächsten Start und bettet das Dokument neu ein. Das Verstreichen
   eines `gueltig_bis` braucht keinen Neustart, verglichen wird pro Anfrage gegen heute (Europe/Berlin).
 - **Kaputter Sidecar:** Der Start läuft weiter, das Dokument fehlt in der Suche, das Log zeigt `ERROR`. `GET /documents` listet
-  es weiter.
+  es weiter, mit `gueltigkeit: metadaten_ungueltig`.
+- **Anzeige:** `GET /documents` liefert je Dokument die gesetzten Felder und `gueltigkeit` (`gueltig`, `unbekannt`,
+  `noch_nicht_gueltig`, `abgelaufen`, `metadaten_ungueltig`) am Stichtag heute (Europe/Berlin), wie das Gate. Die UI zeigt
+  Status, Zeitraum und Fassung in der Dokumentliste.
 - **Ablösen:** Bei der alten Fassung `gueltig_bis` setzen, der neuen denselben `titel` geben. Zwei gleichzeitig gültige
   Fassungen desselben Titels verweigern mit `AMBIGUOUS_VERSION`. Abweichende Titel erkennt das Gate nicht.
 - **Ohne Angaben** gilt ein Dokument als `unbekannt`: Es bleibt nutzbar, ist aber kein Beleg für Aktualität. Liegt daneben
@@ -177,7 +181,7 @@ Details und Grenzen: [ADR 0015](docs/adr/0015-gueltigkeit-fassungen-normkonflikt
 |---|---|
 | `POST /upload` | PDF (validiert: Magic-Bytes, Größenlimit, Dateiname gesäubert) → `202` + Job-ID |
 | `GET /jobs/{id}` | `pending` / `indexing` / `ready` / `failed` |
-| `GET /documents` | Liste der indexierten Dokumente |
+| `GET /documents` | Liste der indexierten Dokumente mit Gültigkeitsfeldern und Status `gueltigkeit` |
 | `DELETE /documents/{datei}` | Dokument entfernen (Fingerprint, Nodes, Dateien) → `204` |
 
 Das neue Dokument wird **inkrementell** in den bestehenden Chroma-Index gemerged, kein Voll-Rebuild ([ADR 0006](docs/adr/0006-inkrementeller-index-merge-statt-voll-rebuild.md)). Quellenangaben tragen den Dokumentnamen, sodass bei mehreren Korpora erkennbar bleibt, woher eine Aussage stammt.
