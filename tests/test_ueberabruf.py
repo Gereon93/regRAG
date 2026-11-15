@@ -159,8 +159,9 @@ def test_faktor_eins_ist_das_heutige_verhalten():
 
 @pytest.mark.parametrize("faktor", [0, -1])
 def test_faktor_unter_eins_ist_ein_fehler(faktor):
+    index = FixtureIndex()
     with pytest.raises(ValueError, match="faktor"):
-        retrieval.UeberabrufRetriever(FixtureIndex(), top_k=3, faktor=faktor)
+        retrieval.UeberabrufRetriever(index, top_k=3, faktor=faktor)
 
 
 def test_fixture_bei_top_k_3_verdraengt_die_alte_fassung_die_gueltige():

@@ -164,8 +164,9 @@ def test_manifest_leer_behaelt_das_alte_verhalten():
 
 
 def test_manifest_ohne_laya_url_ist_ein_startfehler(tmp_path):
+    e = einstellungen(GATE_MANIFEST=str(tmp_path / "gate.json"))
     with pytest.raises(ValueError, match="LAYA_URL"):
-        baue_gate(einstellungen(GATE_MANIFEST=str(tmp_path / "gate.json")))
+        baue_gate(e)
 
 
 def test_fehlendes_oder_ungueltiges_manifest_faellt_nicht_auf_0_5_zurueck(tmp_path):
@@ -173,8 +174,9 @@ def test_fehlendes_oder_ungueltiges_manifest_faellt_nicht_auf_0_5_zurueck(tmp_pa
     kaputt.write_text("{", encoding="utf-8")
 
     for pfad in (tmp_path / "fehlt.json", kaputt):
+        e = einstellungen(LAYA_URL=URL, GATE_MANIFEST=str(pfad))
         with pytest.raises(ValueError, match="anifest"):
-            baue_gate(einstellungen(LAYA_URL=URL, GATE_MANIFEST=str(pfad)))
+            baue_gate(e)
 
 
 def schreibe_fixture(tmp_path, **ueberschreibe):
@@ -418,8 +420,9 @@ def test_konflikt_schwelle_schaltet_den_judge_ein_und_warnt(caplog):
 
 
 def test_konflikt_schwelle_ohne_laya_url_ist_ein_startfehler():
+    e = einstellungen(LAYA_KONFLIKT_SCHWELLE=0.8)
     with pytest.raises(ValueError, match="KONFLIKT_SCHWELLE"):
-        baue_gate(einstellungen(LAYA_KONFLIKT_SCHWELLE=0.8))
+        baue_gate(e)
 
 
 def test_manifest_kaskade_bleibt_und_bekommt_den_konflikt_judge(tmp_path):

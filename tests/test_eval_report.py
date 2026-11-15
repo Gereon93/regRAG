@@ -96,7 +96,8 @@ def test_laya_wird_unter_dem_guard_nicht_aufgerufen():
     s = Szenario()
     zeilen = hole_laya_zeilen(s.faelle, s.retriever, s.laya(), config.MIN_RETRIEVAL_SCORE)
     unter = {z["id"] for z in zeilen if z["top"] < config.MIN_RETRIEVAL_SCORE}
-    assert unter and all(z["laya_roh"] is None for z in zeilen if z["id"] in unter)
+    assert unter
+    assert all(z["laya_roh"] is None for z in zeilen if z["id"] in unter)
     assert len(s.aufrufe) == len(zeilen) - len(unter)
     assert all(z["laya_roh"] is not None for z in zeilen if z["id"] not in unter)
 
@@ -119,14 +120,16 @@ def test_ausserhalb_fall_landet_unter_dem_laufzeitsegment():
 
 def test_judge_fehler_bricht_den_report_ab():
     s = Szenario()
+    laya = s.laya(ausfall=True)
     with pytest.raises(SystemExit):
-        hole_laya_zeilen(s.faelle, s.retriever, s.laya(ausfall=True), 0.62)
+        hole_laya_zeilen(s.faelle, s.retriever, laya, 0.62)
 
 
 def test_fremdes_routing_modell_bricht_ab():
     s = Szenario()
+    laya = s.laya(routing="anderes")
     with pytest.raises(SystemExit):
-        erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(routing="anderes"), KOSTEN, None)
+        erzeuge_laya_bericht(s.faelle, s.retriever, laya, KOSTEN, None)
 
 
 def test_report_enthaelt_laya_teil_und_pflichtfelder_fuer_den_vergleich(chroma):
@@ -199,8 +202,9 @@ def test_ohne_laya_score_in_einem_segment_aus_segmente_bricht_ab(chroma):
     s = Szenario()
     for k in s.treffer:
         s.treffer[k] = [knoten(0.1, "verordnung")]
+    laya = s.laya()
     with pytest.raises(SystemExit, match="Laya"):
-        erzeuge_laya_bericht(s.faelle, s.retriever, s.laya(), KOSTEN, None)
+        erzeuge_laya_bericht(s.faelle, s.retriever, laya, KOSTEN, None)
 
 
 def test_warnung_bei_answer_fall_mit_abweichendem_segment(chroma):
@@ -366,8 +370,9 @@ def test_anderer_checkpoint_unter_gleichem_reportnamen_bricht_vor_dem_schreiben_
     monkeypatch.setattr(eval_report, "checkpoint_kennung", lambda modell, revision: "0" * 12)
     erster = schreibe(_laya_bericht("m", "r1"), tmp_path)
     vorher = erster.read_text(encoding="utf-8")
+    zweiter = _laya_bericht("m", "r2")
     with pytest.raises(ValueError, match="r2"):
-        schreibe(_laya_bericht("m", "r2"), tmp_path)
+        schreibe(zweiter, tmp_path)
     assert erster.read_text(encoding="utf-8") == vorher
 
 
@@ -399,8 +404,9 @@ def test_vergleich_cli_bricht_bei_unvergleichbaren_reports_ab(chroma, tmp_path):
     a, c = tmp_path / "a.json", tmp_path / "c.json"
     a.write_text(json.dumps(b), encoding="utf-8")
     c.write_text(json.dumps({**b, "eval_version": "sha256:x"}), encoding="utf-8")
+    argumente = [str(a), str(c)]
     with pytest.raises(SystemExit, match="nicht vergleichbar"):
-        vergleich.main([str(a), str(c)])
+        vergleich.main(argumente)
 
 
 def zufalls_szenario(seed=1, n=300):
@@ -524,7 +530,10 @@ def test_main_zeigt_laya_schwellen_und_warnungen_auf_stderr(tmp_path, monkeypatc
     vorbereitet(s, tmp_path, monkeypatch, "http://laya.test")
     eval_report.main(["--checkpoint-revision", "r1"])
     err = capsys.readouterr().err
-    assert "T=" in err and "Schwellen=" in err and "WARNUNG (Laya)" in err and "'gesetz'" in err
+    assert "T=" in err
+    assert "Schwellen=" in err
+    assert "WARNUNG (Laya)" in err
+    assert "'gesetz'" in err
 
 
 def test_nicht_schaetzbare_temperatur_schreibt_kein_manifest(tmp_path, monkeypatch, capsys, chroma):
@@ -620,7 +629,9 @@ def test_laya_sieht_nur_die_am_stichtag_gueltige_fassung():
     z = hole_laya_zeilen([fall("a", "answer", "verordnung")], retriever, laya, 0.62, stichtag=STICHTAG)[0]
     assert evidenzen == ["Neu"]
     assert z["segment_laufzeit"] == "verordnung"
-    assert z["top"] == 0.8 and z["laya_roh"] == 0.8 and z["vorpruefung"] is None
+    assert z["top"] == 0.8
+    assert z["laya_roh"] == 0.8
+    assert z["vorpruefung"] is None
 
 
 @pytest.mark.parametrize(
@@ -635,7 +646,8 @@ def test_vorab_verweigerte_faelle_fragen_laya_nicht(nodes, reason):
     retriever = SimpleNamespace(retrieve=lambda frage: nodes)
     z = hole_laya_zeilen([fall("a", "answer", "verordnung")], retriever, laya, 0.62, stichtag=STICHTAG)[0]
     assert evidenzen == []
-    assert z["laya_roh"] is None and z["top"] is None
+    assert z["laya_roh"] is None
+    assert z["top"] is None
     assert z["vorpruefung"] == reason
 
 
@@ -645,7 +657,8 @@ def test_score_der_abgeloesten_fassung_hebt_nicht_ueber_den_guard():
     retriever = SimpleNamespace(retrieve=lambda frage: nodes)
     z = hole_laya_zeilen([fall("a", "answer", "verordnung")], retriever, laya, 0.62, stichtag=STICHTAG)[0]
     assert evidenzen == []
-    assert z["top"] == 0.3 and z["laya_roh"] is None
+    assert z["top"] == 0.3
+    assert z["laya_roh"] is None
 
 
 def test_laya_report_haelt_stichtag_fest_und_kalibriert_nicht_auf_abgeloester_evidenz(chroma):
@@ -678,7 +691,8 @@ def test_vorab_verweigerte_zeile_traegt_das_segment_aller_treffer():
     retriever = SimpleNamespace(retrieve=lambda frage: [fassung(0.9, "Alt", "gesetz", **ABGELAUFEN)])
     z = hole_laya_zeilen([fall("a", "answer", "gesetz")], retriever, laya, 0.62, stichtag=STICHTAG)[0]
     assert z["segment_laufzeit"] == "gesetz"
-    assert z["vorpruefung"] == "OUTDATED_SOURCE" and z["laya_roh"] is None
+    assert z["vorpruefung"] == "OUTDATED_SOURCE"
+    assert z["laya_roh"] is None
 
 
 def test_ein_lauf_bestimmt_den_stichtag_genau_einmal(chroma, monkeypatch):

@@ -288,7 +288,10 @@ def test_nan_kalibrierter_score_ergibt_nie_answer():
 
 def test_answerable_roh_liefert_den_rohwert_und_wirft_bei_fehlern():
     assert gate_mit(lambda r: antwort(0.37)).answerable_roh("f", [node()]) == 0.37
+    nodes = [node()]
+    ausfall = gate_mit(lambda r: httpx.Response(503))
     with pytest.raises(JudgeFehler):
-        gate_mit(lambda r: httpx.Response(503)).answerable_roh("f", [node()])
+        ausfall.answerable_roh("f", nodes)
+    fremdes_modell = gate_mit(lambda r: antwort(0.9, routing={"model": "english"}), modell_streng=True)
     with pytest.raises(JudgeFehler):
-        gate_mit(lambda r: antwort(0.9, routing={"model": "english"}), modell_streng=True).answerable_roh("f", [node()])
+        fremdes_modell.answerable_roh("f", nodes)

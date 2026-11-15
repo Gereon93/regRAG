@@ -85,7 +85,9 @@ def test_modellwechsel_erzwingt_voll_rebuild():
     neu = {"embedding_modell": "neu", "metrik": "cosine", "dokumente": {"a.md": "1"}}
 
     zu_indexieren, zu_loeschen, voll = dokumente.diff(alt, neu)
-    assert voll and zu_indexieren == ["a.md"] and zu_loeschen == []
+    assert voll
+    assert zu_indexieren == ["a.md"]
+    assert zu_loeschen == []
 
 
 def test_leerer_fingerprint_indexiert_alles():
