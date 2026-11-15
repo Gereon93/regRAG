@@ -356,7 +356,7 @@
     <div class="zeile">
       <label class="knopf" id="uploadKnopf" for="pdf">PDF hinzufügen</label>
       <input type="file" id="pdf" accept="application/pdf" hidden>
-      <span class="status" id="uploadStatus" role="status"></span>
+      <output class="status" id="uploadStatus"></output>
     </div>
     <div class="hinweis">
       Nur frei verwendbare Regulatorik hochladen (MaRisk, EBA-Guidelines). Keine urheberrechtlich
@@ -422,22 +422,15 @@ async function fragen(text, stichtag) {
   });
   if (!res.ok) {
     const fehler = await res.json().catch(() => null);
-    const warten = res.headers.get('Retry-After');
-    let text = typeof fehler?.detail === 'string'
-      ? fehler.detail
-      : res.status === 422
-        ? 'Die Frage ist leer oder zu lang (höchstens 2000 Zeichen), oder der Stichtag ist kein Datum.'
-        : `Anfrage abgelehnt (HTTP ${res.status}).`;
-    if (res.status === 429 && warten) text += ` Bitte in ${warten} Sekunden erneut fragen.`;
     caret.remove();
     antwort.remove();
-    eintrag.appendChild(el('div', 'fehler', text));
+    eintrag.appendChild(el('div', 'fehler', Anzeige.anfrageFehler(res.status, fehler?.detail, res.headers.get('Retry-After'))));
     return;
   }
   const reader = res.body.getReader();
   const dec = new TextDecoder();
+  const ansicht = { eintrag, antwort, caret, inhalt: '' };
   let puffer = '';
-  let inhalt = '';
 
   while (true) {
     const { value, done } = await reader.read();
@@ -447,31 +440,42 @@ async function fragen(text, stichtag) {
     puffer = teile.pop();
     for (const stueck of teile) {
       const zeile = stueck.trim();
-      if (!zeile.startsWith('data:')) continue;
-      const ev = JSON.parse(zeile.slice(5).trim());
-      if (ev.type === 'status') {
-        antwort.replaceChildren(el('span', 'wartetext', ev.text), caret);
-      } else if (ev.type === 'token') {
-        inhalt += ev.text;
-        antwort.textContent = inhalt;
-        antwort.appendChild(caret);
-      } else if (ev.type === 'abstain') {
-        caret.remove();
-        antwort.remove();
-        const box = el('div', 'abstain');
-        box.appendChild(el('span', 'marke', 'Kein Beleg'));
-        box.appendChild(el('span', 'text', ev.text));
-        eintrag.appendChild(box);
-      } else if (ev.type === 'error') {
-        caret.remove();
-        antwort.remove();
-        eintrag.appendChild(el('div', 'fehler', ev.text));
-      } else if (ev.type === 'sources') {
-        eintrag.appendChild(quellenBlock(ev.quellen));
-      } else if (ev.type === 'done') {
-        caret.remove();
-      }
+      if (zeile.startsWith('data:')) zeigeEreignis(JSON.parse(zeile.slice(5).trim()), ansicht);
     }
+  }
+}
+
+function zeigeEreignis(ev, ansicht) {
+  const { eintrag, antwort, caret } = ansicht;
+  switch (ev.type) {
+    case 'status':
+      antwort.replaceChildren(el('span', 'wartetext', ev.text), caret);
+      break;
+    case 'token':
+      ansicht.inhalt += ev.text;
+      antwort.textContent = ansicht.inhalt;
+      antwort.appendChild(caret);
+      break;
+    case 'abstain': {
+      caret.remove();
+      antwort.remove();
+      const box = el('div', 'abstain');
+      box.appendChild(el('span', 'marke', 'Kein Beleg'));
+      box.appendChild(el('span', 'text', ev.text));
+      eintrag.appendChild(box);
+      break;
+    }
+    case 'error':
+      caret.remove();
+      antwort.remove();
+      eintrag.appendChild(el('div', 'fehler', ev.text));
+      break;
+    case 'sources':
+      eintrag.appendChild(quellenBlock(ev.quellen));
+      break;
+    case 'done':
+      caret.remove();
+      break;
   }
 }
 
