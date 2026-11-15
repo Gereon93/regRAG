@@ -82,6 +82,8 @@ nicht: Läufe an verschiedenen Tagen mit gleicher `eval_version` und gleichem Ch
 
 ## Setup
 
+Python ≥ 3.11 (CI und Image laufen auf 3.12); `grounding.py` nutzt possessive Quantoren, die ältere Versionen schon beim Import ablehnen.
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -207,6 +209,14 @@ docker compose up --build
 Das Image backt `BAAI/bge-m3` ein; das Standardmodell läuft offline. Per `REGRAG_EMBEDDING_MODELL` kann Compose ein anderes Hugging-Face-Modell wählen, das der Container bei verfügbarer Netzverbindung lädt. Der Container spricht per Default über `host.docker.internal:1234` das LM Studio auf dem Host an — das funktioniert auf **macOS**. Für Linux/Cloud, wo eine Mac-Desktop-App nicht erreichbar ist, zeigt man `REGRAG_LLM_BASE_URL` auf einen gehosteten Worker (OpenRouter) oder einen headless lokalen Server; siehe `env.example` und [arc42 Kap. 7](docs/arc42.md). Für CPU-Embeddings setzt Compose `OMP_NUM_THREADS=8` als Default; Messung und Override sind in [ADR 0009](docs/adr/0009-query-embedding-cpu-mps.md) dokumentiert.
 
 Zwei Volumes: `chroma` trägt die Vektoren, `docs_md` den Korpus. Beide zusammen lassen hochgeladene Dokumente einen `docker compose restart` überleben — gemessen: Kaltstart 360 s, Neustart 31 s ohne erneutes Embedden.
+
+Der Container läuft als Nutzer `regrag` (uid 1000), nicht als root; der Code im Image ist für ihn nur lesbar. Volumes, die ein älteres Image (vor #72) als root angelegt hat, einmalig umschreiben, sonst scheitert der Start mit `Permission denied`:
+
+```bash
+docker compose run --rm -u root --entrypoint chown regrag -R regrag:regrag /app/chroma /app/docs_md
+```
+
+Alternativ `docker compose down -v`; dann wird der Korpus neu angelegt und neu indexiert.
 
 ## Stand
 

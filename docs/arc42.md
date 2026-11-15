@@ -248,6 +248,10 @@ den Korpus. Ohne `docs_md` überlebt ein hochgeladenes Dokument den Neustart nic
 hätte Nodes, deren Quelltext fehlt, und der Fingerprint-Diff würde sie beim nächsten Start
 wieder löschen.
 
+Der Prozess läuft als `regrag` (uid 1000). Der Code gehört root; schreibbar sind nur `/app`
+selbst, die beiden Volumes und die Eval-Ausgaben (`evaluation/manifest`, `evaluation/reports`).
+Volumes aus Images vor #72 sind root-eigen und brauchen einmalig ein `chown` (README, Docker).
+
 CPU-Query-Embeddings nutzen standardmäßig `OMP_NUM_THREADS=8` (über Compose überschreibbar);
 Messung siehe [ADR 0009](adr/0009-query-embedding-cpu-mps.md).
 

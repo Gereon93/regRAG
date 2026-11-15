@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-16
+### Geändert
+- **Container läuft als `regrag` (uid 1000) statt root.** Das Image kopiert nur noch die Laufzeitdateien (`*.py`, `web/`, `evaluation/`, `entrypoint.sh`) statt `COPY .`; der Code gehört root. Schreibbar sind `/app`, `chroma`, `docs_md`, `evaluation/manifest` und `evaluation/reports`. Das Modell wird vor den Requirements gebacken, eine geänderte `requirements.txt` lädt bge-m3 nicht neu (#72).
+- UI: Die Fehlermeldung einer abgelehnten Chat-Anfrage kommt aus `Anzeige.anfrageFehler` (getestet in `tests/ui`); Texte und Verhalten unverändert. `#uploadStatus` ist ein `<output>` statt `<span role="status">`, gleiche Live-Region (#72).
+- OpenAPI dokumentiert 404/409 für `/upload`, `/jobs/{job_id}` und `DELETE /documents/{datei}` (#72).
+- Ein Dokument mit abgelehnten Metadaten loggt beim Indexstart den Traceback (`log.exception`) statt nur der Meldung (#72).
+- Die Sonar-Analyse auf `main` bekommt die Coverage von `web/static/anzeige.js` als `lcov.info`; `graphify-out/` ist ausgenommen (#72).
+### Hinweis
+- **Bestehende Docker-Volumes** sind root-eigen und brauchen nach dem Update einmalig `docker compose run --rm -u root --entrypoint chown regrag -R regrag:regrag /app/chroma /app/docs_md` (oder `docker compose down -v`), sonst scheitert der Start mit `Permission denied` (#72).
+- Python ≥ 3.11 ist Voraussetzung (possessive Quantoren in `grounding.ZAHL`, trefferidentisch zur alten Fassung) (#72).
+
 ## 2026-11-13
 ### Neu
 - **Stichtag pro Anfrage:** `POST /chat` nimmt optional `stichtag` (`YYYY-MM-DD`, sonst 422), die CLI `--stichtag`, die UI ein Datumsfeld neben der Frage; der Eintrag im Verlauf nennt den Stichtag. Gültigkeit wird dann gegen diesen Tag statt gegen heute geprüft, der Eskalationsdatensatz trägt ihn als `stichtag` (#50, ADR 0015).
