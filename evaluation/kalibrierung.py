@@ -112,7 +112,7 @@ def vergleiche(a, b, seed=0, b_resamples=10_000):
         }
     s = [summen[g] for g in gruppen]
     c = [anzahl[g] for g in gruppen]
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # NOSONAR S2245: reproduzierbarer Bootstrap mit festem Seed, keine Sicherheitsfunktion
     k = len(gruppen)
     stat = []
     for _ in range(b_resamples):

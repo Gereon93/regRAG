@@ -11,7 +11,7 @@ AUSGABE = pathlib.Path("docs_md")
 
 def dokument_titel(pdf_pfad, fallback):
     text = pymupdf.open(str(pdf_pfad))[0].get_text()
-    nummer = re.search(r"VERORDNUNG \(EU\)\s*([0-9]+/[0-9]+)", text)
+    nummer = re.search(r"VERORDNUNG \(EU\)\s*(\d+/\d+)", text, re.ASCII)
     return f"Verordnung (EU) {nummer.group(1)} (DORA)" if nummer else fallback
 
 
@@ -38,7 +38,7 @@ if __name__ == "__main__":
             f"{PDF} nicht gefunden. DORA-PDF (CELEX 32022R2554, deutsche Fassung) holen: "
             "curl -L -H 'Accept: application/pdf' -H 'Accept-Language: deu' "
             "-o docs/CELEX_32022R2554_DE_TXT.pdf "
-            "http://publications.europa.eu/resource/celex/32022R2554 -- siehe README."
+            "https://publications.europa.eu/resource/celex/32022R2554 -- siehe README."
         )
     pfad = pdf_nach_markdown(PDF)
     print("Titel:", dokument_titel(PDF, PDF.stem))

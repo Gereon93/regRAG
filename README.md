@@ -101,7 +101,7 @@ Bot-Schutz (HTTP 202, leerer Body) und eignet sich nur für den Download per Bro
 ```bash
 curl -L -H "Accept: application/pdf" -H "Accept-Language: deu" \
   -o docs/CELEX_32022R2554_DE_TXT.pdf \
-  http://publications.europa.eu/resource/celex/32022R2554
+  https://publications.europa.eu/resource/celex/32022R2554
 python convert.py   # erzeugt docs_md/CELEX_32022R2554_DE_TXT.md und die .source.json
 ```
 

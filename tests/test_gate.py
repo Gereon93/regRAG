@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import logging
+import math
 import multiprocessing
 import os
 import stat
@@ -37,6 +38,7 @@ from gate import (
     normalisiere_segment,
     schreibe_eskalation,
     segment_von,
+    unter_schwelle,
     vorpruefung,
 )
 
@@ -46,13 +48,15 @@ def node(score, text="Art. 5 DORA", quelle="dora.md"):
 
 
 def test_abstain_ohne_reason_ist_unzulaessig():
+    scores = GateScores(relevance=0.1)
     with pytest.raises(ValueError):
-        GateDecision(Outcome.ABSTAIN, (), GateScores(relevance=0.1))
+        GateDecision(Outcome.ABSTAIN, (), scores)
 
 
 def test_answer_mit_reason_ist_unzulaessig():
+    scores = GateScores(relevance=0.9)
     with pytest.raises(ValueError):
-        GateDecision(Outcome.ANSWER, (AbstainReason.LOW_RELEVANCE,), GateScores(relevance=0.9))
+        GateDecision(Outcome.ANSWER, (AbstainReason.LOW_RELEVANCE,), scores)
 
 
 def test_reasons_decken_alle_fachlichen_gruende_ab():
@@ -130,16 +134,18 @@ def test_eskalationsdatensatz_enthaelt_frage_evidenz_scores_reasons_utc():
 
 def test_eskalationsdatensatz_verweigert_naive_zeit():
     d = GateDecision(Outcome.ABSTAIN, (AbstainReason.LOW_RELEVANCE,), GateScores())
+    naiv = datetime.fromisoformat("2026-10-27T12:00:00")
 
     with pytest.raises(ValueError):
-        eskalationsdatensatz("f", [], d, jetzt=datetime.fromisoformat("2026-10-27T12:00:00"))
+        eskalationsdatensatz("f", [], d, jetzt=naiv)
 
 
 def test_eskalationsdatensatz_nur_bei_abstain():
     d = GateDecision(Outcome.ANSWER, (), GateScores(relevance=0.9))
+    nodes = [node(0.9)]
 
     with pytest.raises(ValueError):
-        eskalationsdatensatz("f", [node(0.9)], d)
+        eskalationsdatensatz("f", nodes, d)
 
 
 def test_schreibe_eskalation_haengt_jsonl_zeilen_an(tmp_path):
@@ -1122,3 +1128,24 @@ def test_entscheide_und_eskaliere_reicht_den_stichtag_an_gate_und_datensatz(tmp_
 
     assert gate.stichtag == date(2024, 6, 1)
     assert json.loads(ziel.read_text(encoding="utf-8"))["stichtag"] == "2024-06-01"
+
+
+@pytest.mark.parametrize(
+    ("wert", "schwelle", "erwartet"),
+    [
+        (0.5, 0.62, True),
+        (0.62, 0.62, False),
+        (0.7, 0.62, False),
+        (float("nan"), 0.62, True),
+        (0.7, float("nan"), True),
+        (0.7, -math.inf, False),
+    ],
+)
+def test_unter_schwelle_zaehlt_nan_auf_jeder_seite_als_darunter(wert, schwelle, erwartet):
+    assert unter_schwelle(wert, schwelle) is erwartet
+
+
+def test_nan_schwelle_ist_abstain():
+    d = RetrievalScoreGate(min_score=float("nan")).entscheide("f", [node(0.99)])
+
+    assert d.outcome is Outcome.ABSTAIN
