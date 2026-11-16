@@ -216,7 +216,7 @@ Der Container läuft als Nutzer `regrag` (uid 1000), nicht als root; der Code im
 docker compose run --rm -u root --entrypoint chown regrag -R regrag:regrag /app/chroma /app/docs_md
 ```
 
-Alternativ `docker compose down -v`; dann wird der Korpus neu angelegt und neu indexiert.
+Achtung: Die Alternative `docker compose down -v` löscht das Volume `docs_md` mit allen hochgeladenen Dokumenten. Vorher hochgeladene Dokumente sichern; danach stellt der Bootstrap nur das DORA-PDF unter `docs/` wieder her und indexiert neu.
 
 ## Stand
 

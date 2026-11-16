@@ -8,7 +8,7 @@
 - Ein Dokument mit abgelehnten Metadaten loggt beim Indexstart den Traceback (`log.exception`) statt nur der Meldung (#72).
 - Die Sonar-Analyse auf `main` bekommt die Coverage von `web/static/anzeige.js` als `lcov.info`; `graphify-out/` ist ausgenommen (#72).
 ### Hinweis
-- **Bestehende Docker-Volumes** sind root-eigen und brauchen nach dem Update einmalig `docker compose run --rm -u root --entrypoint chown regrag -R regrag:regrag /app/chroma /app/docs_md` (oder `docker compose down -v`), sonst scheitert der Start mit `Permission denied` (#72).
+- **Bestehende Docker-Volumes** sind root-eigen und brauchen nach dem Update einmalig `docker compose run --rm -u root --entrypoint chown regrag -R regrag:regrag /app/chroma /app/docs_md`, sonst scheitert der Start mit `Permission denied` (#72).
 - Python ≥ 3.11 ist Voraussetzung (possessive Quantoren in `grounding.ZAHL`, trefferidentisch zur alten Fassung) (#72).
 
 ## 2026-11-13
