@@ -43,7 +43,8 @@ def test_diagnose_waehlt_nach_kosten_nicht_nach_accuracy():
 def test_diagnose_zaehlt_faelle_ohne_treffer_als_verweigert():
     d = diagnose([zeile("answer", None), zeile("abstain", 0.4)], KOSTEN)
     assert d["ohne_treffer"] == 1
-    assert d["antwortbar"] is None and d["trennluecke"] is None
+    assert d["antwortbar"] is None
+    assert d["trennluecke"] is None
     assert d["schwelle"] > 0.4
     assert d["kosten"] == 1.0
 

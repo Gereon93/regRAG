@@ -142,8 +142,8 @@ def lade_oder_baue_index():
     for name in zu_indexieren:
         try:
             indexiere(Path(config.DOKUMENTE_VERZEICHNIS) / name)
-        except gueltigkeit.MetadatenFehler as e:
-            log.error("Dokument nicht indexiert: %s", e)
+        except gueltigkeit.MetadatenFehler:
+            log.exception("Dokument nicht indexiert: %s", name)
 
     return index
 

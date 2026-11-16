@@ -15,6 +15,7 @@ from gate import (
     Outcome,
     kalibriere,
     segment_von,
+    unter_schwelle,
     vorpruefung,
 )
 from manifest import lade_manifest, warne_bei_anderem_index
@@ -114,8 +115,7 @@ class LayaGate:
         except JudgeFehler:
             return GateDecision(Outcome.ABSTAIN, (AbstainReason.JUDGE_UNAVAILABLE,), GateScores())
         scores = GateScores(answerable=wahrscheinlichkeit)
-        # NaN-sicher: ein NaN auf einer Seite darf nie zu ANSWER fuehren
-        if not (self.kalibriere_score(wahrscheinlichkeit) >= self.schwelle_fuer(segment_von(nodes))):
+        if unter_schwelle(self.kalibriere_score(wahrscheinlichkeit), self.schwelle_fuer(segment_von(nodes))):
             return GateDecision(Outcome.ABSTAIN, (AbstainReason.NOT_ANSWERABLE,), scores)
         return GateDecision(Outcome.ANSWER, (), scores)
 

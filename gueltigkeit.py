@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 BERLIN = ZoneInfo("Europe/Berlin")
-ISO_DATUM = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+ISO_DATUM = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 MAX_FASSUNG_ZEICHEN = 100
 
 GUELTIG = "gueltig"

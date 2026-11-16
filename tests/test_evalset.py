@@ -62,8 +62,9 @@ def test_lade_faelle_lehnt_ungueltige_faelle_ab(tmp_path, kaputt):
 
 def test_lade_faelle_lehnt_fehlendes_pflichtfeld_ab(tmp_path):
     ohne_segment = {k: v for k, v in fall("a").items() if k != "segment"}
+    pfad = schreibe_set(tmp_path, [ohne_segment])
     with pytest.raises(ValueError):
-        lade_faelle(schreibe_set(tmp_path, [ohne_segment]))
+        lade_faelle(pfad)
 
 
 def test_gruppe_faellt_auf_id_zurueck(tmp_path):
@@ -84,8 +85,9 @@ def test_standard_set_eval_version_ist_unveraendert():
 
 
 def test_ausserhalb_mit_answer_ist_ein_fehler(tmp_path):
+    pfad = schreibe_set(tmp_path, [fall("a", erwartet="answer", segment="ausserhalb")])
     with pytest.raises(ValueError, match="Zeile 1"):
-        lade_faelle(schreibe_set(tmp_path, [fall("a", erwartet="answer", segment="ausserhalb")]))
+        lade_faelle(pfad)
 
 
 def test_ausserhalb_mit_abstain_ist_gueltig(tmp_path):
@@ -93,8 +95,9 @@ def test_ausserhalb_mit_abstain_ist_gueltig(tmp_path):
 
 
 def test_unbekanntes_segment_ist_ein_fehler(tmp_path):
+    pfad = schreibe_set(tmp_path, [fall("a", segment="foo")])
     with pytest.raises(ValueError, match="Zeile 1"):
-        lade_faelle(schreibe_set(tmp_path, [fall("a", segment="foo")]))
+        lade_faelle(pfad)
 
 
 def test_eval_version_aendert_sich_mit_inhalt_nicht_mit_reihenfolge():
@@ -189,7 +192,8 @@ def test_kosten_lehnen_negative_gewichte_ab():
 def test_wilson_grenzfaelle():
     assert wilson(0, 0) == (0.0, 1.0)
     lo, hi = wilson(0, 10)
-    assert lo == 0.0 and hi == pytest.approx(0.2775, abs=1e-3)
+    assert lo == 0.0
+    assert hi == pytest.approx(0.2775, abs=1e-3)
     lo, hi = wilson(50, 100)
     assert (lo, hi) == pytest.approx((0.4038, 0.5962), abs=1e-3)
 
@@ -206,7 +210,8 @@ def test_bericht_pro_segment_mit_ci_und_version():
     assert v["eskalationsrate"]["wert"] == 0.5
     assert v["falschantwortrate"]["wert"] == 0.0
     lo, hi = v["falschantwortrate"]["ci95"]
-    assert lo == 0.0 and hi > 0.0
+    assert lo == 0.0
+    assert hi > 0.0
     assert b["gesamt"]["n"] == 6
 
 
@@ -229,7 +234,8 @@ def test_bericht_je_kategorie_nutzt_die_schwelle_des_segments():
 def test_bericht_falschantwortrate_ist_anteil_an_beantworteten():
     b = bericht(zeilen(), {"verordnung": 0.5, "ausserhalb": 0.99}, KOSTEN, version="v")
     v = b["segmente"]["verordnung"]
-    assert v["beantwortet"] == 3 and v["falschantworten"] == 1
+    assert v["beantwortet"] == 3
+    assert v["falschantworten"] == 1
     assert v["falschantwortrate"]["wert"] == pytest.approx(1 / 3)
 
 
@@ -239,8 +245,9 @@ def test_bericht_ohne_beantwortete_hat_keine_falschantwortrate():
 
 
 def test_bericht_segment_ohne_schwelle_ist_fehler():
+    alle = zeilen()
     with pytest.raises(KeyError):
-        bericht(zeilen(), {"verordnung": 0.5}, KOSTEN, version="v")
+        bericht(alle, {"verordnung": 0.5}, KOSTEN, version="v")
 
 
 def fester_retriever(scores):
@@ -262,8 +269,10 @@ def test_erzeuge_bericht_waehlt_schwelle_auf_calibration_und_misst_auf_test():
 
 
 def test_erzeuge_bericht_bricht_bei_leeren_splits_ab():
+    faelle = [fall("a")]
+    retriever = fester_retriever({"Frage a?": 0.9})
     with pytest.raises(SystemExit):
-        erzeuge_bericht([fall("a")], fester_retriever({"Frage a?": 0.9}), KOSTEN)
+        erzeuge_bericht(faelle, retriever, KOSTEN)
 
 
 def test_schreibe_legt_artefakt_mit_version_im_namen_an(tmp_path):
@@ -304,7 +313,8 @@ def test_hole_zeilen_nimmt_den_besten_score_wie_das_gate_und_traegt_die_kategori
 
 def test_einseitige_calibration_segmente_werden_gewarnt():
     warnungen = einseitige_segmente([zeile("a", "answer", 0.9), zeile("b", "answer", 0.9), zeile("b", "abstain", 0.1)])
-    assert len(warnungen) == 1 and "'a'" in warnungen[0]
+    assert len(warnungen) == 1
+    assert "'a'" in warnungen[0]
 
 
 def test_ausgeliefertes_seed_set_ist_noch_nicht_kalibrierbar():
@@ -325,7 +335,8 @@ def test_score_feld_none_zaehlt_als_eskalation_und_verschiebt_schwelle_nicht():
     args = {"score_feld": "laya_kal", "segment_feld": "segment_laufzeit"}
     assert schwellen_pro_segment(mit_none, KOSTEN, **args) == schwellen_pro_segment(basis, KOSTEN, **args)
     b = bericht(mit_none, {"verordnung": 0.5}, KOSTEN, version="v", **args)
-    assert b["gesamt"]["beantwortet"] == 1 and b["gesamt"]["eskaliert"] == 3
+    assert b["gesamt"]["beantwortet"] == 1
+    assert b["gesamt"]["eskaliert"] == 3
 
 
 def test_unbekanntes_segment_bekommt_nie_eine_schwelle():

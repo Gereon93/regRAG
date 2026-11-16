@@ -37,7 +37,9 @@ MARKER_MIT_ABSTAND = re.compile(rf"\s*{MARKER.pattern}")
 FORMATIERUNG = re.compile(r"\*\*|__|`")
 MAX_UEBERSCHRIFT_ZEICHEN = 80
 
-ZAHL = re.compile(r"(?<![\d.,])\d+[.,]\d+(?![.,]?\d)|\d+(?:/\d+)*")
+# Possessiv (Python >= 3.11): kein Backtracking in die Ziffernfolgen — ein kürzerer Treffer endete ohnehin vor einer
+# Ziffer und scheiterte am Lookahead bzw. am Trenner. Darum reicht auch (?![.,]\d) statt (?![.,]?\d).
+ZAHL = re.compile(r"(?<![\d.,])\d++[.,]\d++(?![.,]\d)|\d++(?:/\d++)*+")
 TAUSENDER = re.compile(r"\b\d{1,3}(?:[ . ]\d{3})+\b")
 MENGE = re.compile(
     r"(?<![\d.,])(\d+(?:[.,]\d+)?)[\s-]*(kalender|arbeits|werk|geschäfts)?"

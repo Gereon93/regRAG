@@ -11,3 +11,4 @@ __pycache__
 regrag-ui.png
 .DS_Store
 .env
+evaluation/reports

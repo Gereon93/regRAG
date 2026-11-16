@@ -68,6 +68,11 @@ def skaliere(p, temperatur):
     return 1 / (1 + math.exp(-logit(p) / temperatur))
 
 
+def unter_schwelle(wert, schwelle):
+    """NaN-sicher: NaN auf einer Seite zählt als unter der Schwelle, denn `NaN < schwelle` ist False."""
+    return math.isnan(wert) or math.isnan(schwelle) or wert < schwelle
+
+
 def kalibriere(p, temperatur):
     """Temperature Scaling, Ausgabe auf [EPS, 1-EPS] geklemmt (kleines T saettigt sonst auf exakt 0/1)."""
     return min(max(skaliere(p, temperatur), EPS), 1 - EPS)
@@ -142,10 +147,10 @@ class RetrievalScoreGate:
     def __init__(self, min_score):
         self.min_score = min_score
 
-    def entscheide(self, frage, nodes, _stichtag=None):
+    def entscheide(self, _frage, nodes, _stichtag=None):
         bester = max((n.score for n in nodes), default=None)
         scores = GateScores(relevance=bester)
-        if bester is None or not bester >= self.min_score:
+        if bester is None or unter_schwelle(bester, self.min_score):
             return GateDecision(Outcome.ABSTAIN, (AbstainReason.LOW_RELEVANCE,), scores)
         return GateDecision(Outcome.ANSWER, (), scores)
 

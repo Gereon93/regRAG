@@ -24,3 +24,7 @@ chroma_pypdf/
 docs/CELEX_32022R2554_DE_TXT.pdf
 
 evaluation/reports/
+
+# Specs leben am GitHub-Issue, nicht im Repo
+.specs/
+.speckit/

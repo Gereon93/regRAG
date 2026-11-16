@@ -99,7 +99,9 @@ class TestVergleiche:
         rng = random.Random(1)
         a = _report([rng.random() for _ in range(48)])
         b = _report([rng.random() for _ in range(48)])
-        assert vergleiche(a, b, seed=5, b_resamples=300) == vergleiche(a, b, seed=5, b_resamples=300)
+        erster = vergleiche(a, b, seed=5, b_resamples=300)
+        zweiter = vergleiche(a, b, seed=5, b_resamples=300)
+        assert erster == zweiter
 
     def test_gruppen_werden_gemeinsam_gezogen(self):
         # Eine Gruppe (g0) traegt die ganze Differenz: Cluster-CI muss breiter sein
@@ -128,8 +130,9 @@ class TestVergleiche:
         assert "10" in r["grund"]
 
     def test_abweichende_eval_version(self):
+        a, b = _report([1.0] * 12), _report([1.0] * 12, eval_version="v2")
         with pytest.raises(ValueError):
-            vergleiche(_report([1.0] * 12), _report([1.0] * 12, eval_version="v2"))
+            vergleiche(a, b)
 
     def test_abweichender_index_fingerprint(self):
         a, b = _report([1.0] * 12), _report([1.0] * 12)
@@ -146,8 +149,9 @@ class TestVergleiche:
     def test_abweichende_id_menge(self):
         b = _report([1.0] * 12)
         b["test_faelle"][0]["id"] = "anders"
+        a = _report([1.0] * 12)
         with pytest.raises(ValueError):
-            vergleiche(_report([1.0] * 12), b)
+            vergleiche(a, b)
 
     def test_default_resamples_schnell(self):
         import time

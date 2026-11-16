@@ -107,16 +107,18 @@ def test_anderer_checkpoint_unter_gleichem_namen_bricht_vor_dem_schreiben_ab(tmp
     vorher = erstes.read_text(encoding="utf-8")
     monkeypatch.setattr("manifest.checkpoint_kennung", lambda modell, revision: "0" * 12)
     erstes = erstes.rename(tmp_path / f"gate-manifest-0123456789ab-{'0' * 12}.json")
+    anderer = _mit(checkpoint_revision="r9")
     with pytest.raises(ValueError, match="r9"):
-        schreibe_manifest(_mit(checkpoint_revision="r9"), tmp_path)
+        schreibe_manifest(anderer, tmp_path)
     assert erstes.read_text(encoding="utf-8") == vorher
 
 
 def test_unlesbare_bestehende_datei_wird_nicht_ueberschrieben(tmp_path):
     ziel = tmp_path / f"gate-manifest-0123456789ab-{checkpoint_kennung('multilingual', 'abc123')}.json"
     ziel.write_text("{kaputt", encoding="utf-8")
+    m = _manifest()
     with pytest.raises(ValueError, match="abc123"):
-        schreibe_manifest(_manifest(), tmp_path)
+        schreibe_manifest(m, tmp_path)
     assert ziel.read_text(encoding="utf-8") == "{kaputt"
 
 
@@ -187,30 +189,35 @@ def _ohne(feld):
     ],
 )
 def test_verletzungen(tmp_path, daten, feld):
+    pfad = _schreibe(tmp_path, daten)
     with pytest.raises(ValueError, match=feld):
-        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 @pytest.mark.parametrize("konstante", ["Infinity", "-Infinity", "NaN"])
 def test_nicht_endliche_json_konstanten(tmp_path, konstante):
     text = json.dumps(_roh()).replace('"temperatur": 1.0', f'"temperatur": {konstante}')
+    pfad = _schreibe(tmp_path, None, text)
     with pytest.raises(ValueError, match=konstante):
-        lade_manifest(_schreibe(tmp_path, None, text), EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 def test_fehlende_datei(tmp_path):
+    pfad = tmp_path / "gibt-es-nicht.json"
     with pytest.raises(ValueError, match="gibt-es-nicht"):
-        lade_manifest(tmp_path / "gibt-es-nicht.json", EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 def test_kaputtes_json(tmp_path):
+    pfad = _schreibe(tmp_path, None, "{nope")
     with pytest.raises(ValueError, match="JSON"):
-        lade_manifest(_schreibe(tmp_path, None, "{nope"), EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 def test_wurzel_kein_objekt(tmp_path):
+    pfad = _schreibe(tmp_path, None, "[]")
     with pytest.raises(ValueError, match="Objekt"):
-        lade_manifest(_schreibe(tmp_path, None, "[]"), EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 def test_schreiben_lehnt_nan_ab(tmp_path):
@@ -259,8 +266,9 @@ def test_fehlendes_feld(tmp_path, pfad, feld):
     for schluessel in pfad[:-1]:
         ziel = ziel[schluessel]
     del ziel[pfad[-1]]
+    pfad = _schreibe(tmp_path, daten)
     with pytest.raises(ValueError, match=feld):
-        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 @pytest.mark.parametrize(
@@ -280,14 +288,16 @@ def test_fehlendes_feld(tmp_path, pfad, feld):
     ],
 )
 def test_weitere_verletzungen(tmp_path, daten, feld):
+    pfad = _schreibe(tmp_path, daten)
     with pytest.raises(ValueError, match=feld):
-        lade_manifest(_schreibe(tmp_path, daten), EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 @pytest.mark.parametrize("wurzel", ['"text"', "42", "null"])
 def test_wurzel_nicht_objekt_andere(tmp_path, wurzel):
+    pfad = _schreibe(tmp_path, None, wurzel)
     with pytest.raises(ValueError, match="Objekt"):
-        lade_manifest(_schreibe(tmp_path, None, wurzel), EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 @pytest.mark.parametrize(
@@ -302,8 +312,9 @@ def test_wurzel_nicht_objekt_andere(tmp_path, wurzel):
     ],
 )
 def test_riesige_zahlen_sind_value_error(tmp_path, ersetzung):
+    pfad = _schreibe(tmp_path, None, _text_mit(ersetzung))
     with pytest.raises(ValueError):
-        lade_manifest(_schreibe(tmp_path, None, _text_mit(ersetzung)), EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 @pytest.mark.parametrize("konstante", ["Infinity", "-Infinity", "NaN"])
@@ -313,8 +324,9 @@ def test_riesige_zahlen_sind_value_error(tmp_path, ersetzung):
 )
 def test_nicht_endliche_konstanten_ueberall(tmp_path, alt, konstante):
     neu = alt.split(":")[0] + f": {konstante}"
+    pfad = _schreibe(tmp_path, None, _text_mit({alt: neu}))
     with pytest.raises(ValueError, match=konstante):
-        lade_manifest(_schreibe(tmp_path, None, _text_mit({alt: neu})), EINSTELLUNGEN)
+        lade_manifest(pfad, EINSTELLUNGEN)
 
 
 @pytest.mark.parametrize("temperatur", [0.05, 20, 20.0])

@@ -157,7 +157,11 @@ async def _lies_begrenzt(datei):
     return b"".join(stuecke)
 
 
-@app.post("/upload", status_code=202)
+@app.post(
+    "/upload",
+    status_code=202,
+    responses={409: {"description": "Dokument wird bereits oder ist schon indexiert."}},
+)
 async def upload(
     datei: Annotated[UploadFile, File()],
     gueltig_ab: Annotated[str | None, Form()] = None,
@@ -185,7 +189,7 @@ async def upload(
     return {"job": job_id, **JOBS[job_id]}
 
 
-@app.get("/jobs/{job_id}")
+@app.get("/jobs/{job_id}", responses={404: {"description": "Job unbekannt."}})
 def job_status(job_id: str):
     job = JOBS.get(job_id)
     if job is None:
@@ -220,7 +224,11 @@ def _irgendeine_indexierung_laeuft():
     return bool(NAMEN_IN_ARBEIT)
 
 
-@app.delete("/documents/{datei}", status_code=204)
+@app.delete(
+    "/documents/{datei}",
+    status_code=204,
+    responses={409: {"description": "Es läuft gerade eine Indexierung."}, 404: {"description": "Dokument nicht gefunden."}},
+)
 def dokument_loeschen(datei: str):
     try:
         name = dokumente.saeubere_md_name(datei)

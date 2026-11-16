@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { gueltigkeitsAngaben, uploadFehler, gesetzteFelder } = require("../../web/static/anzeige.js");
+const { gueltigkeitsAngaben, uploadFehler, anfrageFehler, gesetzteFelder } = require("../../web/static/anzeige.js");
 
 test("422 mit String-Detail ersetzt API-Feldnamen durch UI-Labels", () => {
   assert.equal(
@@ -53,4 +53,21 @@ test("nur gesetzte Formularfelder werden verschickt, in fester Reihenfolge", () 
     ["fassung", "2"],
   ]);
   assert.deepEqual(gesetzteFelder({ gueltig_ab: "", gueltig_bis: "", fassung: "" }), []);
+});
+
+test("Chat-Fehler: String-Detail des Backends hat Vorrang", () => {
+  assert.equal(anfrageFehler(400, "Frage enthält Steuerzeichen."), "Frage enthält Steuerzeichen.");
+});
+
+test("Chat-Fehler: 422 ohne String-Detail erklärt die Grenzen", () => {
+  assert.equal(
+    anfrageFehler(422, [{ loc: ["body", "frage"] }]),
+    "Die Frage ist leer oder zu lang (höchstens 2000 Zeichen), oder der Stichtag ist kein Datum.",
+  );
+});
+
+test("Chat-Fehler: sonst der HTTP-Status, bei 429 mit Wartezeit", () => {
+  assert.equal(anfrageFehler(503, undefined), "Anfrage abgelehnt (HTTP 503).");
+  assert.equal(anfrageFehler(429, "Zu viele Anfragen.", "30"), "Zu viele Anfragen. Bitte in 30 Sekunden erneut fragen.");
+  assert.equal(anfrageFehler(429, undefined, null), "Anfrage abgelehnt (HTTP 429).");
 });
